@@ -1,9 +1,13 @@
-// Q - Acme interface for kiro-cli chat sessions via 9P
+// Q - Acme interface for chat backends via 9P
 package main
 
 import (
+	"acme-q/internal/backend"
+	"acme-q/internal/backend/pty"
+	"acme-q/internal/backends"
 	"acme-q/internal/p9"
 	"acme-q/internal/session"
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -20,8 +24,14 @@ import (
 
 const windowName = "/Q/"
 
+// Type alias to work around Go parser limitation
+type Session = backend.Session
+
 func main() {
-	mgr := session.NewManager()
+	// Create backend (kiro-cli for now, could be configurable)
+	backend := backends.NewKiroCLI()
+
+	mgr := session.NewManager(backend)
 
 	srv, err := p9.NewServer(mgr)
 	if err != nil {
@@ -30,20 +40,23 @@ func main() {
 	defer srv.Close()
 
 	// Rename chat window when alias changes
-	srv.OnAliasChange = func(sess *session.Session) {
-		if sess.WinID > 0 {
-			w, err := acme.Open(sess.WinID, nil)
+	var aliasChangeFunc func(Session)
+	aliasChangeFunc = func(sess Session) {
+		meta := sess.Metadata()
+		if meta.WinID > 0 {
+			w, err := acme.Open(meta.WinID, nil)
 			if err != nil {
 				return
 			}
 			defer w.CloseFiles()
-			name := sess.Alias
+			name := meta.Alias
 			if name == "" {
-				name = sess.ID
+				name = sess.ID()
 			}
-			w.Name(filepath.Join(sess.Cwd, fmt.Sprintf("+Chat.%s", name)))
+			w.Name(filepath.Join(meta.Cwd, fmt.Sprintf("+Chat.%s", name)))
 		}
 	}
+	srv.OnAliasChange = aliasChangeFunc
 
 	w, err := acme.New()
 	if err != nil {
@@ -93,12 +106,12 @@ func main() {
 					w.Fprintf("body", "Error: %v\n", err)
 					continue
 				}
-				chatWin, err := openChatWindow(sess)
+				_, err = openChatWindow(sess)
 				if err != nil {
 					w.Fprintf("body", "Error opening chat: %v\n", err)
 					continue
 				}
-				sess.WinID = chatWin.ID()
+				// WinID is set inside openChatWindow
 				refreshList(w, mgr)
 			case "Open":
 				if arg == "" {
@@ -110,12 +123,12 @@ func main() {
 					w.Fprintf("body", "Session not found: %s\n", arg)
 					continue
 				}
-				chatWin, err := openChatWindow(sess)
+				_, err := openChatWindow(sess)
 				if err != nil {
 					w.Fprintf("body", "Error opening chat: %v\n", err)
 					continue
 				}
-				sess.WinID = chatWin.ID()
+				// WinID is set inside openChatWindow
 			case "Kill":
 				if arg == "" {
 					w.Fprintf("body", "Usage: Kill <pid>\n")
@@ -129,10 +142,13 @@ func main() {
 				// Find session by pid and kill it
 				for _, id := range mgr.List() {
 					sess := mgr.Get(id)
-					if sess != nil && sess.Pid == pid {
-						sess.Kill()
-						mgr.Remove(id)
-						break
+					if sess != nil {
+						meta := sess.Metadata()
+						if meta.Pid == pid {
+							sess.Close()
+							mgr.Remove(id)
+							break
+						}
 					}
 				}
 				refreshList(w, mgr)
@@ -156,23 +172,18 @@ func main() {
 			log.Printf("[/Q/] Look: text=%q", text)
 			if sess := mgr.Get(text); sess != nil {
 				// Try to focus existing window, or open new one
-				if sess.WinID > 0 {
+				meta := sess.Metadata()
+				if meta.WinID > 0 {
 					// Check if window still exists by trying to open it
-					if aw, err := acme.Open(sess.WinID, nil); err == nil {
+					if aw, err := acme.Open(meta.WinID, nil); err == nil {
 						aw.Ctl("show")
 						aw.CloseFiles()
 					} else {
 						// Window gone, open new one
-						chatWin, err := openChatWindow(sess)
-						if err == nil {
-							sess.WinID = chatWin.ID()
-						}
+						openChatWindow(sess)
 					}
 				} else {
-					chatWin, err := openChatWindow(sess)
-					if err == nil {
-						sess.WinID = chatWin.ID()
-					}
+					openChatWindow(sess)
 				}
 			} else {
 				w.WriteEvent(e)
@@ -193,36 +204,38 @@ func refreshList(w *acme.Win, mgr *session.Manager) {
 		if sess == nil {
 			continue
 		}
+		meta := sess.Metadata()
 		// Remove dead sessions (pid=0 or process not running)
-		if sess.Pid == 0 {
+		if meta.Pid == 0 {
 			mgr.Remove(id)
 			continue
 		}
-		if err := syscall.Kill(sess.Pid, 0); err != nil {
+		if err := syscall.Kill(meta.Pid, 0); err != nil {
 			mgr.Remove(id)
 			continue
 		}
-		alias := sess.Alias
+		alias := meta.Alias
 		if alias == "" {
 			alias = "-"
 		}
-		cwd := sess.Cwd
+		cwd := meta.Cwd
 		if len(cwd) > 80 {
 			cwd = "..." + cwd[len(cwd)-77:]
 		}
-		buf.WriteString(fmt.Sprintf("%-5s %-9s %-8d %-16s %s\n", sess.ID, sess.State, sess.Pid, alias, cwd))
+		buf.WriteString(fmt.Sprintf("%-5s %-9s %-8d %-16s %s\n", sess.ID(), sess.State(), meta.Pid, alias, cwd))
 	}
 	w.Addr(",")
 	w.Write("data", []byte(buf.String()))
 	w.Ctl("clean")
 }
 
-func openChatWindow(sess *session.Session) (*acme.Win, error) {
-	displayName := sess.Alias
+func openChatWindow(sess backend.Session) (*acme.Win, error) {
+	meta := sess.Metadata()
+	displayName := meta.Alias
 	if displayName == "" {
-		displayName = sess.ID
+		displayName = sess.ID()
 	}
-	name := filepath.Join(sess.Cwd, fmt.Sprintf("+Chat.%s", displayName))
+	name := filepath.Join(meta.Cwd, fmt.Sprintf("+Chat.%s", displayName))
 
 	w, err := acme.New()
 	if err != nil {
@@ -230,15 +243,20 @@ func openChatWindow(sess *session.Session) (*acme.Win, error) {
 	}
 	w.Name(name)
 	w.Write("tag", []byte("Send Stop Alias Save Kill Sessions "))
-	w.Fprintf("body", "# Session %s\n# cwd: %s\n\nUSER:\n", sess.ID, sess.Cwd)
+	w.Fprintf("body", "# Session %s\n# cwd: %s\n\nUSER:\n", sess.ID(), meta.Cwd)
 	w.Ctl("clean")
+
+	// Set window ID on session (if it's a PTY session)
+	if ptySess, ok := sess.(*pty.Session); ok {
+		ptySess.SetWinID(w.ID())
+	}
 
 	go handleChatWindow(w, sess)
 
 	return w, nil
 }
 
-func handleChatWindow(w *acme.Win, sess *session.Session) {
+func handleChatWindow(w *acme.Win, sess backend.Session) {
 	defer w.CloseFiles()
 
 	for e := range w.EventChan() {
@@ -257,27 +275,29 @@ func handleChatWindow(w *acme.Win, sess *session.Session) {
 			case "Send":
 				go sendPrompt(w, sess)
 			case "Stop":
-				if err := sess.Stop(); err != nil {
-					log.Printf("[session %s] Stop error: %v", sess.ID, err)
+				ctx := context.Background()
+				if err := sess.Stop(ctx); err != nil {
+					log.Printf("[session %s] Stop error: %v", sess.ID(), err)
 				} else {
-					log.Printf("[session %s] Sent CTRL+C", sess.ID)
+					log.Printf("[session %s] Sent CTRL+C", sess.ID())
 				}
 			case "Alias":
 				if arg == "" {
-					log.Printf("[session %s] Usage: Alias <name>", sess.ID)
+					log.Printf("[session %s] Usage: Alias <name>", sess.ID())
 					continue
 				}
 				// Validate alias
 				matched, _ := regexp.MatchString(`^[A-Za-z0-9_-]+$`, arg)
 				if !matched {
-					log.Printf("[session %s] Invalid alias: must match [A-Za-z0-9_-]+", sess.ID)
+					log.Printf("[session %s] Invalid alias: must match [A-Za-z0-9_-]+", sess.ID())
 					continue
 				}
-				sess.Alias = arg
+				sess.SetAlias(arg)
 				// Rename window
-				newName := filepath.Join(sess.Cwd, fmt.Sprintf("+Chat.%s", arg))
+				meta := sess.Metadata()
+				newName := filepath.Join(meta.Cwd, fmt.Sprintf("+Chat.%s", arg))
 				w.Name(newName)
-				log.Printf("[session %s] alias set to %s", sess.ID, arg)
+				log.Printf("[session %s] alias set to %s", sess.ID(), arg)
 			case "Save":
 				// Grab first part of window content for filename hints
 				var bodyText string
@@ -288,34 +308,25 @@ func handleChatWindow(w *acme.Win, sess *session.Session) {
 					bodyText = string(body)
 				}
 				go func() {
-					// Save to temp file first
-					tempPath := sess.SavePath()
+					var savePath string
+					var err error
 					if arg != "" {
-						tempPath = arg
+						// Save to explicit path
+						savePath = arg
+						err = backends.SendCtl(sess, "/chat save "+savePath)
+					} else {
+						// Save with smart filename
+						savePath, err = backends.SaveWithSmartFilename(sess, sess.ID(), bodyText)
 					}
-					if err := sess.SendCtl("/chat save " + tempPath); err != nil {
-						log.Printf("[session %s] Error saving: %v", sess.ID, err)
+					if err != nil {
+						log.Printf("[session %s] Error saving: %v", sess.ID(), err)
 						return
 					}
-					// If no explicit path given, try to generate smart filename
-					if arg == "" {
-						smartPath, err := session.GenerateSmartFilename(tempPath, bodyText)
-						if err != nil {
-							log.Printf("[session %s] Smart filename failed: %v, keeping %s", sess.ID, err, tempPath)
-						} else if smartPath != tempPath {
-							if err := os.Rename(tempPath, smartPath); err == nil {
-								log.Printf("[session %s] Saved to %s", sess.ID, smartPath)
-								return
-							} else {
-								log.Printf("[session %s] Rename failed: %v", sess.ID, err)
-							}
-						}
-					}
-					log.Printf("[session %s] Saved to %s", sess.ID, tempPath)
+					log.Printf("[session %s] Saved to %s", sess.ID(), savePath)
 				}()
 			case "Kill":
-				sess.Kill()
-				log.Printf("[session %s] Session killed", sess.ID)
+				sess.Close()
+				log.Printf("[session %s] Session killed", sess.ID())
 				return
 			case "Sessions":
 				openSessionsWindow(w, sess)
@@ -328,17 +339,17 @@ func handleChatWindow(w *acme.Win, sess *session.Session) {
 	}
 }
 
-func sendPrompt(w *acme.Win, sess *session.Session) {
+func sendPrompt(w *acme.Win, sess backend.Session) {
 	body, err := w.ReadAll("body")
 	if err != nil {
-		log.Printf("[session %s] Error reading body: %v", sess.ID, err)
+		log.Printf("[session %s] Error reading body: %v", sess.ID(), err)
 		return
 	}
 
 	content := string(body)
 	idx := strings.LastIndex(content, "USER:")
 	if idx < 0 {
-		log.Printf("[session %s] No USER: section found", sess.ID)
+		log.Printf("[session %s] No USER: section found", sess.ID())
 		return
 	}
 
@@ -349,9 +360,10 @@ func sendPrompt(w *acme.Win, sess *session.Session) {
 
 	w.Fprintf("body", "\n\nASSISTANT:\n")
 
-	response, err := sess.Send(prompt)
+	ctx := context.Background()
+	response, err := sess.Send(ctx, prompt)
 	if err != nil {
-		log.Printf("[session %s] Error: %v", sess.ID, err)
+		log.Printf("[session %s] Error: %v", sess.ID(), err)
 	} else {
 		w.Fprintf("body", "%s\n", response)
 	}
@@ -360,9 +372,10 @@ func sendPrompt(w *acme.Win, sess *session.Session) {
 	w.Ctl("clean")
 }
 
-func openSessionsWindow(chatWin *acme.Win, sess *session.Session) {
-	dir := session.SessionsDir()
-	name := filepath.Join(sess.Cwd, fmt.Sprintf("+Sessions.%s", sess.ID))
+func openSessionsWindow(chatWin *acme.Win, sess backend.Session) {
+	dir := backends.SessionsDir()
+	meta := sess.Metadata()
+	name := filepath.Join(meta.Cwd, fmt.Sprintf("+Sessions.%s", sess.ID()))
 
 	w, err := acme.New()
 	if err != nil {
@@ -389,7 +402,8 @@ func openSessionsWindow(chatWin *acme.Win, sess *session.Session) {
 					// Run /chat load and display output in chat window
 					go func(p string) {
 						chatWin.Fprintf("body", "\n\nASSISTANT:\n")
-						response, err := sess.Send("/chat load " + p)
+						ctx := context.Background()
+						response, err := sess.Send(ctx, "/chat load "+p)
 						if err != nil {
 							chatWin.Fprintf("body", "Error loading: %v\n", err)
 						} else {

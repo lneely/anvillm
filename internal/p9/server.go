@@ -2,7 +2,11 @@
 package p9
 
 import (
+	"acme-q/internal/backend"
+	"acme-q/internal/backend/pty"
+	"acme-q/internal/backends"
 	"acme-q/internal/session"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -68,7 +72,7 @@ type Server struct {
 	mgr           *session.Manager
 	listener      net.Listener
 	mu            sync.RWMutex
-	OnAliasChange func(sess *session.Session) // callback when alias changes
+	OnAliasChange func(sess backend.Session) // callback when alias changes
 }
 
 type connState struct {
@@ -304,7 +308,7 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		if err != nil {
 			return errFcall(fc, err.Error())
 		}
-		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(sess.ID))}
+		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(sess.ID()))}
 	}
 
 	// /{id}/ctl - session control
@@ -319,27 +323,28 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		}
 		switch args[0] {
 		case "stop":
-			if err := sess.Stop(); err != nil {
+			ctx := context.Background()
+			if err := sess.Stop(ctx); err != nil {
 				return errFcall(fc, err.Error())
 			}
 		case "save":
-			path := sess.SavePath()
+			path := backends.SavePath(sess.ID())
 			if len(args) > 1 {
 				path = args[1]
 			}
-			if err := sess.SendCtl("/chat save " + path); err != nil {
+			if err := backends.SendCtl(sess, "/chat save "+path); err != nil {
 				return errFcall(fc, err.Error())
 			}
 		case "load":
 			if len(args) < 2 {
 				return errFcall(fc, "load requires path")
 			}
-			if err := sess.Load(args[1]); err != nil {
+			if err := backends.Load(sess, args[1]); err != nil {
 				return errFcall(fc, err.Error())
 			}
 		case "kill":
-			sess.Kill()
-			s.mgr.Remove(sess.ID)
+			sess.Close()
+			s.mgr.Remove(sess.ID())
 		default:
 			return errFcall(fc, "unknown command")
 		}
@@ -352,7 +357,8 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		if sess == nil {
 			return errFcall(fc, "session not found")
 		}
-		if _, err := sess.Send(input); err != nil {
+		ctx := context.Background()
+		if _, err := sess.Send(ctx, input); err != nil {
 			return errFcall(fc, err.Error())
 		}
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
@@ -368,7 +374,10 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		if err != nil {
 			return errFcall(fc, "invalid winid")
 		}
-		sess.WinID = id
+		// Set WinID if it's a PTY session
+		if ptySess, ok := sess.(*pty.Session); ok {
+			ptySess.SetWinID(id)
+		}
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
@@ -383,7 +392,7 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		if !matched {
 			return errFcall(fc, "invalid alias: must match [A-Za-z0-9_-]+")
 		}
-		sess.Alias = input
+		sess.SetAlias(input)
 		if s.OnAliasChange != nil {
 			s.OnAliasChange(sess)
 		}
@@ -466,7 +475,8 @@ func (s *Server) readFile(path string) string {
 		for _, id := range s.mgr.List() {
 			sess := s.mgr.Get(id)
 			if sess != nil {
-				lines = append(lines, fmt.Sprintf("%s\t%s\t%d\t%s", sess.ID, sess.State, sess.Pid, sess.Cwd))
+				meta := sess.Metadata()
+				lines = append(lines, fmt.Sprintf("%s\t%s\t%d\t%s", sess.ID(), sess.State(), meta.Pid, meta.Cwd))
 			}
 		}
 		return strings.Join(lines, "\n") + "\n"
@@ -483,28 +493,36 @@ func (s *Server) readFile(path string) string {
 	return s.getSessionFile(sess, fileIndex(parts[2]))
 }
 
-func (s *Server) getSessionFile(sess *session.Session, idx int) string {
+func (s *Server) getSessionFile(sess backend.Session, idx int) string {
+	meta := sess.Metadata()
+
 	switch idx {
 	case fileOut:
-		return sess.Output()
+		// Output from last command - only available for PTY sessions
+		if ptySess, ok := sess.(*pty.Session); ok {
+			// We don't have a direct Output() method anymore
+			// This would need to be stored separately if needed
+			_ = ptySess
+		}
+		return ""
 	case fileErr:
-		return sess.Err()
+		return "" // Error output not currently stored
 	case fileWinID:
-		return strconv.Itoa(sess.WinID)
+		return strconv.Itoa(meta.WinID)
 	case fileState:
-		return sess.State
+		return sess.State()
 	case filePid:
-		if sess.Pid == 0 {
+		if meta.Pid == 0 {
 			return ""
 		}
-		return strconv.Itoa(sess.Pid)
+		return strconv.Itoa(meta.Pid)
 	case fileCwd:
-		return sess.Cwd
+		return meta.Cwd
 	case fileAlias:
-		if sess.Alias == "" {
-			return sess.ID
+		if meta.Alias == "" {
+			return sess.ID()
 		}
-		return sess.Alias
+		return meta.Alias
 	}
 	return ""
 }
