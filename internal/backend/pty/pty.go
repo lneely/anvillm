@@ -39,16 +39,25 @@ type Cleaner interface {
 	Clean(prompt string, rawOutput string) string
 }
 
+// StartupHandler can send initial commands during startup
+type StartupHandler interface {
+	// HandleStartup is called during waitForReady when output is received
+	// Returns data to write to PTY, or nil if no action needed
+	// Returns done=true when startup is complete
+	HandleStartup(output string) (data []byte, done bool)
+}
+
 // Config holds PTY backend configuration
 type Config struct {
-	Name        string
-	Command     []string
-	Environment map[string]string
-	PTYSize     PTYSize
-	StartupTime time.Duration
-	Detector    Detector
-	Cleaner     Cleaner
-	Commands    backend.CommandHandler
+	Name           string
+	Command        []string
+	Environment    map[string]string
+	PTYSize        PTYSize
+	StartupTime    time.Duration
+	Detector       Detector
+	Cleaner        Cleaner
+	Commands       backend.CommandHandler
+	StartupHandler StartupHandler // Optional: handles startup dialogs
 }
 
 // Backend implements backend.Backend for PTY-based CLI tools
@@ -98,18 +107,19 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 	}
 
 	sess := &Session{
-		id:        id,
-		cwd:       cwd,
-		pid:       cmd.Process.Pid,
-		state:     "starting",
-		createdAt: time.Now(),
-		cmd:       cmd,
-		ptmx:      ptmx,
-		dataCh:    make(chan []byte, 100),
-		stopCh:    make(chan struct{}),
-		detector:  b.cfg.Detector,
-		cleaner:   b.cfg.Cleaner,
-		commands:  b.cfg.Commands,
+		id:             id,
+		cwd:            cwd,
+		pid:            cmd.Process.Pid,
+		state:          "starting",
+		createdAt:      time.Now(),
+		cmd:            cmd,
+		ptmx:           ptmx,
+		dataCh:         make(chan []byte, 100),
+		stopCh:         make(chan struct{}),
+		detector:       b.cfg.Detector,
+		cleaner:        b.cfg.Cleaner,
+		commands:       b.cfg.Commands,
+		startupHandler: b.cfg.StartupHandler,
 	}
 
 	// Start reader goroutine
@@ -144,9 +154,10 @@ type Session struct {
 	stopCh chan struct{}
 	output bytes.Buffer
 
-	detector Detector
-	cleaner  Cleaner
-	commands backend.CommandHandler
+	detector       Detector
+	cleaner        Cleaner
+	commands       backend.CommandHandler
+	startupHandler StartupHandler
 
 	mu sync.Mutex
 }
@@ -235,6 +246,7 @@ func (s *Session) reader() {
 
 func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
+	startupDone := s.startupHandler == nil // If no handler, startup is already "done"
 
 	for {
 		select {
@@ -245,7 +257,23 @@ func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error
 				return fmt.Errorf("session closed")
 			}
 			s.output.Write(data)
-			if s.detector.IsReady(s.output.String()) {
+
+			// If we have a startup handler and it hasn't completed, call it
+			if !startupDone && s.startupHandler != nil {
+				response, done := s.startupHandler.HandleStartup(s.output.String())
+				if response != nil {
+					if _, err := s.ptmx.Write(response); err != nil {
+						return fmt.Errorf("failed to write startup response: %w", err)
+					}
+				}
+				if done {
+					startupDone = true
+					s.output.Reset() // Reset output after startup handling
+				}
+			}
+
+			// Check if ready (only after startup is done)
+			if startupDone && s.detector.IsReady(s.output.String()) {
 				return nil
 			}
 		case <-time.After(time.Until(deadline)):

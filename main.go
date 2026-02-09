@@ -8,6 +8,7 @@ import (
 	"acme-q/internal/p9"
 	"acme-q/internal/session"
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -28,8 +29,26 @@ const windowName = "/Q/"
 type Session = backend.Session
 
 func main() {
-	// Create backend (kiro-cli for now, could be configurable)
-	backend := backends.NewKiroCLI()
+	flag.Parse()
+
+	// Determine backend from positional argument, default to kiro-cli
+	backendName := "kiro-cli"
+	if flag.NArg() > 0 {
+		backendName = flag.Arg(0)
+	}
+
+	// Create backend
+	var backend backend.Backend
+	switch backendName {
+	case "claude":
+		backend = backends.NewClaude()
+		log.Printf("Using claude backend")
+	case "kiro-cli":
+		backend = backends.NewKiroCLI()
+		log.Printf("Using kiro-cli backend")
+	default:
+		log.Fatalf("Unknown backend: %s (available: kiro-cli, claude)", backendName)
+	}
 
 	mgr := session.NewManager(backend)
 
@@ -97,11 +116,12 @@ func main() {
 
 			switch cmd {
 			case "New":
-				if arg == "" {
-					w.Fprintf("body", "Usage: New /path/to/directory\n")
-					continue
+				// Use current directory if no path specified
+				cwd := arg
+				if cwd == "" {
+					cwd, _ = os.Getwd()
 				}
-				sess, err := mgr.New(arg)
+				sess, err := mgr.New(cwd)
 				if err != nil {
 					w.Fprintf("body", "Error: %v\n", err)
 					continue
@@ -157,12 +177,12 @@ func main() {
 			case "Login":
 				cmd := exec.Command("firefox")
 				cmd.Start()
-				cmd = exec.Command("kitty", "-e", "q", "login")
-				log.Printf("starting kitty, pid will follow")
+				cmd = exec.Command("foot", "-e", "q", "login")
+				log.Printf("starting terminal, pid will follow")
 				if err := cmd.Start(); err != nil {
-					log.Printf("kitty start error: %v", err)
+					log.Printf("terminal start error: %v", err)
 				} else {
-					log.Printf("kitty started, pid=%d", cmd.Process.Pid)
+					log.Printf("terminal started, pid=%d", cmd.Process.Pid)
 				}
 			default:
 				w.WriteEvent(e)
