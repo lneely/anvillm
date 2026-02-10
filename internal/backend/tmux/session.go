@@ -197,7 +197,7 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 		if !s.commands.IsSupported(prompt) {
 			cmd := strings.Fields(prompt)[0]
 			s.mu.Unlock()
-			return "", fmt.Errorf("slash command not supported: %s (attach to window: tmux select-window -t %s)", cmd, s.target())
+			return "", fmt.Errorf("slash command not supported by %s backend: %s\nTo use manually, middle-click Attach", s.backendName, cmd)
 		}
 	}
 

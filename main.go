@@ -327,7 +327,7 @@ func handleChatWindow(w *acme.Win, sess backend.Session) {
 			case "Stop":
 				ctx := context.Background()
 				if err := sess.Stop(ctx); err != nil {
-					debug.Log("[session %s] Stop error: %v", sess.ID(), err)
+					fmt.Fprintf(os.Stderr, "Stop error: %v\n", err)
 				} else {
 					debug.Log("[session %s] Sent CTRL+C", sess.ID())
 				}
@@ -342,23 +342,23 @@ func handleChatWindow(w *acme.Win, sess backend.Session) {
 						target := fmt.Sprintf("%s:%s", tmuxSession, tmuxWindow)
 						cmd := exec.Command(terminalCommand, "-e", "tmux", "attach", "-t", target)
 						if err := cmd.Start(); err != nil {
-							debug.Log("[session %s] Failed to launch terminal: %v", sess.ID(), err)
+							fmt.Fprintf(os.Stderr, "Failed to launch terminal: %v\n", err)
 						} else {
 							debug.Log("[session %s] Launched terminal attached to window: %s", sess.ID(), target)
 						}
 					}()
 				} else {
-					debug.Log("[session %s] Attach not supported: not a tmux-based backend", sess.ID())
+					fmt.Fprintf(os.Stderr, "Attach not supported: not a tmux-based backend\n")
 				}
 			case "Alias":
 				if arg == "" {
-					debug.Log("[session %s] Usage: Alias <name>", sess.ID())
+					fmt.Fprintf(os.Stderr, "Usage: Alias <name>\n")
 					continue
 				}
 				// Validate alias
 				matched, _ := regexp.MatchString(`^[A-Za-z0-9_-]+$`, arg)
 				if !matched {
-					debug.Log("[session %s] Invalid alias: must match [A-Za-z0-9_-]+", sess.ID())
+					fmt.Fprintf(os.Stderr, "Invalid alias: must match [A-Za-z0-9_-]+\n")
 					continue
 				}
 				sess.SetAlias(arg)
@@ -366,7 +366,7 @@ func handleChatWindow(w *acme.Win, sess backend.Session) {
 				meta := sess.Metadata()
 				newName := filepath.Join(meta.Cwd, fmt.Sprintf("+Chat.%s", arg))
 				w.Name(newName)
-				debug.Log("[session %s] alias set to %s", sess.ID(), arg)
+				fmt.Printf("Alias set to %s\n", arg)
 			case "Save":
 				// Grab first part of window content for filename hints
 				var bodyText string
@@ -388,10 +388,10 @@ func handleChatWindow(w *acme.Win, sess backend.Session) {
 						savePath, err = backends.SaveWithSmartFilename(sess, sess.ID(), bodyText)
 					}
 					if err != nil {
-						debug.Log("[session %s] Error saving: %v", sess.ID(), err)
+						fmt.Fprintf(os.Stderr, "Error saving: %v\n", err)
 						return
 					}
-					debug.Log("[session %s] Saved to %s", sess.ID(), savePath)
+					fmt.Printf("Saved to %s\n", savePath)
 				}()
 			case "Sessions":
 				openSessionsWindow(w, sess)
@@ -407,14 +407,14 @@ func handleChatWindow(w *acme.Win, sess backend.Session) {
 func sendPrompt(w *acme.Win, sess backend.Session) {
 	body, err := w.ReadAll("body")
 	if err != nil {
-		debug.Log("[session %s] Error reading body: %v", sess.ID(), err)
+		fmt.Fprintf(os.Stderr, "Error reading body: %v\n", err)
 		return
 	}
 
 	content := string(body)
 	idx := strings.LastIndex(content, "USER:")
 	if idx < 0 {
-		debug.Log("[session %s] No USER: section found", sess.ID())
+		fmt.Fprintf(os.Stderr, "No USER: section found\n")
 		return
 	}
 
@@ -428,7 +428,7 @@ func sendPrompt(w *acme.Win, sess backend.Session) {
 	ctx := context.Background()
 	response, err := sess.Send(ctx, prompt)
 	if err != nil {
-		debug.Log("[session %s] Error: %v", sess.ID(), err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 	} else {
 		w.Fprintf("body", "%s\n", response)
 	}
@@ -470,7 +470,7 @@ func openSessionsWindow(chatWin *acme.Win, sess backend.Session) {
 						ctx := context.Background()
 						response, err := sess.Send(ctx, "/chat load "+p)
 						if err != nil {
-							chatWin.Fprintf("body", "Error loading: %v\n", err)
+							fmt.Fprintf(os.Stderr, "Error loading: %v\n", err)
 						} else {
 							chatWin.Fprintf("body", "%s\n", response)
 						}
