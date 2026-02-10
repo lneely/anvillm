@@ -2,7 +2,8 @@
 package pty
 
 import (
-	"acme-q/internal/backend"
+	"anvillm/internal/debug"
+	"anvillm/internal/backend"
 	"bytes"
 	"context"
 	"fmt"
@@ -133,7 +134,7 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 
 	sess.state = "idle"
 	sess.output.Reset()
-	log.Printf("[session %s] ready (pid=%d)", sess.ID(), sess.pid)
+	debug.Log("[session %s] ready (pid=%d)", sess.ID(), sess.pid)
 
 	return sess, nil
 }
@@ -223,7 +224,7 @@ func (s *Session) reader() {
 		n, err := s.ptmx.Read(buf)
 		if err != nil {
 			if err != io.EOF {
-				log.Printf("[session %s] reader error: %v", s.id, err)
+				debug.Log("[session %s] reader error: %v", s.id, err)
 			}
 			close(s.dataCh)
 			// Reap the process
@@ -313,7 +314,7 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	s.state = "running"
 	s.output.Reset()
 
-	log.Printf("[session %s] sending: %q", s.id, prompt)
+	debug.Log("[session %s] sending: %q", s.id, prompt)
 	if _, err := s.ptmx.Write([]byte(prompt + "\r")); err != nil {
 		s.state = "idle"
 		return "", fmt.Errorf("write failed: %w", err)
@@ -329,7 +330,7 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 
 	// Clean output
 	result := s.cleaner.Clean(prompt, s.output.String())
-	log.Printf("[session %s] response: %d bytes", s.id, len(result))
+	debug.Log("[session %s] response: %d bytes", s.id, len(result))
 
 	return result, nil
 }
@@ -346,7 +347,6 @@ func (s *Session) waitForComplete(ctx context.Context, prompt string) error {
 				return fmt.Errorf("session closed")
 			}
 			s.output.Write(data)
-			log.Printf("[session %s] +%d bytes, total %d", s.id, len(data), s.output.Len())
 
 			if s.detector.IsComplete(prompt, s.output.String()) {
 				// Drain any remaining data
@@ -357,7 +357,7 @@ func (s *Session) waitForComplete(ctx context.Context, prompt string) error {
 							s.output.Write(extra)
 						}
 					case <-time.After(10 * time.Millisecond):
-						log.Printf("[session %s] response complete, %d bytes", s.id, s.output.Len())
+						debug.Log("[session %s] response complete, %d bytes", s.id, s.output.Len())
 						return nil
 					}
 				}

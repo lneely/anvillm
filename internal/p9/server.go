@@ -2,10 +2,10 @@
 package p9
 
 import (
-	"acme-q/internal/backend"
-	"acme-q/internal/backend/tmux"
-	"acme-q/internal/backends"
-	"acme-q/internal/session"
+	"anvillm/internal/backend"
+	"anvillm/internal/backend/tmux"
+	"anvillm/internal/backends"
+	"anvillm/internal/session"
 	"context"
 	"errors"
 	"fmt"

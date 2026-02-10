@@ -1,12 +1,12 @@
 package tmux
 
 import (
-	"acme-q/internal/backend"
+	"anvillm/internal/backend"
+	"anvillm/internal/debug"
 	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strings"
 	"sync"
@@ -110,7 +110,7 @@ func (s *Session) reader() {
 		if err != nil {
 			// Only log unexpected errors (not EOF or closed file during shutdown)
 			if err != io.EOF && !strings.Contains(err.Error(), "file already closed") {
-				log.Printf("[session %s] reader error: %v", s.id, err)
+				debug.Log("[session %s] reader error: %v", s.id, err)
 			}
 			close(s.dataCh)
 			s.mu.Lock()
@@ -141,19 +141,17 @@ func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error
 			}
 			s.output.Write(data)
 
-			log.Printf("[session %s] startup: %d bytes accumulated", s.id, s.output.Len())
-
 			// If we have a startup handler and it hasn't completed, call it
 			if !startupDone && s.startupHandler != nil {
 				keys, done := s.startupHandler.HandleStartup(s.output.String())
 				if keys != "" {
-					log.Printf("[session %s] startup handler sending keys: %q", s.id, keys)
+					debug.Log("[session %s] startup handler sending keys: %q", s.id, keys)
 					if err := sendKeys(s.target(), keys); err != nil {
 						return fmt.Errorf("failed to send startup response: %w", err)
 					}
 				}
 				if done {
-					log.Printf("[session %s] startup handler complete", s.id)
+					debug.Log("[session %s] startup handler complete", s.id)
 					startupDone = true
 					s.output.Reset() // Reset output after startup handling
 				}
@@ -161,12 +159,12 @@ func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error
 
 			// Check if ready (only after startup is done)
 			if startupDone && s.detector.IsReady(s.output.String()) {
-				log.Printf("[session %s] ready detected", s.id)
+				debug.Log("[session %s] ready detected", s.id)
 				return nil
 			}
 		case <-time.After(time.Until(deadline)):
 			if time.Now().After(deadline) {
-				log.Printf("[session %s] timeout, current output: %s", s.id, s.output.String())
+				debug.Log("[session %s] timeout, current output: %s", s.id, s.output.String())
 				return fmt.Errorf("timeout waiting for ready")
 			}
 		}
@@ -214,7 +212,7 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	// Release lock during long-running operations so state can be read
 	s.mu.Unlock()
 
-	log.Printf("[session %s] sending: %q", s.id, prompt)
+	debug.Log("[session %s] sending: %q", s.id, prompt)
 
 	// Send prompt using literal mode to avoid special character interpretation
 	if err := sendLiteral(s.target(), prompt); err != nil {
@@ -250,9 +248,9 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	rawLen := s.output.Len()
 	rawOutput := s.output.String()
 	result := s.cleaner.Clean(prompt, rawOutput)
-	log.Printf("[session %s] raw: %d bytes, cleaned: %d bytes", s.id, rawLen, len(result))
+	debug.Log("[session %s] raw: %d bytes, cleaned: %d bytes", s.id, rawLen, len(result))
 	if len(result) == 0 && rawLen > 0 {
-		log.Printf("[session %s] WARNING: cleaner returned 0 bytes", s.id)
+		debug.Log("[session %s] WARNING: cleaner returned 0 bytes", s.id)
 		// Debug: show first and last 500 chars of raw output
 		debugFirst := rawOutput
 		if len(debugFirst) > 500 {
@@ -262,13 +260,13 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 		if len(debugLast) > 500 {
 			debugLast = debugLast[len(debugLast)-500:]
 		}
-		log.Printf("[session %s] DEBUG raw output (first 500 chars): %q", s.id, debugFirst)
-		log.Printf("[session %s] DEBUG raw output (last 500 chars): %q", s.id, debugLast)
+		debug.Log("[session %s] DEBUG raw output (first 500 chars): %q", s.id, debugFirst)
+		debug.Log("[session %s] DEBUG raw output (last 500 chars): %q", s.id, debugLast)
 
 		// Check for key markers (simple check, no ANSI stripping)
 		hasBullet := strings.Contains(rawOutput, "●")
 		hasThinking := strings.Contains(rawOutput, "(esc to interrupt)") || strings.Contains(rawOutput, "∴")
-		log.Printf("[session %s] DEBUG markers: hasBullet=%v, hasThinking=%v", s.id, hasBullet, hasThinking)
+		debug.Log("[session %s] DEBUG markers: hasBullet=%v, hasThinking=%v", s.id, hasBullet, hasThinking)
 
 		// Find where the bullet is
 		if hasBullet {
@@ -281,7 +279,7 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 			if end > len(rawOutput) {
 				end = len(rawOutput)
 			}
-			log.Printf("[session %s] DEBUG bullet context: %q", s.id, rawOutput[start:end])
+			debug.Log("[session %s] DEBUG bullet context: %q", s.id, rawOutput[start:end])
 		}
 	}
 
@@ -300,7 +298,6 @@ func (s *Session) waitForComplete(ctx context.Context, prompt string) error {
 				return fmt.Errorf("session closed")
 			}
 			s.output.Write(data)
-			log.Printf("[session %s] +%d bytes, total %d", s.id, len(data), s.output.Len())
 
 			if s.detector.IsComplete(prompt, s.output.String()) {
 				// Drain any remaining data
@@ -311,7 +308,7 @@ func (s *Session) waitForComplete(ctx context.Context, prompt string) error {
 							s.output.Write(extra)
 						}
 					case <-time.After(10 * time.Millisecond):
-						log.Printf("[session %s] response complete, %d bytes", s.id, s.output.Len())
+						debug.Log("[session %s] response complete, %d bytes", s.id, s.output.Len())
 						return nil
 					}
 				}
@@ -352,14 +349,14 @@ func (s *Session) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	log.Printf("[session %s] Close() called, killing window %s:%s", s.id, s.tmuxSession, s.windowName)
+	debug.Log("[session %s] Close() called, killing window %s:%s", s.id, s.tmuxSession, s.windowName)
 
 	// 1. Kill tmux window first (closes pipe-pane writer)
 	if s.tmuxSession != "" && s.windowName != "" {
 		if err := killWindow(s.tmuxSession, s.windowName); err != nil {
-			log.Printf("[session %s] killWindow failed: %v", s.id, err)
+			debug.Log("[session %s] killWindow failed: %v", s.id, err)
 		} else {
-			log.Printf("[session %s] Window %s:%s killed", s.id, s.tmuxSession, s.windowName)
+			debug.Log("[session %s] Window %s:%s killed", s.id, s.tmuxSession, s.windowName)
 		}
 	}
 

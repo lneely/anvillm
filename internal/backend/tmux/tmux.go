@@ -2,10 +2,10 @@
 package tmux
 
 import (
-	"acme-q/internal/backend"
+	"anvillm/internal/backend"
+	"anvillm/internal/debug"
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"sync/atomic"
 	"syscall"
@@ -84,7 +84,7 @@ func (b *Backend) ensureTmuxSession() error {
 		return nil
 	}
 
-	log.Printf("[backend %s] creating persistent tmux session: %s", b.cfg.Name, b.tmuxSession)
+	debug.Log("[backend %s] creating persistent tmux session: %s", b.cfg.Name, b.tmuxSession)
 	// Keep window 0 alive to hold the session open
 	// It will be killed when the program exits
 	return createSession(b.tmuxSession, b.cfg.TmuxSize.Rows, b.cfg.TmuxSize.Cols)
@@ -93,7 +93,7 @@ func (b *Backend) ensureTmuxSession() error {
 // Cleanup kills the persistent tmux session (call on program exit)
 func (b *Backend) Cleanup() error {
 	if sessionExists(b.tmuxSession) {
-		log.Printf("[backend %s] cleaning up tmux session: %s", b.cfg.Name, b.tmuxSession)
+		debug.Log("[backend %s] cleaning up tmux session: %s", b.cfg.Name, b.tmuxSession)
 		return killSession(b.tmuxSession)
 	}
 	return nil
@@ -107,7 +107,7 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 	id := fmt.Sprintf("%d", atomic.AddUint64(&b.counter, 1))
 	windowName := id // Use session ID as window name
 
-	log.Printf("[session %s] creating window in tmux session %s", id, b.tmuxSession)
+	debug.Log("[session %s] creating window in tmux session %s", id, b.tmuxSession)
 
 	// 1. Ensure persistent tmux session exists
 	if err := b.ensureTmuxSession(); err != nil {
@@ -204,7 +204,7 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 	// 9. Get PID
 	pid, err := getPanePID(target)
 	if err != nil {
-		log.Printf("[session %s] warning: failed to get PID: %v", id, err)
+		debug.Log("[session %s] warning: failed to get PID: %v", id, err)
 		pid = 0
 	}
 
@@ -237,7 +237,7 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 
 	sess.state = "idle"
 	sess.output.Reset()
-	log.Printf("[session %s] ready (tmux=%s:%s, pid=%d)", sess.ID(), b.tmuxSession, windowName, sess.pid)
+	debug.Log("[session %s] ready (tmux=%s:%s, pid=%d)", sess.ID(), b.tmuxSession, windowName, sess.pid)
 
 	return sess, nil
 }

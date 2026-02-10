@@ -2,11 +2,11 @@
 package backends
 
 import (
-	"acme-q/internal/backend"
-	"acme-q/internal/backend/tmux"
+	"anvillm/internal/backend"
+	"anvillm/internal/backend/tmux"
+	"anvillm/internal/debug"
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -413,7 +413,7 @@ func SaveWithSmartFilename(sess backend.Session, id string, bodyText string) (st
 
 	smartPath, err := GenerateSmartFilename(tempPath, bodyText)
 	if err != nil {
-		log.Printf("[session %s] Smart filename failed: %v, keeping %s", id, err, tempPath)
+		debug.Log("[session %s] Smart filename failed: %v, keeping %s", id, err, tempPath)
 		return tempPath, nil
 	}
 
@@ -421,7 +421,7 @@ func SaveWithSmartFilename(sess backend.Session, id string, bodyText string) (st
 		if err := os.Rename(tempPath, smartPath); err == nil {
 			return smartPath, nil
 		} else {
-			log.Printf("[session %s] Rename failed: %v", id, err)
+			debug.Log("[session %s] Rename failed: %v", id, err)
 			return tempPath, nil
 		}
 	}

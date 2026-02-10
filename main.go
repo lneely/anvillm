@@ -2,11 +2,12 @@
 package main
 
 import (
-	"acme-q/internal/backend"
-	"acme-q/internal/backend/tmux"
-	"acme-q/internal/backends"
-	"acme-q/internal/p9"
-	"acme-q/internal/session"
+	"anvillm/internal/backend"
+	"anvillm/internal/backend/tmux"
+	"anvillm/internal/backends"
+	"anvillm/internal/debug"
+	"anvillm/internal/p9"
+	"anvillm/internal/session"
 	"context"
 	"flag"
 	"fmt"
@@ -23,7 +24,7 @@ import (
 	"9fans.net/go/acme"
 )
 
-const windowName = "/Q/"
+const windowName = "/AnviLLM/"
 
 // Terminal to use for tmux attach (configurable)
 // Common options: "foot", "kitty", "xterm", "st", "alacritty"
@@ -46,10 +47,10 @@ func main() {
 	switch backendName {
 	case "claude":
 		backend = backends.NewClaude()
-		log.Printf("Using claude backend")
+		debug.Log("Using claude backend")
 	case "kiro-cli":
 		backend = backends.NewKiroCLI()
-		log.Printf("Using kiro-cli backend")
+		debug.Log("Using kiro-cli backend")
 	default:
 		log.Fatalf("Unknown backend: %s (available: kiro-cli, claude)", backendName)
 	}
@@ -127,47 +128,47 @@ func main() {
 
 			switch cmd {
 			case "New":
-				// Use current directory if no path specified
-				cwd := arg
-				if cwd == "" {
-					cwd, _ = os.Getwd()
+				// Require path argument
+				if arg == "" {
+					fmt.Fprintf(os.Stderr, "Error: New requires a path argument\n")
+					continue
 				}
-				sess, err := mgr.New(cwd)
+				sess, err := mgr.New(arg)
 				if err != nil {
-					w.Fprintf("body", "Error: %v\n", err)
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 					continue
 				}
 				_, err = openChatWindow(sess)
 				if err != nil {
-					w.Fprintf("body", "Error opening chat: %v\n", err)
+					fmt.Fprintf(os.Stderr, "Error opening chat: %v\n", err)
 					continue
 				}
 				// WinID is set inside openChatWindow
 				refreshList(w, mgr)
 			case "Open":
 				if arg == "" {
-					w.Fprintf("body", "Usage: Open <session-id>\n")
+					fmt.Fprintf(os.Stderr, "Usage: Open <session-id>\n")
 					continue
 				}
 				sess := mgr.Get(arg)
 				if sess == nil {
-					w.Fprintf("body", "Session not found: %s\n", arg)
+					fmt.Fprintf(os.Stderr, "Session not found: %s\n", arg)
 					continue
 				}
 				_, err := openChatWindow(sess)
 				if err != nil {
-					w.Fprintf("body", "Error opening chat: %v\n", err)
+					fmt.Fprintf(os.Stderr, "Error opening chat: %v\n", err)
 					continue
 				}
 				// WinID is set inside openChatWindow
 			case "Kill":
 				if arg == "" {
-					w.Fprintf("body", "Usage: Kill <pid>\n")
+					fmt.Fprintf(os.Stderr, "Usage: Kill <pid>\n")
 					continue
 				}
 				pid, err := strconv.Atoi(arg)
 				if err != nil {
-					w.Fprintf("body", "Invalid pid: %s\n", arg)
+					fmt.Fprintf(os.Stderr, "Invalid pid: %s\n", arg)
 					continue
 				}
 				// Find session by pid and kill it
@@ -178,9 +179,9 @@ func main() {
 						if meta.Pid == pid {
 							// First kill the process
 							if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
-								log.Printf("[session %s] Failed to kill PID %d: %v", id, pid, err)
+								debug.Log("[session %s] Failed to kill PID %d: %v", id, pid, err)
 							} else {
-								log.Printf("[session %s] Killed PID %d", id, pid)
+								debug.Log("[session %s] Killed PID %d", id, pid)
 							}
 							// Then close the tmux window
 							sess.Close()
@@ -192,22 +193,23 @@ func main() {
 				refreshList(w, mgr)
 			case "Get":
 				refreshList(w, mgr)
+			case "Debug":
+				debug.Enabled = !debug.Enabled
+				state := "disabled"
+				if debug.Enabled {
+					state = "enabled"
+				}
+				fmt.Printf("Debug mode %s\n", state)
 			case "Login":
 				cmd := exec.Command("firefox")
 				cmd.Start()
 				cmd = exec.Command("foot", "-e", "q", "login")
-				log.Printf("starting terminal, pid will follow")
-				if err := cmd.Start(); err != nil {
-					log.Printf("terminal start error: %v", err)
-				} else {
-					log.Printf("terminal started, pid=%d", cmd.Process.Pid)
-				}
+				cmd.Start()
 			default:
 				w.WriteEvent(e)
 			}
 		case 'l', 'L':
 			text := strings.TrimSpace(string(e.Text))
-			log.Printf("[/Q/] Look: text=%q", text)
 			if sess := mgr.Get(text); sess != nil {
 				// Try to focus existing window, or open new one
 				meta := sess.Metadata()
@@ -315,9 +317,9 @@ func handleChatWindow(w *acme.Win, sess backend.Session) {
 			case "Stop":
 				ctx := context.Background()
 				if err := sess.Stop(ctx); err != nil {
-					log.Printf("[session %s] Stop error: %v", sess.ID(), err)
+					debug.Log("[session %s] Stop error: %v", sess.ID(), err)
 				} else {
-					log.Printf("[session %s] Sent CTRL+C", sess.ID())
+					debug.Log("[session %s] Sent CTRL+C", sess.ID())
 				}
 			case "Attach":
 				// Attach to tmux window (only works for tmux-based backends)
@@ -330,23 +332,23 @@ func handleChatWindow(w *acme.Win, sess backend.Session) {
 						target := fmt.Sprintf("%s:%s", tmuxSession, tmuxWindow)
 						cmd := exec.Command(terminalCommand, "-e", "tmux", "attach", "-t", target)
 						if err := cmd.Start(); err != nil {
-							log.Printf("[session %s] Failed to launch terminal: %v", sess.ID(), err)
+							debug.Log("[session %s] Failed to launch terminal: %v", sess.ID(), err)
 						} else {
-							log.Printf("[session %s] Launched terminal attached to window: %s", sess.ID(), target)
+							debug.Log("[session %s] Launched terminal attached to window: %s", sess.ID(), target)
 						}
 					}()
 				} else {
-					log.Printf("[session %s] Attach not supported: not a tmux-based backend", sess.ID())
+					debug.Log("[session %s] Attach not supported: not a tmux-based backend", sess.ID())
 				}
 			case "Alias":
 				if arg == "" {
-					log.Printf("[session %s] Usage: Alias <name>", sess.ID())
+					debug.Log("[session %s] Usage: Alias <name>", sess.ID())
 					continue
 				}
 				// Validate alias
 				matched, _ := regexp.MatchString(`^[A-Za-z0-9_-]+$`, arg)
 				if !matched {
-					log.Printf("[session %s] Invalid alias: must match [A-Za-z0-9_-]+", sess.ID())
+					debug.Log("[session %s] Invalid alias: must match [A-Za-z0-9_-]+", sess.ID())
 					continue
 				}
 				sess.SetAlias(arg)
@@ -354,7 +356,7 @@ func handleChatWindow(w *acme.Win, sess backend.Session) {
 				meta := sess.Metadata()
 				newName := filepath.Join(meta.Cwd, fmt.Sprintf("+Chat.%s", arg))
 				w.Name(newName)
-				log.Printf("[session %s] alias set to %s", sess.ID(), arg)
+				debug.Log("[session %s] alias set to %s", sess.ID(), arg)
 			case "Save":
 				// Grab first part of window content for filename hints
 				var bodyText string
@@ -376,10 +378,10 @@ func handleChatWindow(w *acme.Win, sess backend.Session) {
 						savePath, err = backends.SaveWithSmartFilename(sess, sess.ID(), bodyText)
 					}
 					if err != nil {
-						log.Printf("[session %s] Error saving: %v", sess.ID(), err)
+						debug.Log("[session %s] Error saving: %v", sess.ID(), err)
 						return
 					}
-					log.Printf("[session %s] Saved to %s", sess.ID(), savePath)
+					debug.Log("[session %s] Saved to %s", sess.ID(), savePath)
 				}()
 			case "Sessions":
 				openSessionsWindow(w, sess)
@@ -395,14 +397,14 @@ func handleChatWindow(w *acme.Win, sess backend.Session) {
 func sendPrompt(w *acme.Win, sess backend.Session) {
 	body, err := w.ReadAll("body")
 	if err != nil {
-		log.Printf("[session %s] Error reading body: %v", sess.ID(), err)
+		debug.Log("[session %s] Error reading body: %v", sess.ID(), err)
 		return
 	}
 
 	content := string(body)
 	idx := strings.LastIndex(content, "USER:")
 	if idx < 0 {
-		log.Printf("[session %s] No USER: section found", sess.ID())
+		debug.Log("[session %s] No USER: section found", sess.ID())
 		return
 	}
 
@@ -416,7 +418,7 @@ func sendPrompt(w *acme.Win, sess backend.Session) {
 	ctx := context.Background()
 	response, err := sess.Send(ctx, prompt)
 	if err != nil {
-		log.Printf("[session %s] Error: %v", sess.ID(), err)
+		debug.Log("[session %s] Error: %v", sess.ID(), err)
 	} else {
 		w.Fprintf("body", "%s\n", response)
 	}
