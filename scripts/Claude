@@ -1,6 +1,0 @@
-#!/usr/bin/env rc
-
-# Claude - Start Assist with claude backend
-# Usage: Claude
-
-Assist claude

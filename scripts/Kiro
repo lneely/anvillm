@@ -1,4 +1,0 @@
-#!/usr/bin/env rc
-
-# Run with kiro-cli backend
-Assist kiro-cli
