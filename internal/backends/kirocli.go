@@ -3,7 +3,7 @@ package backends
 
 import (
 	"acme-q/internal/backend"
-	"acme-q/internal/backend/pty"
+	"acme-q/internal/backend/tmux"
 	"context"
 	"fmt"
 	"log"
@@ -16,7 +16,7 @@ import (
 
 // NewKiroCLI creates a kiro-cli backend
 func NewKiroCLI() backend.Backend {
-	return pty.New(pty.Config{
+	return tmux.New(tmux.Config{
 		Name:    "kiro-cli",
 		Command: []string{"kiro-cli", "chat", "--trust-all-tools"},
 		Environment: map[string]string{
@@ -24,7 +24,7 @@ func NewKiroCLI() backend.Backend {
 			"NO_COLOR": "1",
 			"COLUMNS":  "999",
 		},
-		PTYSize: pty.PTYSize{
+		TmuxSize: tmux.TmuxSize{
 			Rows: 40,
 			Cols: 120,
 		},
@@ -89,24 +89,88 @@ func (c *kiroCleaner) cleanResponse(raw string) string {
 
 	lines := strings.Split(clean, "\n")
 	var result []string
+	foundUserPrompt := false
 	inResponse := false
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
-		// Check for response marker "> " (not in prompt brackets)
-		if idx := strings.Index(line, "> "); idx >= 0 {
-			if !strings.Contains(line, "[") || !strings.Contains(line, "]") {
-				inResponse = true
-				text := strings.TrimSpace(line[idx+2:])
-				if text != "" {
-					result = append(result, text)
-				}
-				continue
-			}
+		// Look for user prompt (starts with "!>")
+		if !foundUserPrompt && strings.HasPrefix(trimmed, "!>") {
+			foundUserPrompt = true
+			continue
 		}
 
-		// Skip noise
+		// Skip echoed user input (the line right after !> that doesn't have markers)
+		if foundUserPrompt && !inResponse && trimmed != "" &&
+			!strings.Contains(trimmed, "Thinking...") &&
+			!strings.Contains(trimmed, "I will run") &&
+			!strings.Contains(trimmed, "using tool:") &&
+			!strings.Contains(trimmed, "Purpose:") &&
+			!strings.Contains(trimmed, ">") {
+			continue
+		}
+
+		// Stop at next prompt (starts with "!>") - but only after we've started collecting
+		if foundUserPrompt && inResponse && strings.HasPrefix(trimmed, "!>") {
+			break
+		}
+
+		// After user prompt, start collecting non-noise content
+		if foundUserPrompt && trimmed != "" {
+			// Check if line contains actual content (even if it has noise)
+			// Important markers: "I will run", "using tool:", "Purpose:", ">", or actual content after spinners
+			hasContent := false
+			text := trimmed
+
+			// If line contains "Thinking..." followed by content, extract the content
+			if strings.Contains(line, "Thinking...") {
+				idx := strings.Index(line, "Thinking...")
+				afterThinking := strings.TrimSpace(line[idx+11:]) // "Thinking..." is 11 chars
+				if afterThinking != "" {
+					text = afterThinking
+					hasContent = true
+				}
+			}
+
+			// Check for important markers
+			if !hasContent && (strings.Contains(trimmed, "I will run") ||
+				strings.Contains(trimmed, "using tool:") ||
+				strings.Contains(trimmed, "Purpose:") ||
+				strings.Contains(trimmed, ">")) {
+				hasContent = true
+			}
+
+			// If no content markers and it's noise, skip
+			if !hasContent && c.isNoise(line) {
+				continue
+			}
+
+			// If we got here, it's not pure noise
+			if !hasContent {
+				text = trimmed
+			}
+
+			// Start collecting
+			if !inResponse {
+				inResponse = true
+			}
+
+			// If line has ">", strip it (for assistant response lines)
+			if strings.Contains(text, ">") {
+				idx := strings.Index(text, ">")
+				if idx == 0 || (idx > 0 && text[idx-1] != '!') {
+					text = strings.TrimSpace(text[idx+1:])
+				}
+			}
+
+			if text != "" {
+				result = append(result, text)
+			}
+			continue
+		}
+
+		// Before user prompt, skip noise and look for hooks
 		if c.isNoise(line) {
 			continue
 		}
@@ -115,10 +179,6 @@ func (c *kiroCleaner) cleanResponse(raw string) string {
 		if strings.Contains(line, "hooks finished") {
 			result = append(result, trimmed)
 			continue
-		}
-
-		if inResponse && trimmed != "" {
-			result = append(result, line)
 		}
 	}
 
@@ -169,6 +229,7 @@ func (c *kiroCleaner) isNoise(line string) bool {
 	// Check for noise patterns
 	noisePatterns := []string{
 		"Thinking...",
+		"▸ Credits:",
 		"▸ Time:",
 	}
 

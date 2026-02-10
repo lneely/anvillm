@@ -3,7 +3,7 @@ package p9
 
 import (
 	"acme-q/internal/backend"
-	"acme-q/internal/backend/pty"
+	"acme-q/internal/backend/tmux"
 	"acme-q/internal/backends"
 	"acme-q/internal/session"
 	"context"
@@ -374,9 +374,9 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		if err != nil {
 			return errFcall(fc, "invalid winid")
 		}
-		// Set WinID if it's a PTY session
-		if ptySess, ok := sess.(*pty.Session); ok {
-			ptySess.SetWinID(id)
+		// Set WinID if it's a tmux session
+		if tmuxSess, ok := sess.(*tmux.Session); ok {
+			tmuxSess.SetWinID(id)
 		}
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
@@ -498,11 +498,11 @@ func (s *Server) getSessionFile(sess backend.Session, idx int) string {
 
 	switch idx {
 	case fileOut:
-		// Output from last command - only available for PTY sessions
-		if ptySess, ok := sess.(*pty.Session); ok {
+		// Output from last command - only available for tmux sessions
+		if tmuxSess, ok := sess.(*tmux.Session); ok {
 			// We don't have a direct Output() method anymore
 			// This would need to be stored separately if needed
-			_ = ptySess
+			_ = tmuxSess
 		}
 		return ""
 	case fileErr:

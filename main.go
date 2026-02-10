@@ -3,7 +3,7 @@ package main
 
 import (
 	"acme-q/internal/backend"
-	"acme-q/internal/backend/pty"
+	"acme-q/internal/backend/tmux"
 	"acme-q/internal/backends"
 	"acme-q/internal/p9"
 	"acme-q/internal/session"
@@ -270,9 +270,9 @@ func openChatWindow(sess backend.Session) (*acme.Win, error) {
 	w.Fprintf("body", "# Session %s\n# cwd: %s\n\nUSER:\n", sess.ID(), meta.Cwd)
 	w.Ctl("clean")
 
-	// Set window ID on session (if it's a PTY session)
-	if ptySess, ok := sess.(*pty.Session); ok {
-		ptySess.SetWinID(w.ID())
+	// Set window ID on session (if it's a tmux session)
+	if tmuxSess, ok := sess.(*tmux.Session); ok {
+		tmuxSess.SetWinID(w.ID())
 	}
 
 	go handleChatWindow(w, sess)
