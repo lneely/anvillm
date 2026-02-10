@@ -26,39 +26,60 @@ func createSession(name string, rows, cols uint16) error {
 	return err
 }
 
-// setEnvironment sets an environment variable in the tmux session
-func setEnvironment(session, key, value string) error {
-	_, err := tmuxCmd("set-environment", "-t", session, key, value)
+// createWindow creates a new window in an existing tmux session
+func createWindow(session, windowName string) error {
+	_, err := tmuxCmd("new-window", "-t", session, "-n", windowName)
 	return err
 }
 
-// sendKeys sends keys to a tmux session
+// killWindow kills a window in a tmux session
+func killWindow(session, windowName string) error {
+	target := fmt.Sprintf("%s:%s", session, windowName)
+	cmd := exec.Command("tmux", "kill-window", "-t", target)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("tmux kill-window -t %s: %w", target, err)
+	}
+	return nil
+}
+
+// windowTarget constructs a tmux target for a window in a session
+func windowTarget(session, windowName string) string {
+	return fmt.Sprintf("%s:%s", session, windowName)
+}
+
+// setEnvironment sets an environment variable in the tmux session or window
+func setEnvironment(target, key, value string) error {
+	_, err := tmuxCmd("set-environment", "-t", target, key, value)
+	return err
+}
+
+// sendKeys sends keys to a tmux target (session or session:window)
 // Special keys: C-m (Enter), C-c (Ctrl+C), etc.
-func sendKeys(session string, keys ...string) error {
-	args := []string{"send-keys", "-t", session}
+func sendKeys(target string, keys ...string) error {
+	args := []string{"send-keys", "-t", target}
 	args = append(args, keys...)
 	_, err := tmuxCmd(args...)
 	return err
 }
 
-// sendLiteral sends literal text to a tmux session (doesn't interpret special chars)
-func sendLiteral(session, text string) error {
-	_, err := tmuxCmd("send-keys", "-t", session, "-l", text)
+// sendLiteral sends literal text to a tmux target (doesn't interpret special chars)
+func sendLiteral(target, text string) error {
+	_, err := tmuxCmd("send-keys", "-t", target, "-l", text)
 	return err
 }
 
 // setupPipePane sets up pipe-pane to redirect output to a file/FIFO
-func setupPipePane(session, target string) error {
+func setupPipePane(tmuxTarget, fifoPath string) error {
 	// -o flag: only capture stdout (not stdin)
-	cmd := fmt.Sprintf("cat >> %s", target)
-	_, err := tmuxCmd("pipe-pane", "-o", "-t", session, cmd)
+	cmd := fmt.Sprintf("cat >> %s", fifoPath)
+	_, err := tmuxCmd("pipe-pane", "-o", "-t", tmuxTarget, cmd)
 	return err
 }
 
-// closePipePane closes the pipe-pane for a session
-func closePipePane(session string) error {
+// closePipePane closes the pipe-pane for a target
+func closePipePane(target string) error {
 	// Calling pipe-pane with no command closes it
-	_, err := tmuxCmd("pipe-pane", "-t", session)
+	_, err := tmuxCmd("pipe-pane", "-t", target)
 	return err
 }
 
@@ -76,10 +97,10 @@ func sessionExists(name string) bool {
 	return cmd.Run() == nil
 }
 
-// getSessionPID returns the PID of the process running in the tmux session
-func getSessionPID(session string) (int, error) {
+// getPanePID returns the PID of the process running in a tmux pane
+func getPanePID(target string) (int, error) {
 	// Get the pane PID
-	out, err := tmuxCmd("display-message", "-t", session, "-p", "#{pane_pid}")
+	out, err := tmuxCmd("display-message", "-t", target, "-p", "#{pane_pid}")
 	if err != nil {
 		return 0, err
 	}

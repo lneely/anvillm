@@ -56,6 +56,13 @@ func main() {
 
 	mgr := session.NewManager(backend)
 
+	// Cleanup tmux session on exit (if backend is tmux-based)
+	defer func() {
+		if tmuxBackend, ok := backend.(*tmux.Backend); ok {
+			tmuxBackend.Cleanup()
+		}
+	}()
+
 	srv, err := p9.NewServer(mgr)
 	if err != nil {
 		log.Fatal(err)
@@ -169,6 +176,13 @@ func main() {
 					if sess != nil {
 						meta := sess.Metadata()
 						if meta.Pid == pid {
+							// First kill the process
+							if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+								log.Printf("[session %s] Failed to kill PID %d: %v", id, pid, err)
+							} else {
+								log.Printf("[session %s] Killed PID %d", id, pid)
+							}
+							// Then close the tmux window
 							sess.Close()
 							mgr.Remove(id)
 							break
@@ -266,7 +280,7 @@ func openChatWindow(sess backend.Session) (*acme.Win, error) {
 		return nil, err
 	}
 	w.Name(name)
-	w.Write("tag", []byte("Send Stop Attach Alias Save Kill Sessions "))
+	w.Write("tag", []byte("Send Stop Attach Alias Save Sessions "))
 	w.Fprintf("body", "# Session %s\n# cwd: %s\n\nUSER:\n", sess.ID(), meta.Cwd)
 	w.Ctl("clean")
 
@@ -306,15 +320,19 @@ func handleChatWindow(w *acme.Win, sess backend.Session) {
 					log.Printf("[session %s] Sent CTRL+C", sess.ID())
 				}
 			case "Attach":
-				// Attach to tmux session (only works for tmux-based backends)
+				// Attach to tmux window (only works for tmux-based backends)
 				meta := sess.Metadata()
-				if tmuxSession, ok := meta.Extra["tmux_session"]; ok {
+				tmuxSession, hasSession := meta.Extra["tmux_session"]
+				tmuxWindow, hasWindow := meta.Extra["tmux_window"]
+				if hasSession && hasWindow {
 					go func() {
-						cmd := exec.Command(terminalCommand, "-e", "tmux", "attach", "-t", tmuxSession)
+						// Attach directly to the specific window
+						target := fmt.Sprintf("%s:%s", tmuxSession, tmuxWindow)
+						cmd := exec.Command(terminalCommand, "-e", "tmux", "attach", "-t", target)
 						if err := cmd.Start(); err != nil {
 							log.Printf("[session %s] Failed to launch terminal: %v", sess.ID(), err)
 						} else {
-							log.Printf("[session %s] Launched terminal attached to tmux session: %s", sess.ID(), tmuxSession)
+							log.Printf("[session %s] Launched terminal attached to window: %s", sess.ID(), target)
 						}
 					}()
 				} else {
@@ -363,10 +381,6 @@ func handleChatWindow(w *acme.Win, sess backend.Session) {
 					}
 					log.Printf("[session %s] Saved to %s", sess.ID(), savePath)
 				}()
-			case "Kill":
-				sess.Close()
-				log.Printf("[session %s] Session killed", sess.ID())
-				return
 			case "Sessions":
 				openSessionsWindow(w, sess)
 			default:

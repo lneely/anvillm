@@ -4,8 +4,6 @@ package tmux
 import (
 	"acme-q/internal/backend"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
@@ -58,8 +56,9 @@ type Config struct {
 
 // Backend implements backend.Backend for tmux-based CLI tools
 type Backend struct {
-	cfg     Config
-	counter uint64
+	cfg          Config
+	counter      uint64
+	tmuxSession  string // Persistent tmux session name (e.g., "anvillm-kiro-cli")
 }
 
 // New creates a new tmux-based backend
@@ -73,7 +72,31 @@ func New(cfg Config) backend.Backend {
 	if cfg.TmuxSize.Cols == 0 {
 		cfg.TmuxSize.Cols = 120
 	}
-	return &Backend{cfg: cfg}
+	return &Backend{
+		cfg:         cfg,
+		tmuxSession: fmt.Sprintf("anvillm-%s", cfg.Name),
+	}
+}
+
+// ensureTmuxSession creates the persistent tmux session if it doesn't exist
+func (b *Backend) ensureTmuxSession() error {
+	if sessionExists(b.tmuxSession) {
+		return nil
+	}
+
+	log.Printf("[backend %s] creating persistent tmux session: %s", b.cfg.Name, b.tmuxSession)
+	// Keep window 0 alive to hold the session open
+	// It will be killed when the program exits
+	return createSession(b.tmuxSession, b.cfg.TmuxSize.Rows, b.cfg.TmuxSize.Cols)
+}
+
+// Cleanup kills the persistent tmux session (call on program exit)
+func (b *Backend) Cleanup() error {
+	if sessionExists(b.tmuxSession) {
+		log.Printf("[backend %s] cleaning up tmux session: %s", b.cfg.Name, b.tmuxSession)
+		return killSession(b.tmuxSession)
+	}
+	return nil
 }
 
 func (b *Backend) Name() string {
@@ -82,45 +105,47 @@ func (b *Backend) Name() string {
 
 func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Session, error) {
 	id := fmt.Sprintf("%d", atomic.AddUint64(&b.counter, 1))
+	windowName := id // Use session ID as window name
 
-	// Generate unique session name with random suffix
-	randomBytes := make([]byte, 4)
-	rand.Read(randomBytes)
-	sessionName := fmt.Sprintf("%s-%d-%s",
-		b.cfg.Name,
-		time.Now().Unix(),
-		hex.EncodeToString(randomBytes))
+	log.Printf("[session %s] creating window in tmux session %s", id, b.tmuxSession)
 
-	log.Printf("[session %s] creating tmux session %s", id, sessionName)
-
-	// 1. Create tmux session
-	if err := createSession(sessionName, b.cfg.TmuxSize.Rows, b.cfg.TmuxSize.Cols); err != nil {
-		return nil, fmt.Errorf("failed to create tmux session: %w", err)
+	// 1. Ensure persistent tmux session exists
+	if err := b.ensureTmuxSession(); err != nil {
+		return nil, fmt.Errorf("failed to ensure tmux session: %w", err)
 	}
 
-	// 2. Set environment variables
+	// 2. Create window in tmux session
+	if err := createWindow(b.tmuxSession, windowName); err != nil {
+		return nil, fmt.Errorf("failed to create window: %w", err)
+	}
+
+	target := windowTarget(b.tmuxSession, windowName)
+
+	// 3. Set environment variables for this window
 	for k, v := range b.cfg.Environment {
-		if err := setEnvironment(sessionName, k, v); err != nil {
-			killSession(sessionName)
+		if err := setEnvironment(target, k, v); err != nil {
+			killWindow(b.tmuxSession, windowName)
 			return nil, fmt.Errorf("failed to set environment: %w", err)
 		}
 	}
 
-	// 3. Create FIFO for output
-	fifoPath := fmt.Sprintf("/tmp/tmux-%s.fifo", sessionName)
+	// 4. Create FIFO for output
+	fifoPath := fmt.Sprintf("/tmp/tmux-%s-%s.fifo", b.tmuxSession, windowName)
+	// Remove existing FIFO if it exists (from previous crashed session)
+	os.Remove(fifoPath)
 	if err := syscall.Mkfifo(fifoPath, 0600); err != nil {
-		killSession(sessionName)
+		killWindow(b.tmuxSession, windowName)
 		return nil, fmt.Errorf("failed to create FIFO: %w", err)
 	}
 
-	// 4. Setup pipe-pane
-	if err := setupPipePane(sessionName, fifoPath); err != nil {
+	// 5. Setup pipe-pane for this window
+	if err := setupPipePane(target, fifoPath); err != nil {
 		os.Remove(fifoPath)
-		killSession(sessionName)
+		killWindow(b.tmuxSession, windowName)
 		return nil, fmt.Errorf("failed to setup pipe-pane: %w", err)
 	}
 
-	// 5. Open FIFO for reading (this blocks until writer connects)
+	// 6. Open FIFO for reading (this blocks until writer connects)
 	// We need to do this in a goroutine to avoid blocking
 	fifoOpenCh := make(chan *os.File, 1)
 	fifoErrCh := make(chan error, 1)
@@ -133,7 +158,7 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 		fifoOpenCh <- f
 	}()
 
-	// 6. Start the command in tmux
+	// 7. Start the command in tmux window
 	cmdStr := ""
 	for i, arg := range b.cfg.Command {
 		if i > 0 {
@@ -148,36 +173,36 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 	}
 
 	// Change to working directory first
-	if err := sendKeys(sessionName, "cd", fmt.Sprintf("\"%s\"", cwd), "C-m"); err != nil {
+	if err := sendKeys(target, "cd", fmt.Sprintf("\"%s\"", cwd), "C-m"); err != nil {
 		os.Remove(fifoPath)
-		killSession(sessionName)
+		killWindow(b.tmuxSession, windowName)
 		return nil, fmt.Errorf("failed to change directory: %w", err)
 	}
 
 	// Send the command
-	if err := sendKeys(sessionName, cmdStr, "C-m"); err != nil {
+	if err := sendKeys(target, cmdStr, "C-m"); err != nil {
 		os.Remove(fifoPath)
-		killSession(sessionName)
+		killWindow(b.tmuxSession, windowName)
 		return nil, fmt.Errorf("failed to start command: %w", err)
 	}
 
-	// 7. Wait for FIFO to open (should happen quickly after command starts)
+	// 8. Wait for FIFO to open (should happen quickly after command starts)
 	var fifo *os.File
 	select {
 	case fifo = <-fifoOpenCh:
 		// Success
 	case err := <-fifoErrCh:
 		os.Remove(fifoPath)
-		killSession(sessionName)
+		killWindow(b.tmuxSession, windowName)
 		return nil, fmt.Errorf("failed to open FIFO: %w", err)
 	case <-time.After(5 * time.Second):
 		os.Remove(fifoPath)
-		killSession(sessionName)
+		killWindow(b.tmuxSession, windowName)
 		return nil, fmt.Errorf("timeout opening FIFO")
 	}
 
-	// 8. Get PID
-	pid, err := getSessionPID(sessionName)
+	// 9. Get PID
+	pid, err := getPanePID(target)
 	if err != nil {
 		log.Printf("[session %s] warning: failed to get PID: %v", id, err)
 		pid = 0
@@ -185,7 +210,8 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 
 	sess := &Session{
 		id:             id,
-		sessionName:    sessionName,
+		tmuxSession:    b.tmuxSession,
+		windowName:     windowName,
 		cwd:            cwd,
 		pid:            pid,
 		state:          "starting",
@@ -200,10 +226,10 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 		startupHandler: b.cfg.StartupHandler,
 	}
 
-	// 9. Start reader goroutine
+	// 10. Start reader goroutine
 	go sess.reader()
 
-	// 10. Wait for ready
+	// 11. Wait for ready
 	if err := sess.waitForReady(ctx, b.cfg.StartupTime); err != nil {
 		sess.Close()
 		return nil, err
@@ -211,7 +237,7 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 
 	sess.state = "idle"
 	sess.output.Reset()
-	log.Printf("[session %s] ready (tmux=%s, pid=%d)", sess.ID(), sessionName, sess.pid)
+	log.Printf("[session %s] ready (tmux=%s:%s, pid=%d)", sess.ID(), b.tmuxSession, windowName, sess.pid)
 
 	return sess, nil
 }

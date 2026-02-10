@@ -16,7 +16,8 @@ import (
 // Session implements backend.Session for tmux-based tools
 type Session struct {
 	id          string
-	sessionName string // tmux session name
+	tmuxSession string // persistent tmux session name (e.g., "anvillm-kiro-cli")
+	windowName  string // window name within tmux session (same as id)
 	cwd         string
 	alias       string
 	winID       int
@@ -36,6 +37,11 @@ type Session struct {
 	startupHandler StartupHandler
 
 	mu sync.Mutex
+}
+
+// target returns the tmux target for this window (session:window)
+func (s *Session) target() string {
+	return windowTarget(s.tmuxSession, s.windowName)
 }
 
 func (s *Session) ID() string {
@@ -65,7 +71,8 @@ func (s *Session) Metadata() backend.SessionMetadata {
 		WinID:     s.winID,
 		CreatedAt: s.createdAt,
 		Extra: map[string]string{
-			"tmux_session": s.sessionName,
+			"tmux_session": s.tmuxSession,
+			"tmux_window":  s.windowName,
 		},
 	}
 }
@@ -141,7 +148,7 @@ func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error
 				keys, done := s.startupHandler.HandleStartup(s.output.String())
 				if keys != "" {
 					log.Printf("[session %s] startup handler sending keys: %q", s.id, keys)
-					if err := sendKeys(s.sessionName, keys); err != nil {
+					if err := sendKeys(s.target(), keys); err != nil {
 						return fmt.Errorf("failed to send startup response: %w", err)
 					}
 				}
@@ -182,7 +189,7 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	if strings.HasPrefix(prompt, "/") && s.commands != nil {
 		if !s.commands.IsSupported(prompt) {
 			cmd := strings.Fields(prompt)[0]
-			return "", fmt.Errorf("slash command not supported: %s (attach to tmux session to run: tmux attach -t %s)", cmd, s.sessionName)
+			return "", fmt.Errorf("slash command not supported: %s (attach to window: tmux select-window -t %s)", cmd, s.target())
 		}
 	}
 
@@ -199,13 +206,13 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	log.Printf("[session %s] sending: %q", s.id, prompt)
 
 	// Send prompt using literal mode to avoid special character interpretation
-	if err := sendLiteral(s.sessionName, prompt); err != nil {
+	if err := sendLiteral(s.target(), prompt); err != nil {
 		s.state = "idle"
 		return "", fmt.Errorf("send literal failed: %w", err)
 	}
 
 	// Send Enter
-	if err := sendKeys(s.sessionName, "C-m"); err != nil {
+	if err := sendKeys(s.target(), "C-m"); err != nil {
 		s.state = "idle"
 		return "", fmt.Errorf("send enter failed: %w", err)
 	}
@@ -317,17 +324,22 @@ func (s *Session) Stop(ctx context.Context) error {
 	}
 
 	// Send CTRL+C
-	return sendKeys(s.sessionName, "C-c")
+	return sendKeys(s.target(), "C-c")
 }
 
 func (s *Session) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// 1. Kill tmux session first (closes pipe-pane writer)
-	if s.sessionName != "" {
-		killSession(s.sessionName)
-		s.sessionName = ""
+	log.Printf("[session %s] Close() called, killing window %s:%s", s.id, s.tmuxSession, s.windowName)
+
+	// 1. Kill tmux window first (closes pipe-pane writer)
+	if s.tmuxSession != "" && s.windowName != "" {
+		if err := killWindow(s.tmuxSession, s.windowName); err != nil {
+			log.Printf("[session %s] killWindow failed: %v", s.id, err)
+		} else {
+			log.Printf("[session %s] Window %s:%s killed", s.id, s.tmuxSession, s.windowName)
+		}
 	}
 
 	// 2. Give writer time to close, which will send EOF to reader
