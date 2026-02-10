@@ -3,7 +3,7 @@ package backends
 
 import (
 	"acme-q/internal/backend"
-	"acme-q/internal/backend/pty"
+	"acme-q/internal/backend/tmux"
 	"context"
 	"fmt"
 	"regexp"
@@ -12,64 +12,27 @@ import (
 )
 
 // NewClaude creates a claude CLI backend
+//
+// Uses tmux backend to handle interactive TUI dialogs programmatically.
+// The startup handler automatically accepts the --dangerously-skip-permissions dialog.
 func NewClaude() backend.Backend {
-	return pty.New(pty.Config{
+	return tmux.New(tmux.Config{
 		Name:    "claude",
-		Command: []string{"claude", "--permission-mode=bypassPermissions"},
+		Command: []string{"claude", "--dangerously-skip-permissions"},
 		Environment: map[string]string{
 			"TERM":     "xterm-256color",
 			"NO_COLOR": "1",
 		},
-		PTYSize: pty.PTYSize{
+		TmuxSize: tmux.TmuxSize{
 			Rows: 40,
 			Cols: 120,
 		},
-		StartupTime:    45 * time.Second,
+		StartupTime:    15 * time.Second,
 		Detector:       &claudeDetector{},
 		Cleaner:        &claudeCleaner{},
 		Commands:       &claudeCommands{},
 		StartupHandler: &claudeStartupHandler{},
 	})
-}
-
-// claudeStartupHandler handles the startup confirmation dialogs
-type claudeStartupHandler struct {
-	acceptedBypassWarning bool
-	acceptedWorkspaceTrust bool
-}
-
-func (h *claudeStartupHandler) HandleStartup(output string) (data []byte, done bool) {
-	clean := stripANSI(output)
-
-	// First dialog: Bypass permissions warning
-	if !h.acceptedBypassWarning && strings.Contains(clean, "WARNING: Claude Code running in Bypass Permissions mode") {
-		if strings.Contains(clean, "Yes, I accept") {
-			// Dialog is shown, send "2" + Enter to select "Yes, I accept"
-			// Or just press Enter if option 2 is already selected
-			// Looking at the dialog format, option 1 is default, so we need to select 2
-			h.acceptedBypassWarning = true
-			return []byte("2\r"), false
-		}
-	}
-
-	// Second dialog: Workspace trust
-	if h.acceptedBypassWarning && !h.acceptedWorkspaceTrust {
-		if strings.Contains(clean, "Do you trust the files in this folder") {
-			if strings.Contains(clean, "Yes, proceed") {
-				// Send "1" + Enter to select "Yes, proceed"
-				h.acceptedWorkspaceTrust = true
-				return []byte("1\r"), true // Done after this
-			}
-		}
-	}
-
-	// If we've accepted both, we're done
-	if h.acceptedBypassWarning && h.acceptedWorkspaceTrust {
-		return nil, true
-	}
-
-	// No action needed yet
-	return nil, false
 }
 
 // claudeDetector implements pattern detection for claude CLI
@@ -78,15 +41,7 @@ type claudeDetector struct{}
 func (d *claudeDetector) IsReady(output string) bool {
 	clean := stripANSI(output)
 
-	// Claude CLI is ready after startup when:
-	// 1. We've passed all the dialogs
-	// 2. And the prompt is ready for input
-
-	// After startup dialogs, claude might show a welcome message or just be silent
-	// We'll consider it ready if we see certain patterns or if there's been
-	// substantial output after the dialogs
-
-	// If we see any greeting or welcoming text, consider it ready
+	// Claude shows a greeting when ready
 	greetingPatterns := []string{
 		"Hello",
 		"Welcome",
@@ -101,16 +56,8 @@ func (d *claudeDetector) IsReady(output string) bool {
 		}
 	}
 
-	// If we've passed dialogs and there's some output, consider ready
-	// (The startup handler will have reset output after dialogs)
+	// If we have substantial output, likely ready
 	if len(clean) > 50 {
-		return true
-	}
-
-	// If output is minimal but doesn't contain dialog text, likely ready
-	if len(clean) > 0 &&
-	   !strings.Contains(clean, "WARNING:") &&
-	   !strings.Contains(clean, "Do you trust") {
 		return true
 	}
 
@@ -121,74 +68,126 @@ func (d *claudeDetector) IsComplete(prompt string, output string) bool {
 	clean := stripANSI(output)
 	clean = strings.ReplaceAll(clean, "\r", "")
 
-	// Claude CLI typically outputs responses and then goes silent
-	// We'll look for patterns that indicate completion:
-
-	// 1. If the output is very short (< 100 chars), it's not complete
-	if len(clean) < 100 {
+	// Need substantial output first
+	if len(clean) < 1000 {
 		return false
 	}
 
-	// 2. For slash commands (if claude supports them), wait for next prompt
-	if strings.HasPrefix(strings.TrimSpace(prompt), "/") {
-		// Look for command completion patterns
-		// This is a placeholder - adjust based on actual claude CLI behavior
-		return strings.Contains(clean, "Command completed") || len(clean) > 1000
-	}
+	// Generic thinking indicator patterns:
+	// - "(esc to interrupt)" appears during processing
+	// - "∴" is the thought indicator
+	hasSeenThinking := strings.Contains(clean, "(esc to interrupt)") ||
+		strings.Contains(clean, "∴")
 
-	// 3. For normal prompts, claude CLI might have different completion markers
-	// Common patterns:
-	// - Empty lines at the end
-	// - Specific markers
-	// - Or just wait for substantial output and a pause (handled by timeout)
-
-	// Check if output seems complete (ends with newlines and has substantial content)
-	lines := strings.Split(clean, "\n")
-	if len(lines) < 5 {
+	if !hasSeenThinking {
+		// Not even started processing yet
 		return false
 	}
 
-	// Consider complete if we have substantial output
-	// The PTY backend will handle the timeout and draining
-	return len(clean) > 200
+	// CRITICAL: Must have seen actual response content (● marker)
+	// Claude responses and tool usage both use ●
+	hasResponse := strings.Contains(clean, "●")
+	if !hasResponse {
+		// No response content yet, keep waiting
+		return false
+	}
+
+	// Get the tail of the output (last 500 chars)
+	tailStart := len(clean) - 500
+	if tailStart < 0 {
+		tailStart = 0
+	}
+	tail := clean[tailStart:]
+
+	// Check if thinking indicators have stopped in the recent output
+	noRecentThinking := !strings.Contains(tail, "(esc to interrupt)") &&
+		!strings.Contains(tail, "∴")
+
+	// Check if we have bottom chrome in the tail
+	hasChromeInTail := strings.Contains(tail, "bypass permissions on") ||
+		strings.Contains(tail, "Thinking on (tab to toggle)")
+
+	// Complete when:
+	// 1. We saw thinking indicators earlier (Claude started)
+	// 2. We saw response content (● appeared)
+	// 3. No thinking indicators in recent output (Claude finished)
+	// 4. Chrome is present in recent output (UI returned to ready state)
+	// 5. Substantial output accumulated
+	return noRecentThinking && hasChromeInTail && len(clean) > 2000
 }
 
 // claudeCleaner implements output cleaning for claude CLI
 type claudeCleaner struct{}
 
 func (c *claudeCleaner) Clean(prompt string, rawOutput string) string {
-	// Strip ANSI codes
+	// Strip ANSI codes first
 	clean := stripANSI(rawOutput)
 	clean = strings.ReplaceAll(clean, "\r", "\n")
 
+	// Remove terminal title sequences (OSC sequences like ]0;...)
+	// These appear as ]0;✳ title in the output
+	titleRegex := regexp.MustCompile(`\]0;[^\n]*`)
+	clean = titleRegex.ReplaceAllString(clean, "")
+
 	lines := strings.Split(clean, "\n")
 	var result []string
-	seenResponse := false
+	inResponse := false
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
-		// Skip empty lines at the start
-		if !seenResponse && trimmed == "" {
+		// Skip completely empty lines at start
+		if !inResponse && trimmed == "" {
 			continue
 		}
 
-		// Skip noise patterns
+		// Skip noise (includes thinking indicators, startup chrome, etc.)
 		if c.isNoise(line) {
+			// If we hit bottom chrome after response started, stop
+			if inResponse && c.isBottomChrome(line) {
+				break
+			}
 			continue
 		}
 
-		// Skip the echo of the prompt
-		if strings.TrimSpace(line) == strings.TrimSpace(prompt) {
+		// Skip lines that are just ">" with optional whitespace
+		// These are cursor/prompt redraws
+		if trimmed == ">" || trimmed == "" {
 			continue
 		}
 
-		if trimmed != "" {
-			seenResponse = true
-			result = append(result, line)
-		} else if seenResponse {
-			// Keep empty lines within the response
-			result = append(result, "")
+		// Skip prompt echo
+		if strings.HasPrefix(trimmed, ">") && strings.Contains(line, prompt) {
+			continue
+		}
+
+		// Look for actual response content
+		// Claude responses start with ● (bullet)
+		// Tool usage also uses ●
+		if strings.HasPrefix(trimmed, "●") {
+			inResponse = true
+			// Remove the ● prefix and keep the content
+			content := strings.TrimPrefix(trimmed, "●")
+			content = strings.TrimSpace(content)
+			if content != "" {
+				result = append(result, content)
+			}
+			continue
+		}
+
+		// If we're in response mode, keep non-chrome content
+		// Continuation lines (indented content after ●) should be kept
+		if inResponse {
+			if c.isBottomChrome(line) {
+				// Hit bottom chrome, stop collecting
+				break
+			}
+			if trimmed != "" {
+				result = append(result, strings.TrimLeft(line, " \t"))
+			} else {
+				// Keep empty lines within response
+				result = append(result, "")
+			}
 		}
 	}
 
@@ -203,19 +202,69 @@ func (c *claudeCleaner) Clean(prompt string, rawOutput string) string {
 func (c *claudeCleaner) isNoise(line string) bool {
 	trimmed := strings.TrimSpace(line)
 
-	// Noise patterns specific to claude CLI
+	// Empty or whitespace-only lines
+	if trimmed == "" {
+		return true
+	}
+
+	// Lines that are just ">" (prompt redraws)
+	if trimmed == ">" {
+		return true
+	}
+
+	// Generic thinking/status indicators:
+	// - "(esc to interrupt)" - appears during any processing phase
+	// - "∴" - the "Thought for..." indicator
+	if strings.Contains(line, "(esc to interrupt)") {
+		return true
+	}
+
+	// "∴" (three-dot triangle) followed by any text is a thought indicator
+	if strings.Contains(line, "∴") {
+		return true
+	}
+
+	// Animated spinner characters (dot/asterisk morphing animation) + ellipsis
+	// Pattern: <animated char> <Word>… (esc to interrupt)
+	// These are the thinking status lines
+	animatedChars := []rune{'·', '•', '*', '✶', '✻', '✽', '✢', '✺', '✸', '✹', '✦', '✧'}
+	for _, r := range animatedChars {
+		if strings.HasPrefix(trimmed, string(r)+" ") && strings.Contains(line, "…") {
+			return true
+		}
+	}
+
+	// Short lines with ellipsis are likely status indicators
+	if strings.Contains(line, "…") && len(trimmed) < 50 {
+		return true
+	}
+
+	// Startup/welcome chrome and UI elements
 	noisePatterns := []string{
-		"WARNING: Claude Code running in Bypass Permissions mode",
-		"In Bypass Permissions mode",
-		"This mode should only be used",
-		"By proceeding, you accept",
 		"https://code.claude.com",
 		"Learn more",
-		"Yes, I accept",
-		"No, exit",
+		"Press Ctrl-D",
+		"WARNING:",
+		"By proceeding, you accept",
 		"Enter to confirm",
 		"Esc to exit",
-		"Press Ctrl-D",
+		"❯ 1.",
+		"❯ 2.",
+		"In Bypass Permissions mode",
+		"Welcome back",
+		"Tips for getting started",
+		"Recent activity",
+		"No recent activity",
+		"Run /init to create",
+		"Sonnet 4.5",
+		"Claude Pro",
+		"Claude Code",
+		"Note: You have launched",
+		"▐▛███▜▌",  // ASCII art logo
+		"▝▜█████▛▘",
+		"▘▘ ▝▝",
+		"Tip: Send messages to Claude",
+		"⎿",  // UI decoration character
 	}
 
 	for _, pattern := range noisePatterns {
@@ -224,7 +273,7 @@ func (c *claudeCleaner) isNoise(line string) bool {
 		}
 	}
 
-	// Check for spinner/loading characters
+	// Check for progress spinner characters at start of line
 	spinners := []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏', '⢀', '⡀', '✓', '⚠'}
 	for _, r := range spinners {
 		if strings.HasPrefix(trimmed, string(r)) {
@@ -233,8 +282,37 @@ func (c *claudeCleaner) isNoise(line string) bool {
 	}
 
 	// Skip lines that are just box drawing characters or separators
-	if regexp.MustCompile(`^[─│┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬]+$`).MatchString(trimmed) {
+	if regexp.MustCompile(`^[─│┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬╭╮╰╯\s]+$`).MatchString(trimmed) {
 		return true
+	}
+
+	return false
+}
+
+func (c *claudeCleaner) isBottomChrome(line string) bool {
+	trimmed := strings.TrimSpace(line)
+
+	// Long separator lines (like the one before bottom chrome)
+	if len(trimmed) > 100 && regexp.MustCompile(`^─+$`).MatchString(trimmed) {
+		return true
+	}
+
+	// Bottom UI chrome patterns
+	chromePatterns := []string{
+		"bypass permissions on",
+		"Thinking on (tab to toggle)",
+		"shift+tab to cycle",
+		"Auto-update",
+		"Auto-updating",
+		"claude doctor",
+		"npm i -g",
+		"⏵⏵",
+	}
+
+	for _, pattern := range chromePatterns {
+		if strings.Contains(line, pattern) {
+			return true
+		}
 	}
 
 	return false
@@ -257,11 +335,58 @@ func (h *claudeCommands) IsSupported(command string) bool {
 }
 
 func (h *claudeCommands) Execute(ctx context.Context, command string) (string, error) {
-	// For claude CLI, commands are executed by sending them to the PTY
+	// For claude CLI, commands are executed by sending them to the session
 	// This is handled by the Session.Send() method
 	// We just validate the command here
 	if !h.IsSupported(command) {
 		return "", fmt.Errorf("unsupported command")
 	}
 	return "", fmt.Errorf("execute called directly - use Send() instead")
+}
+
+// claudeStartupHandler handles the --dangerously-skip-permissions dialog
+type claudeStartupHandler struct {
+	sentDown  bool
+	sentEnter bool
+}
+
+func (h *claudeStartupHandler) HandleStartup(output string) (keys string, done bool) {
+	clean := stripANSI(output)
+
+	// Look for the permissions dialog
+	if strings.Contains(clean, "WARNING: Claude Code running in Bypass Permissions mode") {
+		// Check if we're on "No, exit" (default selection)
+		if strings.Contains(clean, "❯ 1. No, exit") && !h.sentDown {
+			// Send Down arrow to select "Yes, I accept"
+			h.sentDown = true
+			return "Down", false
+		}
+		// Check if we're on "Yes, I accept"
+		if strings.Contains(clean, "❯ 2. Yes, I accept") && !h.sentEnter {
+			// Send Enter to confirm
+			h.sentEnter = true
+			return "C-m", false
+		}
+		// Still showing dialog but not on a specific selection
+		// Wait for more output
+		return "", false
+	}
+
+	// Check if we're past the dialog (looking for greeting)
+	greetingPatterns := []string{
+		"Hello",
+		"Welcome",
+		"I'm Claude",
+		"What can I help",
+		"How can I assist",
+	}
+
+	for _, pattern := range greetingPatterns {
+		if strings.Contains(clean, pattern) {
+			return "", true // Done with startup
+		}
+	}
+
+	// Not at dialog yet, keep waiting
+	return "", false
 }
