@@ -25,6 +25,10 @@ import (
 
 const windowName = "/Q/"
 
+// Terminal to use for tmux attach (configurable)
+// Common options: "foot", "kitty", "xterm", "st", "alacritty"
+const terminalCommand = "foot"
+
 // Type alias to work around Go parser limitation
 type Session = backend.Session
 
@@ -262,7 +266,7 @@ func openChatWindow(sess backend.Session) (*acme.Win, error) {
 		return nil, err
 	}
 	w.Name(name)
-	w.Write("tag", []byte("Send Stop Alias Save Kill Sessions "))
+	w.Write("tag", []byte("Send Stop Attach Alias Save Kill Sessions "))
 	w.Fprintf("body", "# Session %s\n# cwd: %s\n\nUSER:\n", sess.ID(), meta.Cwd)
 	w.Ctl("clean")
 
@@ -300,6 +304,21 @@ func handleChatWindow(w *acme.Win, sess backend.Session) {
 					log.Printf("[session %s] Stop error: %v", sess.ID(), err)
 				} else {
 					log.Printf("[session %s] Sent CTRL+C", sess.ID())
+				}
+			case "Attach":
+				// Attach to tmux session (only works for tmux-based backends)
+				meta := sess.Metadata()
+				if tmuxSession, ok := meta.Extra["tmux_session"]; ok {
+					go func() {
+						cmd := exec.Command(terminalCommand, "-e", "tmux", "attach", "-t", tmuxSession)
+						if err := cmd.Start(); err != nil {
+							log.Printf("[session %s] Failed to launch terminal: %v", sess.ID(), err)
+						} else {
+							log.Printf("[session %s] Launched terminal attached to tmux session: %s", sess.ID(), tmuxSession)
+						}
+					}()
+				} else {
+					log.Printf("[session %s] Attach not supported: not a tmux-based backend", sess.ID())
 				}
 			case "Alias":
 				if arg == "" {

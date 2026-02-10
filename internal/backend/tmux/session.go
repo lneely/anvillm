@@ -181,7 +181,8 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	// Check command support if applicable
 	if strings.HasPrefix(prompt, "/") && s.commands != nil {
 		if !s.commands.IsSupported(prompt) {
-			return "", fmt.Errorf("unsupported command")
+			cmd := strings.Fields(prompt)[0]
+			return "", fmt.Errorf("slash command not supported: %s (attach to tmux session to run: tmux attach -t %s)", cmd, s.sessionName)
 		}
 	}
 
@@ -219,10 +220,41 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 
 	// Clean output
 	rawLen := s.output.Len()
-	result := s.cleaner.Clean(prompt, s.output.String())
+	rawOutput := s.output.String()
+	result := s.cleaner.Clean(prompt, rawOutput)
 	log.Printf("[session %s] raw: %d bytes, cleaned: %d bytes", s.id, rawLen, len(result))
 	if len(result) == 0 && rawLen > 0 {
 		log.Printf("[session %s] WARNING: cleaner returned 0 bytes", s.id)
+		// Debug: show first and last 500 chars of raw output
+		debugFirst := rawOutput
+		if len(debugFirst) > 500 {
+			debugFirst = debugFirst[:500]
+		}
+		debugLast := rawOutput
+		if len(debugLast) > 500 {
+			debugLast = debugLast[len(debugLast)-500:]
+		}
+		log.Printf("[session %s] DEBUG raw output (first 500 chars): %q", s.id, debugFirst)
+		log.Printf("[session %s] DEBUG raw output (last 500 chars): %q", s.id, debugLast)
+
+		// Check for key markers (simple check, no ANSI stripping)
+		hasBullet := strings.Contains(rawOutput, "●")
+		hasThinking := strings.Contains(rawOutput, "(esc to interrupt)") || strings.Contains(rawOutput, "∴")
+		log.Printf("[session %s] DEBUG markers: hasBullet=%v, hasThinking=%v", s.id, hasBullet, hasThinking)
+
+		// Find where the bullet is
+		if hasBullet {
+			idx := strings.Index(rawOutput, "●")
+			start := idx - 50
+			if start < 0 {
+				start = 0
+			}
+			end := idx + 100
+			if end > len(rawOutput) {
+				end = len(rawOutput)
+			}
+			log.Printf("[session %s] DEBUG bullet context: %q", s.id, rawOutput[start:end])
+		}
 	}
 
 	return result, nil

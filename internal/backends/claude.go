@@ -4,9 +4,13 @@ package backends
 import (
 	"acme-q/internal/backend"
 	"acme-q/internal/backend/tmux"
+	"bufio"
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -15,10 +19,26 @@ import (
 //
 // Uses tmux backend to handle interactive TUI dialogs programmatically.
 // The startup handler automatically accepts the --dangerously-skip-permissions dialog.
+//
+// Sessions are automatically saved by Claude to ~/.claude/projects/<dir-path>/<session-id>.jsonl
 func NewClaude() backend.Backend {
+	return newClaudeWithCommand([]string{"claude", "--dangerously-skip-permissions"})
+}
+
+// NewClaudeWithContinue creates a backend that continues the most recent conversation
+func NewClaudeWithContinue() backend.Backend {
+	return newClaudeWithCommand([]string{"claude", "--dangerously-skip-permissions", "--continue"})
+}
+
+// NewClaudeWithResume creates a backend that resumes a specific session by ID
+func NewClaudeWithResume(sessionID string) backend.Backend {
+	return newClaudeWithCommand([]string{"claude", "--dangerously-skip-permissions", "--resume", sessionID})
+}
+
+func newClaudeWithCommand(command []string) backend.Backend {
 	return tmux.New(tmux.Config{
 		Name:    "claude",
-		Command: []string{"claude", "--dangerously-skip-permissions"},
+		Command: command,
 		Environment: map[string]string{
 			"TERM":     "xterm-256color",
 			"NO_COLOR": "1",
@@ -68,6 +88,30 @@ func (d *claudeDetector) IsComplete(prompt string, output string) bool {
 	clean := stripANSI(output)
 	clean = strings.ReplaceAll(clean, "\r", "")
 
+	isCommand := strings.HasPrefix(strings.TrimSpace(prompt), "/")
+
+	if isCommand {
+		// For slash commands, completion is simpler:
+		// Just wait for the prompt to return (bottom chrome appears)
+		if len(clean) < 500 {
+			return false
+		}
+
+		// Get the tail to check for bottom chrome
+		tailStart := len(clean) - 500
+		if tailStart < 0 {
+			tailStart = 0
+		}
+		tail := clean[tailStart:]
+
+		// Command complete when bottom chrome appears
+		hasChromeInTail := strings.Contains(tail, "bypass permissions on") ||
+			strings.Contains(tail, "Thinking on (tab to toggle)")
+
+		return hasChromeInTail
+	}
+
+	// For normal prompts (non-slash commands):
 	// Need substantial output first
 	if len(clean) < 1000 {
 		return false
@@ -129,6 +173,68 @@ func (c *claudeCleaner) Clean(prompt string, rawOutput string) string {
 	titleRegex := regexp.MustCompile(`\]0;[^\n]*`)
 	clean = titleRegex.ReplaceAllString(clean, "")
 
+	isCommand := strings.HasPrefix(strings.TrimSpace(prompt), "/")
+
+	if isCommand {
+		// For slash commands, extract content between separator lines
+		return c.cleanCommand(clean, prompt)
+	}
+
+	// For normal prompts, extract ● responses
+	return c.cleanResponse(clean, prompt)
+}
+
+func (c *claudeCleaner) cleanCommand(clean string, prompt string) string {
+	lines := strings.Split(clean, "\n")
+	var result []string
+	inContent := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Skip prompt echo
+		if strings.HasPrefix(trimmed, ">") && strings.Contains(line, prompt) {
+			continue
+		}
+
+		// Separator line marks start of content
+		// Pattern: long line of ─ characters (at least 50)
+		isSeparator := len(trimmed) > 50 && regexp.MustCompile(`^─+$`).MatchString(trimmed)
+
+		if isSeparator && !inContent {
+			// First separator = start of content
+			inContent = true
+			continue
+		}
+
+		// Once we're collecting content, look for end conditions
+		if inContent {
+			// Another separator = clean end
+			if isSeparator {
+				break
+			}
+			// Bottom chrome = end of content area
+			if c.isBottomChrome(line) {
+				break
+			}
+			// Skip "dismissed" messages
+			if strings.Contains(line, "dismissed") {
+				continue
+			}
+			// Keep all other content
+			result = append(result, line)
+		}
+	}
+
+	// Clean up trailing empty lines
+	for len(result) > 0 && strings.TrimSpace(result[len(result)-1]) == "" {
+		result = result[:len(result)-1]
+	}
+
+	return strings.Join(result, "\n")
+}
+
+func (c *claudeCleaner) cleanResponse(clean string, prompt string) string {
 	lines := strings.Split(clean, "\n")
 	var result []string
 	inResponse := false
@@ -141,12 +247,31 @@ func (c *claudeCleaner) Clean(prompt string, rawOutput string) string {
 			continue
 		}
 
-		// Skip noise (includes thinking indicators, startup chrome, etc.)
-		if c.isNoise(line) {
-			// If we hit bottom chrome after response started, stop
-			if inResponse && c.isBottomChrome(line) {
-				break
+		// IMPORTANT: Check for response marker BEFORE noise filtering
+		// Otherwise lines like "● Hello! I'm Claude Code..." get filtered as noise
+		if strings.HasPrefix(trimmed, "●") {
+			inResponse = true
+			// Remove the ● prefix and keep the content
+			content := strings.TrimPrefix(trimmed, "●")
+			content = strings.TrimSpace(content)
+			if content != "" {
+				result = append(result, content)
 			}
+			continue
+		}
+
+		// Always filter thinking indicators and spinners (even during response)
+		if c.isThinkingIndicator(line) {
+			continue
+		}
+
+		// If in response mode and hit bottom chrome, stop collecting
+		if inResponse && c.isBottomChrome(line) {
+			break
+		}
+
+		// Only filter generic UI chrome before response starts
+		if !inResponse && c.isGenericNoise(line) {
 			continue
 		}
 
@@ -158,20 +283,6 @@ func (c *claudeCleaner) Clean(prompt string, rawOutput string) string {
 
 		// Skip prompt echo
 		if strings.HasPrefix(trimmed, ">") && strings.Contains(line, prompt) {
-			continue
-		}
-
-		// Look for actual response content
-		// Claude responses start with ● (bullet)
-		// Tool usage also uses ●
-		if strings.HasPrefix(trimmed, "●") {
-			inResponse = true
-			// Remove the ● prefix and keep the content
-			content := strings.TrimPrefix(trimmed, "●")
-			content = strings.TrimSpace(content)
-			if content != "" {
-				result = append(result, content)
-			}
 			continue
 		}
 
@@ -199,7 +310,8 @@ func (c *claudeCleaner) Clean(prompt string, rawOutput string) string {
 	return strings.Join(result, "\n")
 }
 
-func (c *claudeCleaner) isNoise(line string) bool {
+// isThinkingIndicator checks for thinking/status indicators (always filter these)
+func (c *claudeCleaner) isThinkingIndicator(line string) bool {
 	trimmed := strings.TrimSpace(line)
 
 	// Empty or whitespace-only lines
@@ -239,6 +351,21 @@ func (c *claudeCleaner) isNoise(line string) bool {
 		return true
 	}
 
+	// Check for progress spinner characters at start of line
+	spinners := []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏', '⢀', '⡀', '✓', '⚠'}
+	for _, r := range spinners {
+		if strings.HasPrefix(trimmed, string(r)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isGenericNoise checks for startup/UI chrome (only filter before response starts)
+func (c *claudeCleaner) isGenericNoise(line string) bool {
+	trimmed := strings.TrimSpace(line)
+
 	// Startup/welcome chrome and UI elements
 	noisePatterns := []string{
 		"https://code.claude.com",
@@ -273,16 +400,8 @@ func (c *claudeCleaner) isNoise(line string) bool {
 		}
 	}
 
-	// Check for progress spinner characters at start of line
-	spinners := []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏', '⢀', '⡀', '✓', '⚠'}
-	for _, r := range spinners {
-		if strings.HasPrefix(trimmed, string(r)) {
-			return true
-		}
-	}
-
 	// Skip lines that are just box drawing characters or separators
-	if regexp.MustCompile(`^[─│┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬╭╮╰╯\s]+$`).MatchString(trimmed) {
+	if regexp.MustCompile(`^[─│┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬╭╮╰╯\\s]+$`).MatchString(trimmed) {
 		return true
 	}
 
@@ -318,30 +437,145 @@ func (c *claudeCleaner) isBottomChrome(line string) bool {
 	return false
 }
 
-// claudeCommands implements command handling for claude CLI
+// claudeCommands blocks all slash commands with a helpful error
 type claudeCommands struct{}
 
 func (h *claudeCommands) IsSupported(command string) bool {
-	// Claude CLI supports various slash commands
-	// This is a placeholder - adjust based on actual claude CLI capabilities
-	supported := []string{"/help", "/clear", "/model", "/settings"}
-
-	for _, cmd := range supported {
-		if strings.HasPrefix(command, cmd) {
-			return true
-		}
-	}
+	// Block all slash commands - many open interactive dialogs
+	// Users can attach to tmux session if needed: tmux attach -t <session-name>
 	return false
 }
 
 func (h *claudeCommands) Execute(ctx context.Context, command string) (string, error) {
-	// For claude CLI, commands are executed by sending them to the session
-	// This is handled by the Session.Send() method
-	// We just validate the command here
-	if !h.IsSupported(command) {
-		return "", fmt.Errorf("unsupported command")
+	return "", fmt.Errorf("slash commands not supported (many open interactive dialogs). To run slash commands, attach to tmux session.")
+}
+
+// Session Management Helpers
+//
+// NOTE: Save/Load operations are NOT supported for Claude backend.
+// - Claude auto-saves all conversations to ~/.claude/projects/<dir>/<session-id>.jsonl
+// - No practical way to "load" context from one session into another
+// - Context sharing would require either:
+//   1. Expensive message replay (burns tokens, slow)
+//   2. Lossy summarization (defeats purpose of context sharing)
+//   3. File manipulation (risky, undefined behavior)
+//
+// For session management:
+// - Use NewClaudeWithResume(sessionID) to continue a specific session
+// - Use NewClaudeWithContinue() to continue most recent session
+// - Use ListSessions(cwd) to browse available sessions
+// Claude automatically saves conversations to ~/.claude/projects/<dir-path>/<session-id>.jsonl
+
+// GetSessionDir returns the directory where Claude stores sessions for the given working directory
+func GetSessionDir(cwd string) string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
 	}
-	return "", fmt.Errorf("execute called directly - use Send() instead")
+
+	// Convert cwd to Claude's project path format (replace / with -)
+	dirPath := strings.ReplaceAll(cwd, "/", "-")
+	return filepath.Join(homeDir, ".claude", "projects", dirPath)
+}
+
+// ListSessions returns a list of session IDs for the given directory, sorted by modification time (newest first)
+func ListSessions(cwd string) ([]SessionInfo, error) {
+	sessionDir := GetSessionDir(cwd)
+
+	files, err := os.ReadDir(sessionDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read session directory: %w", err)
+	}
+
+	var sessions []SessionInfo
+	for _, file := range files {
+		if strings.HasSuffix(file.Name(), ".jsonl") {
+			sessionID := strings.TrimSuffix(file.Name(), ".jsonl")
+			info, _ := file.Info()
+
+			// Try to get summary from file
+			summary := getSessionSummary(filepath.Join(sessionDir, file.Name()))
+
+			sessions = append(sessions, SessionInfo{
+				ID:       sessionID,
+				Summary:  summary,
+				ModTime:  info.ModTime(),
+			})
+		}
+	}
+
+	// Sort by modification time (newest first)
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].ModTime.After(sessions[j].ModTime)
+	})
+
+	return sessions, nil
+}
+
+// SessionInfo contains information about a Claude session
+type SessionInfo struct {
+	ID      string
+	Summary string
+	ModTime time.Time
+}
+
+// getSessionSummary extracts a summary from the session JSONL file
+func getSessionSummary(path string) string {
+	file, err := os.Open(path)
+	if err != nil {
+		return "conversation"
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Look for summary field
+		if strings.Contains(line, `"summary"`) {
+			if idx := strings.Index(line, `"summary":"`); idx != -1 {
+				start := idx + len(`"summary":"`)
+				if end := strings.Index(line[start:], `"`); end != -1 {
+					extracted := line[start : start+end]
+					if extracted != "" {
+						return extracted
+					}
+				}
+			}
+		}
+
+		// Fallback: first user message
+		if strings.Contains(line, `"role":"user"`) && strings.Contains(line, `"content"`) {
+			if idx := strings.Index(line, `"content":"`); idx != -1 {
+				start := idx + len(`"content":"`)
+				if end := strings.Index(line[start:], `"`); end != -1 {
+					content := line[start : start+end]
+					if len(content) > 50 {
+						content = content[:50] + "..."
+					}
+					if content != "" {
+						return content
+					}
+				}
+			}
+		}
+	}
+
+	return "conversation"
+}
+
+// GetMostRecentSessionID returns the ID of the most recently modified session for the given directory
+func GetMostRecentSessionID(cwd string) (string, error) {
+	sessions, err := ListSessions(cwd)
+	if err != nil {
+		return "", err
+	}
+	if len(sessions) == 0 {
+		return "", fmt.Errorf("no sessions found")
+	}
+	return sessions[0].ID, nil
 }
 
 // claudeStartupHandler handles the --dangerously-skip-permissions dialog
