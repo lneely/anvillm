@@ -36,31 +36,20 @@ type Session = backend.Session
 func main() {
 	flag.Parse()
 
-	// Determine backend from positional argument, default to kiro-cli
-	backendName := "kiro-cli"
-	if flag.NArg() > 0 {
-		backendName = flag.Arg(0)
+	// Create all backends
+	backendMap := map[string]backend.Backend{
+		"kiro-cli": backends.NewKiroCLI(),
+		"claude":   backends.NewClaude(),
 	}
 
-	// Create backend
-	var backend backend.Backend
-	switch backendName {
-	case "claude":
-		backend = backends.NewClaude()
-		debug.Log("Using claude backend")
-	case "kiro-cli":
-		backend = backends.NewKiroCLI()
-		debug.Log("Using kiro-cli backend")
-	default:
-		log.Fatalf("Unknown backend: %s (available: kiro-cli, claude)", backendName)
-	}
+	mgr := session.NewManager(backendMap)
 
-	mgr := session.NewManager(backend)
-
-	// Cleanup tmux session on exit (if backend is tmux-based)
+	// Cleanup tmux sessions on exit
 	defer func() {
-		if tmuxBackend, ok := backend.(*tmux.Backend); ok {
-			tmuxBackend.Cleanup()
+		for _, b := range backendMap {
+			if tmuxBackend, ok := b.(*tmux.Backend); ok {
+				tmuxBackend.Cleanup()
+			}
 		}
 	}()
 
@@ -96,7 +85,7 @@ func main() {
 	defer w.CloseFiles()
 
 	w.Name(windowName)
-	w.Write("tag", []byte("New Open Kill Get Login "))
+	w.Write("tag", []byte("Kiro Claude Open Kill Get Login "))
 	refreshList(w, mgr)
 	w.Ctl("clean")
 
@@ -114,10 +103,13 @@ func main() {
 			cmd := string(e.Text)
 			arg := strings.TrimSpace(string(e.Arg))
 
-			// Handle "New /path" or "Kill <pid>" typed directly in tag
-			if strings.HasPrefix(cmd, "New ") {
-				arg = strings.TrimPrefix(cmd, "New ")
-				cmd = "New"
+			// Handle "Kiro /path", "Claude /path", "Kill <pid>", "Open <id>" typed directly in tag
+			if strings.HasPrefix(cmd, "Kiro ") {
+				arg = strings.TrimPrefix(cmd, "Kiro ")
+				cmd = "Kiro"
+			} else if strings.HasPrefix(cmd, "Claude ") {
+				arg = strings.TrimPrefix(cmd, "Claude ")
+				cmd = "Claude"
 			} else if strings.HasPrefix(cmd, "Kill ") {
 				arg = strings.TrimPrefix(cmd, "Kill ")
 				cmd = "Kill"
@@ -127,13 +119,31 @@ func main() {
 			}
 
 			switch cmd {
-			case "New":
+			case "Kiro":
 				// Require path argument
 				if arg == "" {
-					fmt.Fprintf(os.Stderr, "Error: New requires a path argument\n")
+					fmt.Fprintf(os.Stderr, "Error: Kiro requires a path argument\n")
 					continue
 				}
-				sess, err := mgr.New(arg)
+				sess, err := mgr.New("kiro-cli", arg)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					continue
+				}
+				_, err = openChatWindow(sess)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error opening chat: %v\n", err)
+					continue
+				}
+				// WinID is set inside openChatWindow
+				refreshList(w, mgr)
+			case "Claude":
+				// Require path argument
+				if arg == "" {
+					fmt.Fprintf(os.Stderr, "Error: Claude requires a path argument\n")
+					continue
+				}
+				sess, err := mgr.New("claude", arg)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 					continue
@@ -236,9 +246,9 @@ func main() {
 
 func refreshList(w *acme.Win, mgr *session.Manager) {
 	var buf strings.Builder
-	// Header: ID=5, State=9, PID=8, Alias=16, Cwd=remaining
-	buf.WriteString(fmt.Sprintf("%-5s %-9s %-8s %-16s %s\n", "ID", "State", "PID", "Alias", "Cwd"))
-	buf.WriteString(fmt.Sprintf("%-5s %-9s %-8s %-16s %s\n", "-----", "---------", "--------", "----------------", strings.Repeat("-", 40)))
+	// Header: ID=5, Backend=10, State=9, PID=8, Alias=16, Cwd=remaining
+	buf.WriteString(fmt.Sprintf("%-5s %-10s %-9s %-8s %-16s %s\n", "ID", "Backend", "State", "PID", "Alias", "Cwd"))
+	buf.WriteString(fmt.Sprintf("%-5s %-10s %-9s %-8s %-16s %s\n", "-----", "----------", "---------", "--------", "----------------", strings.Repeat("-", 40)))
 	for _, id := range mgr.List() {
 		sess := mgr.Get(id)
 		if sess == nil {
@@ -262,7 +272,7 @@ func refreshList(w *acme.Win, mgr *session.Manager) {
 		if len(cwd) > 80 {
 			cwd = "..." + cwd[len(cwd)-77:]
 		}
-		buf.WriteString(fmt.Sprintf("%-5s %-9s %-8d %-16s %s\n", sess.ID(), sess.State(), meta.Pid, alias, cwd))
+		buf.WriteString(fmt.Sprintf("%-5s %-10s %-9s %-8d %-16s %s\n", sess.ID(), meta.Backend, sess.State(), meta.Pid, alias, cwd))
 	}
 	w.Addr(",")
 	w.Write("data", []byte(buf.String()))

@@ -3,8 +3,14 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
+)
+
+var (
+	// ErrBackendNotFound is returned when a requested backend is not registered
+	ErrBackendNotFound = errors.New("backend not found")
 )
 
 // Backend represents any chat backend (CLI tool via PTY, or direct API)
@@ -55,6 +61,7 @@ type SessionMetadata struct {
 	Cwd       string            // Working directory
 	Alias     string            // User-assigned alias
 	WinID     int               // Acme window ID
+	Backend   string            // Backend name (e.g., "kiro-cli", "claude")
 	CreatedAt time.Time         // Session creation time
 	Extra     map[string]string // Backend-specific metadata
 }

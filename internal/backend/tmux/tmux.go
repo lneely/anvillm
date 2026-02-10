@@ -5,9 +5,9 @@ import (
 	"anvillm/internal/backend"
 	"anvillm/internal/debug"
 	"context"
+	"crypto/rand"
 	"fmt"
 	"os"
-	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -56,9 +56,15 @@ type Config struct {
 
 // Backend implements backend.Backend for tmux-based CLI tools
 type Backend struct {
-	cfg          Config
-	counter      uint64
-	tmuxSession  string // Persistent tmux session name (e.g., "anvillm-kiro-cli")
+	cfg         Config
+	tmuxSession string // Persistent tmux session name (e.g., "anvillm-kiro-cli")
+}
+
+// generateID creates a unique session ID using random bytes
+func generateID() string {
+	b := make([]byte, 4) // 8 hex characters
+	rand.Read(b)
+	return fmt.Sprintf("%x", b)
 }
 
 // New creates a new tmux-based backend
@@ -104,7 +110,7 @@ func (b *Backend) Name() string {
 }
 
 func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Session, error) {
-	id := fmt.Sprintf("%d", atomic.AddUint64(&b.counter, 1))
+	id := generateID()
 	windowName := id // Use session ID as window name
 
 	debug.Log("[session %s] creating window in tmux session %s", id, b.tmuxSession)
@@ -210,6 +216,7 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 
 	sess := &Session{
 		id:             id,
+		backendName:    b.cfg.Name,
 		tmuxSession:    b.tmuxSession,
 		windowName:     windowName,
 		cwd:            cwd,

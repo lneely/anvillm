@@ -16,6 +16,7 @@ import (
 // Session implements backend.Session for tmux-based tools
 type Session struct {
 	id          string
+	backendName string // backend name (e.g., "kiro-cli", "claude")
 	tmuxSession string // persistent tmux session name (e.g., "anvillm-kiro-cli")
 	windowName  string // window name within tmux session (same as id)
 	cwd         string
@@ -69,6 +70,7 @@ func (s *Session) Metadata() backend.SessionMetadata {
 		Cwd:       s.cwd,
 		Alias:     s.alias,
 		WinID:     s.winID,
+		Backend:   s.backendName,
 		CreatedAt: s.createdAt,
 		Extra: map[string]string{
 			"tmux_session": s.tmuxSession,

@@ -26,7 +26,7 @@ import (
 Filesystem layout:
 
 agent/
-    ctl                 (write) "new [cwd]" creates session, returns id
+    ctl                 (write) "new <backend> <cwd>" creates session, returns id
     list                (read)  list sessions: "id state pid cwd"
     {session-id}/
         ctl             (write) "save [path]", "load path", "kill"
@@ -35,8 +35,9 @@ agent/
         err             (read)  stderr/debug output
         winid           (r/w)   acme window id
         state           (read)  "running" or "idle"
-        pid             (read)  kiro-cli process id
+        pid             (read)  process id
         cwd             (read)  working directory
+        backend         (read)  backend name (e.g., "kiro-cli", "claude")
 */
 
 const (
@@ -63,10 +64,11 @@ const (
 	filePid
 	fileCwd
 	fileAlias
+	fileBackend
 	fileCount
 )
 
-var fileNames = []string{"ctl", "in", "out", "err", "winid", "state", "pid", "cwd", "alias"}
+var fileNames = []string{"ctl", "in", "out", "err", "winid", "state", "pid", "cwd", "alias", "backend"}
 
 type Server struct {
 	mgr           *session.Manager
@@ -297,14 +299,15 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	// /ctl - create new session
 	if f.path == "/ctl" {
 		args := strings.Fields(input)
-		if len(args) == 0 || args[0] != "new" {
-			return errFcall(fc, "usage: new [cwd]")
+		if len(args) < 2 || args[0] != "new" {
+			return errFcall(fc, "usage: new <backend> <cwd>")
 		}
+		backendName := args[1]
 		cwd, _ := os.Getwd()
-		if len(args) > 1 {
-			cwd = args[1]
+		if len(args) > 2 {
+			cwd = args[2]
 		}
-		sess, err := s.mgr.New(cwd)
+		sess, err := s.mgr.New(backendName, cwd)
 		if err != nil {
 			return errFcall(fc, err.Error())
 		}
@@ -523,6 +526,8 @@ func (s *Server) getSessionFile(sess backend.Session, idx int) string {
 			return sess.ID()
 		}
 		return meta.Alias
+	case fileBackend:
+		return meta.Backend
 	}
 	return ""
 }

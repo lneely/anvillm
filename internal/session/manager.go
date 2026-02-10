@@ -9,23 +9,31 @@ import (
 
 // Manager holds all active sessions
 type Manager struct {
-	backend  backend.Backend
+	backends map[string]backend.Backend
 	sessions map[string]backend.Session
 	mu       sync.RWMutex
 }
 
-// NewManager creates a session manager with the given backend
-func NewManager(b backend.Backend) *Manager {
+// NewManager creates a session manager with the given backends
+func NewManager(backends map[string]backend.Backend) *Manager {
 	m := &Manager{
-		backend:  b,
+		backends: backends,
 	}
 	m.sessions = make(map[string]backend.Session)
 	return m
 }
 
-// New creates a new session in the given working directory
-func (m *Manager) New(cwd string) (backend.Session, error) {
-	sess, err := m.backend.CreateSession(context.Background(), cwd)
+// New creates a new session in the given working directory using the specified backend
+func (m *Manager) New(backendName, cwd string) (backend.Session, error) {
+	m.mu.RLock()
+	b, ok := m.backends[backendName]
+	m.mu.RUnlock()
+
+	if !ok {
+		return nil, backend.ErrBackendNotFound
+	}
+
+	sess, err := b.CreateSession(context.Background(), cwd)
 	if err != nil {
 		return nil, err
 	}
