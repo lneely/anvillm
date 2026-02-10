@@ -174,21 +174,29 @@ func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error
 }
 
 func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
+	// Acquire lock for initial validation and state change
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if s.fifo == nil {
+		s.mu.Unlock()
 		return "", fmt.Errorf("session not running")
 	}
 
 	if s.state == "starting" {
+		s.mu.Unlock()
 		return "", fmt.Errorf("session still starting")
+	}
+
+	if s.state == "running" {
+		s.mu.Unlock()
+		return "", fmt.Errorf("session busy")
 	}
 
 	// Check command support if applicable
 	if strings.HasPrefix(prompt, "/") && s.commands != nil {
 		if !s.commands.IsSupported(prompt) {
 			cmd := strings.Fields(prompt)[0]
+			s.mu.Unlock()
 			return "", fmt.Errorf("slash command not supported: %s (attach to window: tmux select-window -t %s)", cmd, s.target())
 		}
 	}
@@ -203,25 +211,38 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	s.state = "running"
 	s.output.Reset()
 
+	// Release lock during long-running operations so state can be read
+	s.mu.Unlock()
+
 	log.Printf("[session %s] sending: %q", s.id, prompt)
 
 	// Send prompt using literal mode to avoid special character interpretation
 	if err := sendLiteral(s.target(), prompt); err != nil {
+		s.mu.Lock()
 		s.state = "idle"
+		s.mu.Unlock()
 		return "", fmt.Errorf("send literal failed: %w", err)
 	}
 
 	// Send Enter
 	if err := sendKeys(s.target(), "C-m"); err != nil {
+		s.mu.Lock()
 		s.state = "idle"
+		s.mu.Unlock()
 		return "", fmt.Errorf("send enter failed: %w", err)
 	}
 
-	// Wait for completion
+	// Wait for completion (without holding lock so state can be read)
 	if err := s.waitForComplete(ctx, prompt); err != nil {
+		s.mu.Lock()
 		s.state = "idle"
+		s.mu.Unlock()
 		return "", err
 	}
+
+	// Re-acquire lock for final state change and cleanup
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	s.state = "idle"
 
