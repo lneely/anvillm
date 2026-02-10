@@ -87,7 +87,7 @@ Each session opens a new `$PWD/+Chat.<session-id>` window where you can:
 ### Session Management Commands
 
 #### Main Window (`/AnviLLM/`)
-- **Open** `<session-id>` - Reopen a session window (2-1 chord with session ID highlighted)
+- **Open** `<session-id>` - Reopen a session window (2-1 chord with session ID highlighted). Or, just right-click the session ID!
 - **Kill** `<pid>` - Terminate a session (2-1 chord with pid highlighted)
 
 #### Chat Windows (`/chat/<backend>/<id>`)
@@ -100,24 +100,23 @@ Each session opens a new `$PWD/+Chat.<session-id>` window where you can:
 
 ## 9P Filesystem
 
-AnviLLM exports a 9P filesystem at `/mnt/anvillm`:
+AnviLLM exports a 9P filesystem at `agent`:
 
 ```
-/mnt/anvillm/
-└── agent/
-    ├── ctl                 # Control file (create new sessions)
-    ├── list                # list of active sessions
-    └── <session-id>/
-        ├── in           # Write prompts here
-        ├── out         # Read responses here
-        ├── err        # Error output
-        ├── ctl         # Session control (stop, close)
-        ├── state       # Current state (idle, running, exited)
-        ├── pid         # Process ID
-        ├── cwd         # Working directory
-        ├── alias       # Session alias
-        ├── winid       # Acme window ID
-        └── backend     # Backend name (claude, kiro-cli)
+agent/
+└── ctl             # Control file (create new sessions)
+└── list            # list of active sessions
+└── <session-id>/
+    ├── in          # Write prompts here
+    ├── out         # Read responses here
+    ├── err         # Error output
+    ├── ctl         # Session control (stop, close)
+    ├── state       # Current state (idle, running, exited)
+    ├── pid         # Process ID
+    ├── cwd         # Working directory
+    ├── alias       # Session alias
+    ├── winid       # Acme window ID
+    └── backend     # Backend name (claude, kiro-cli)
 ```
 
 ### 9P Usage Examples
@@ -130,12 +129,12 @@ echo 'new claude /home/user/project' > agent/ctl
 Send a prompt:
 ```sh
 echo 'What is the capital of France?' > agent/a3f2b9d1/in
-cat /mnt/anvillm/agent/a3f2b9d1/out
+9p read agent/a3f2b9d1/out
 ```
 
 Check session state:
 ```sh
-cat agent/a3f2b9d1/state
+9p read agent/a3f2b9d1/state
 # Output: idle
 ```
 
