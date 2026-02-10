@@ -309,7 +309,7 @@ func (s *Session) waitForComplete(ctx context.Context, prompt string) error {
 						if ok {
 							s.output.Write(extra)
 						}
-					case <-time.After(10 * time.Millisecond):
+					case <-time.After(200 * time.Millisecond):
 						debug.Log("[session %s] response complete, %d bytes", s.id, s.output.Len())
 						return nil
 					}

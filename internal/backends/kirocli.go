@@ -47,7 +47,7 @@ func (d *kiroDetector) IsComplete(prompt string, output string) bool {
 	isCommand := strings.HasPrefix(strings.TrimSpace(prompt), "/")
 
 	if isCommand {
-		// Slash commands: wait for next prompt line [agent] >
+		// Slash commands: wait for next prompt line: [agent] > or !>
 		clean := stripANSI(output)
 		clean = strings.ReplaceAll(clean, "\r", "")
 
@@ -56,10 +56,12 @@ func (d *kiroDetector) IsComplete(prompt string, output string) bool {
 			return false
 		}
 
-		// Look for prompt pattern: [something] >
+		// Look for prompt pattern: [something] > or !>
 		lines := strings.Split(clean, "\n")
 		for i := len(lines) - 1; i >= 0; i-- {
-			if strings.Contains(lines[i], "] ") && strings.Contains(lines[i], ">") {
+			line := strings.TrimSpace(lines[i])
+			// Match either [agent] > or !>
+			if (strings.Contains(line, "] ") && strings.Contains(line, ">")) || strings.HasPrefix(line, "!>") {
 				return true
 			}
 		}
@@ -199,13 +201,23 @@ func (c *kiroCleaner) cleanCommand(raw string) string {
 			continue
 		}
 
-		// Detect prompt lines: [agent] >
-		isPrompt := strings.Contains(line, "[") && strings.Contains(line, "]") && strings.Contains(line, ">")
+		// Detect prompt lines: [agent] > or !>
+		isPrompt := (strings.Contains(line, "[") && strings.Contains(line, "]") && strings.Contains(line, ">")) ||
+			strings.HasPrefix(trimmed, "!>")
 
 		if isPrompt {
 			if collecting {
 				break // Second prompt = end
 			}
+			continue
+		}
+
+		// Check for summary line (contains "> ") - might be mixed with noise
+		if idx := strings.Index(trimmed, "> "); idx >= 0 {
+			// Extract everything from "> " onwards
+			summary := strings.TrimSpace(trimmed[idx:])
+			collecting = true
+			result = append(result, summary)
 			continue
 		}
 
