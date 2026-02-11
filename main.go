@@ -20,7 +20,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	"9fans.net/go/acme"
 )
@@ -99,19 +98,27 @@ func main() {
 	refreshList(w, mgr)
 	w.Ctl("clean")
 
-	// Periodic refresh
-	go func() {
-		for range time.Tick(5 * time.Second) {
-			refreshList(w, mgr)
-		}
-	}()
-
 	// Event loop
 	for e := range w.EventChan() {
 		switch e.C2 {
 		case 'x', 'X':
 			cmd := string(e.Text)
 			arg := strings.TrimSpace(string(e.Arg))
+
+			// Fire-and-forget: B2 on session ID sends selected text as prompt
+			if matched, _ := regexp.MatchString(`^[a-f0-9]{8}$`, cmd); matched {
+				if sess := mgr.Get(cmd); sess != nil {
+					// Get selected text from this window
+					if e.OrigQ0 != e.OrigQ1 {
+						w.Addr("#%d,#%d", e.OrigQ0, e.OrigQ1)
+						prompt, _ := w.ReadAll("xdata")
+						if len(prompt) > 0 {
+							go sess.Send(context.Background(), string(prompt))
+						}
+					}
+				}
+				continue
+			}
 
 			// Handle "Kiro /path", "Claude /path", "Kill <pid>", "Open <id>" typed directly in tag
 			if strings.HasPrefix(cmd, "Kiro ") {
