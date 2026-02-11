@@ -138,17 +138,11 @@ func main() {
 					fmt.Fprintf(os.Stderr, "Error: Kiro requires a path argument\n")
 					continue
 				}
-				sess, err := mgr.New("kiro-cli", arg)
+				_, err := mgr.New("kiro-cli", arg)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 					continue
 				}
-				_, err = openChatWindow(sess)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error opening chat: %v\n", err)
-					continue
-				}
-				// WinID is set inside openChatWindow
 				refreshList(w, mgr)
 			case "Claude":
 				// Require path argument
@@ -156,17 +150,11 @@ func main() {
 					fmt.Fprintf(os.Stderr, "Error: Claude requires a path argument\n")
 					continue
 				}
-				sess, err := mgr.New("claude", arg)
+				_, err := mgr.New("claude", arg)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 					continue
 				}
-				_, err = openChatWindow(sess)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error opening chat: %v\n", err)
-					continue
-				}
-				// WinID is set inside openChatWindow
 				refreshList(w, mgr)
 			case "Open":
 				if arg == "" {
