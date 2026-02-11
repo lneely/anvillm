@@ -1,7 +1,5 @@
 # IDEAS.md
 
-Vision: An LLM orchestrator that automates tasks with LLMs using Acme as the interface.
-
 ## Shared Context
 
 Inject context from one session into another.

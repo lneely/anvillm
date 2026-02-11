@@ -102,6 +102,20 @@ Each session opens a new `$PWD/+Chat.<session-id>` window where you can:
 - **Attach** - Open the tmux window for direct terminal access
 - **Stop** - Interrupt the current running prompt (CTRL+C)
 
+#### Fire-and-Forget Prompts
+
+Select text anywhere in Acme, then 2-1 chord on a session ID (the 8-character hex ID shown in `/AnviLLM/`). The selected text is sent as a prompt to that session without switching windows.
+
+### Notifications
+
+The `anvillm-notify` script monitors sessions and sends desktop notifications when a session finishes working (transitions from running to idle).
+
+```sh
+anvillm-notify &
+```
+
+Requires `notify-send` (libnotify).
+
 ## 9P Filesystem
 
 AnviLLM exports a 9P filesystem at `agent`:
