@@ -98,24 +98,23 @@ func (c *kiroCleaner) cleanResponse(raw string) string {
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
-		// Look for user prompt (starts with "!>")
-		if !foundUserPrompt && strings.HasPrefix(trimmed, "!>") {
+		// Look for user prompt: "!>" or "[agent] !>"
+		if !foundUserPrompt && strings.Contains(trimmed, "!>") {
 			foundUserPrompt = true
 			continue
 		}
 
-		// Skip echoed user input (the line right after !> that doesn't have markers)
-		if foundUserPrompt && !inResponse && trimmed != "" &&
-			!strings.Contains(trimmed, "Thinking...") &&
-			!strings.Contains(trimmed, "I will run") &&
-			!strings.Contains(trimmed, "using tool:") &&
-			!strings.Contains(trimmed, "Purpose:") &&
-			!strings.Contains(trimmed, ">") {
-			continue
+		// Skip echoed user input until we see response marker "> " (but not "!> ")
+		if foundUserPrompt && !inResponse && trimmed != "" {
+			// Response marker is "> " not preceded by "!"
+			idx := strings.Index(trimmed, "> ")
+			if idx < 0 || (idx > 0 && trimmed[idx-1] == '!') {
+				continue
+			}
 		}
 
-		// Stop at next prompt (starts with "!>") - but only after we've started collecting
-		if foundUserPrompt && inResponse && strings.HasPrefix(trimmed, "!>") {
+		// Stop at next prompt containing "!>"
+		if foundUserPrompt && inResponse && strings.Contains(trimmed, "!>") {
 			break
 		}
 
