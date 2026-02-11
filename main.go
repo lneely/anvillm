@@ -106,15 +106,11 @@ func main() {
 			arg := strings.TrimSpace(string(e.Arg))
 
 			// Fire-and-forget: B2 on session ID sends selected text as prompt
+			// In a 2-1 chord, the selection comes through as e.Arg
 			if matched, _ := regexp.MatchString(`^[a-f0-9]{8}$`, cmd); matched {
 				if sess := mgr.Get(cmd); sess != nil {
-					// Get selected text from this window
-					if e.OrigQ0 != e.OrigQ1 {
-						w.Addr("#%d,#%d", e.OrigQ0, e.OrigQ1)
-						prompt, _ := w.ReadAll("xdata")
-						if len(prompt) > 0 {
-							go sess.Send(context.Background(), string(prompt))
-						}
+					if len(e.Arg) > 0 {
+						go sess.Send(context.Background(), string(e.Arg))
 					}
 				}
 				continue
