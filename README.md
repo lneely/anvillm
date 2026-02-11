@@ -50,6 +50,10 @@ AnviLLM brings Claude, Kiro, and other LLM chat interfaces directly into your Ac
 - **Go 1.21+** (for building)
 - **Plan 9 from User Space** (plan9port) - provides Acme and 9P tools
 - **tmux** - session isolation and management
+- **landrun** - sandboxing tool (optional but recommended)
+  - Install: `go install github.com/landlock-lsm/landrun@latest`
+  - Requires Linux kernel 5.13+ with Landlock support
+  - See Sandboxing section below for kernel version details
 - **At least one backend CLI**:
   - [Claude Code CLI](https://github.com/anthropics/claude-code) - Anthropic's official CLI
   - [kiro-cli](https://github.com/stillmatic/kiro) - Alternative Claude interface
@@ -231,17 +235,57 @@ landrun --rw /project --rox /usr --connect-tcp 443 -- claude --dangerously-skip-
 
 ### Quick Start
 
-Sandboxing is **enabled by default** with a locked-down policy:
-- **Filesystem**: Read/write access to session working directory only
+Sandboxing is **ALWAYS ENABLED** and **cannot be disabled**. The default policy is **locked-down**:
+- **Filesystem**: Read/write access to session working directory, temp dir, and config dirs only
 - **System binaries**: Read-only + execute access to `/usr`, `/lib`, `/bin`, `/sbin`
-- **Network**: HTTPS (port 443) for API calls
-- **Config files**: Access to `~/.claude`, `~/.kiro`, `~/.config/anvillm`
+- **System files**: Read-only access to essential files (`/etc/passwd`, `/dev/null`, `/proc/meminfo`, etc.)
+- **Network**: Unrestricted (works on all kernel versions; fine-grained control requires kernel 6.10+)
+- **Config files**: Access to `~/.claude`, `~/.claude.json`, `~/.kiro`, `~/.config/anvillm`
+
+**Security philosophy**:
+AnviLLM runs backends with `--dangerously-skip-permissions` and `--trust-all-tools`, giving LLMs full access within their sandbox. **The sandbox is the ONLY safety layer.** Therefore, sandboxing cannot be disabled.
+
+**Important defaults**:
+- **Sandboxing: ALWAYS ENABLED** - No config option to disable
+- **`best_effort: false`** (strict mode - RECOMMENDED): Sessions **fail** if sandboxing cannot be applied
+  - Prevents accidentally running with ZERO restrictions when:
+    - `landrun` is not installed or not in PATH
+    - Kernel doesn't support Landlock (< 5.13)
+  - Security-first: Explicit failure is safer than silent degradation to completely unsandboxed mode
+  - **Do NOT change to `true`** unless you understand the security implications (see Troubleshooting below)
+- **`unrestricted: true`** for network: Works on all kernel versions (fine-grained port control requires kernel 6.10+)
+
+The default policy provides strong filesystem isolation while maintaining compatibility with older kernels.
 
 ### Requirements
 
 - **landrun**: Install with `go install github.com/landlock-lsm/landrun@latest`
-- **Linux Kernel**: 5.13+ with Landlock support
-- **Fallback**: Runs unsandboxed if landrun unavailable (best-effort mode)
+- **Linux Kernel with Landlock**:
+  - **Kernel 5.13+** (Landlock ABI v1): Basic filesystem restrictions
+  - **Kernel 6.7+** (Landlock ABI v4): Improved filesystem control
+  - **Kernel 6.10+** (Landlock ABI v5): Network restrictions (TCP port control)
+
+### Modes
+
+- **Strict mode** (default, `best_effort: false`):
+  - Sessions **fail** if sandboxing cannot be applied
+  - Prevents accidentally running unsandboxed
+  - Security-first: Explicit failure rather than silent degradation
+- **Best-effort mode** (`best_effort: true`):
+  - Gracefully degrades to older Landlock ABI versions if needed
+  - **CRITICAL**: If `landrun` binary not in PATH → command runs without landrun wrapper (ZERO restrictions)
+  - **CRITICAL**: If kernel lacks Landlock (< 5.13) → landrun wrapper present but ineffective (ZERO restrictions)
+  - Prints warning to stderr but no error returned - session starts successfully
+  - Recommended for kernels < 6.10 when you need ABI v5 features but want graceful degradation
+
+**Security implications of best-effort mode**:
+- Two failure modes that result in **completely unsandboxed** execution:
+  1. **`landrun` binary missing**: Backend runs directly without sandbox wrapper
+  2. **Kernel lacks Landlock**: Backend runs with landrun wrapper that cannot enforce restrictions
+- Either case: No filesystem isolation, no network restrictions - full system access
+- Use only when you understand and accept this tradeoff
+
+**Note**: Default config uses unrestricted network access (works on any kernel). Fine-grained network restrictions (port-specific) require ABI v5 (kernel 6.10+).
 
 ### Configuration
 
@@ -301,12 +345,6 @@ filesystem:
     - "/bin"
 ```
 
-#### Disabled (Testing Only)
-```yaml
-general:
-  enabled: false
-```
-
 ### Security Model
 
 **Default protections**:
@@ -321,18 +359,89 @@ general:
 
 ### Troubleshooting
 
+**Session fails to launch with "missing kernel Landlock support" or ABI version error?**
+
+This happens when landrun requires a newer Landlock ABI than your kernel provides. Check your kernel version:
+```sh
+uname -r
+# Kernel 6.8 = Landlock ABI v4
+# Kernel 6.10+ = Landlock ABI v5
+```
+
+**Why this happens**: By default, AnviLLM uses **strict mode** (`best_effort: false`). Sessions fail if sandboxing cannot be fully applied, rather than silently falling back to unsandboxed execution. This is intentional for security.
+
+**Solution 1: Enable best-effort mode** (recommended for kernel < 6.10)
+
+Edit `~/.config/anvillm/sandbox.yaml`:
+```yaml
+general:
+  best_effort: true  # Gracefully degrade if ABI too old
+```
+
+This allows sandboxing to gracefully degrade when network restrictions aren't available (requires ABI v5). Filesystem restrictions will still be enforced on kernels with Landlock support (ABI v1+, kernel 5.13+).
+
+**CRITICAL SECURITY WARNING**: With `best_effort: true`:
+- If `landrun` binary is not in PATH → runs with **ZERO restrictions** (completely unsandboxed)
+  - AnviLLM omits landrun from the command entirely
+  - Backend runs directly: `claude --dangerously-skip-permissions` (no sandbox wrapper)
+  - Warning printed to stderr: "landrun not available, running unsandboxed"
+- If `landrun` IS in PATH but kernel lacks Landlock support (< 5.13) → runs with **ZERO restrictions** (completely unsandboxed)
+  - AnviLLM wraps command: `landrun --best-effort ... -- claude ...`
+  - landrun executes but internally uses go-landlock library in BestEffort mode
+  - go-landlock silently succeeds without applying any restrictions (no error from library)
+  - Backend runs with landrun wrapper present but ineffective
+- If ABI version too old (e.g., kernel 6.8 with v4 when v5 needed) → degrades gracefully
+  - landrun runs with available ABI version (filesystem restrictions still enforced)
+  - Network restrictions skipped if not supported by kernel
+  - Partial sandboxing maintained
+
+Only enable best-effort mode if you understand and accept the possibility of running completely unsandboxed.
+
+**Solution 2: Upgrade your kernel**
+
+Install kernel 6.10+ for full Landlock ABI v5 support with network restrictions.
+
+**Solution 3: Disable network restrictions** (already default)
+
+The default config uses `unrestricted: true` for network access, which works on older kernels.
+
 **Landrun not available?**
 - Install: `go install github.com/landlock-lsm/landrun@latest`
+- Verify: `which landrun` should show the path (e.g., `/home/user/go/bin/landrun`)
 - Check status: Click `Sandbox` → `Status` in AnviLLM
+- **Default behavior** (`best_effort: false`): Sessions **fail** if landrun binary is missing (secure)
+  - Error printed to stderr: "sandboxing enabled but landrun not available"
+  - Session creation aborted - no backend process started
+- **With** `best_effort: true`: Backend runs **without landrun wrapper** if binary is missing (DANGEROUS)
+  - landrun completely omitted from command
+  - Backend executes directly: `claude --dangerously-skip-permissions`
+  - No filesystem isolation - full read/write access to entire system
+  - No network restrictions - unrestricted network access
+  - Warning printed to stderr but session starts successfully
 
-**Network errors?**
-- Ensure `connect_tcp = ["443"]` in config for API calls
-- Or set `unrestricted = true` for full network access
+**Recommendation**: Keep `best_effort: false` unless you have a specific need for graceful degradation and understand the security implications.
+
+**Backend fails with permission denied errors?**
+
+Node.js-based backends (Claude, Kiro) require specific system files. The default config includes these, but if you've modified it, ensure you have:
+
+```yaml
+filesystem:
+  ro:
+    - /etc/passwd       # Required: Node.js UID→homedir lookup
+    - /dev/null         # Required: null device
+    - /proc/meminfo     # Required: memory info
+    - /proc/self/cgroup # Required: cgroup info
+    - /proc/self/maps   # Required: process memory maps
+    - /proc/version     # Required: kernel version
+  rw:
+    - '{HOME}/.claude.json'  # Claude config file
+```
 
 **File access denied?**
 - Add required paths to `rw` or `ro` in config
-- Example for SSH keys: `ro = ["{HOME}/.ssh"]`
-- Example for NPM: `rw = ["{HOME}/.npm", "{HOME}/.cache"]`
+- Example for SSH keys: `ro: ["{HOME}/.ssh"]`
+- Example for NPM: `rw: ["{HOME}/.npm", "{HOME}/.cache"]`
 
 **Check sandbox status**:
 ```sh
@@ -341,11 +450,24 @@ cat ~/.config/anvillm/sandbox.yaml
 
 # Test landrun availability
 landrun --version
+
+# Check kernel Landlock ABI version
+dmesg | grep -i landlock
 ```
+
+**Error messages**:
+Launch errors are printed to stderr regardless of debug mode. If a session fails to start, check the error output for specific issues.
 
 For more details, see [landrun documentation](https://github.com/landlock-lsm/landrun).
 
 ## Troubleshooting
+
+### Session fails to start
+
+If sessions fail to launch, error messages are printed to stderr. Common causes:
+- **Sandboxing issues**: See Sandboxing → Troubleshooting section above
+- **Backend not installed**: Run `which claude` or `which kiro-cli`
+- **Landlock ABI mismatch**: Enable `best_effort: true` in sandbox config (see above)
 
 ### "Backend not found" error
 

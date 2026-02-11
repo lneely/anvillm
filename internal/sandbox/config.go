@@ -18,7 +18,6 @@ type Config struct {
 
 // GeneralConfig contains general sandbox settings
 type GeneralConfig struct {
-	Enabled    bool   `yaml:"enabled"`
 	BestEffort bool   `yaml:"best_effort"`
 	LogLevel   string `yaml:"log_level"`
 }
@@ -49,7 +48,6 @@ type AdvancedConfig struct {
 func DefaultConfig() *Config {
 	return &Config{
 		General: GeneralConfig{
-			Enabled:    true,
 			BestEffort: false, // Fail-closed: refuse to run if sandboxing unavailable
 			LogLevel:   "error",
 		},

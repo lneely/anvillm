@@ -174,25 +174,24 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 		fifoOpenCh <- f
 	}()
 
-	// 7. Wrap command with landrun if sandboxing enabled
+	// 7. Wrap command with landrun (ALWAYS - sandboxing cannot be disabled)
 	command := b.cfg.Command
-	if sandboxCfg.General.Enabled {
-		if !sandbox.IsAvailable() {
-			if sandboxCfg.General.BestEffort {
-				fmt.Fprintf(os.Stderr, "Warning: landrun not available, running unsandboxed (best-effort mode)\n")
-			} else {
-				os.Remove(fifoPath)
-				killWindow(b.tmuxSession, windowName)
-				fmt.Fprintf(os.Stderr, "Error: sandboxing enabled but landrun not available\n")
-				fmt.Fprintf(os.Stderr, "Install landrun or enable best_effort mode in ~/.config/anvillm/sandbox.yaml\n")
-				return nil, fmt.Errorf("sandboxing enabled but landrun not available")
-			}
+	if !sandbox.IsAvailable() {
+		if sandboxCfg.General.BestEffort {
+			fmt.Fprintf(os.Stderr, "WARNING: landrun not available, running UNSANDBOXED (best-effort mode)\n")
+			fmt.Fprintf(os.Stderr, "WARNING: No filesystem or network restrictions will be enforced!\n")
+			fmt.Fprintf(os.Stderr, "Install landrun: go install github.com/landlock-lsm/landrun@latest\n")
+		} else {
+			os.Remove(fifoPath)
+			killWindow(b.tmuxSession, windowName)
+			fmt.Fprintf(os.Stderr, "ERROR: landrun not available and sandboxing is required\n")
+			fmt.Fprintf(os.Stderr, "Install landrun: go install github.com/landlock-lsm/landrun@latest\n")
+			fmt.Fprintf(os.Stderr, "Or enable best_effort mode in ~/.config/anvillm/sandbox.yaml (NOT RECOMMENDED)\n")
+			return nil, fmt.Errorf("landrun not available")
 		}
-		command = sandbox.WrapCommand(sandboxCfg, command, cwd)
-		debug.Log("[session %s] sandboxed command: %v", id, command)
-	} else {
-		debug.Log("[session %s] unsandboxed command: %v", id, command)
 	}
+	command = sandbox.WrapCommand(sandboxCfg, command, cwd)
+	debug.Log("[session %s] sandboxed command: %v", id, command)
 
 	// 8. Build command string for tmux
 	cmdStr := ""

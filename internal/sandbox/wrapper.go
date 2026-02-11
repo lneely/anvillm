@@ -7,15 +7,11 @@ import (
 )
 
 // WrapCommand wraps a command with landrun based on the configuration.
-// Returns the wrapped command args, or the original command if sandboxing is disabled.
+// Returns the wrapped command args, or the original command if landrun is unavailable.
 func WrapCommand(cfg *Config, originalCmd []string, cwd string) []string {
-	if !cfg.General.Enabled {
-		return originalCmd
-	}
-
 	if !IsAvailable() {
 		if cfg.General.BestEffort {
-			// Silently fall back to unsandboxed execution
+			// Fall back to unsandboxed execution (caller will warn)
 			return originalCmd
 		}
 		// Strict mode: would fail, but caller should check IsAvailable() first
@@ -104,16 +100,12 @@ func WrapCommand(cfg *Config, originalCmd []string, cwd string) []string {
 func BuildSummary(cfg *Config) string {
 	var lines []string
 
-	if !cfg.General.Enabled {
-		return "Sandboxing: DISABLED"
-	}
-
-	lines = append(lines, "Sandboxing: ENABLED")
+	lines = append(lines, "Sandboxing: ALWAYS ENABLED (cannot be disabled)")
 
 	if cfg.General.BestEffort {
-		lines = append(lines, "  Mode: Best-effort (fallback if landrun unavailable)")
+		lines = append(lines, "  Mode: Best-effort (fallback to unsandboxed if landrun unavailable - WARNING)")
 	} else {
-		lines = append(lines, "  Mode: Strict (require landrun)")
+		lines = append(lines, "  Mode: Strict (fail if landrun unavailable - RECOMMENDED)")
 	}
 
 	// Filesystem
