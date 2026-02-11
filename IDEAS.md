@@ -11,16 +11,6 @@ Implementation sketch:
 - Extract selected text from current window as the prompt
 - Send prompt to the target session's tmux pane via `tmux send-keys`
 
-## Notification on State Change
-
-External polling script monitors 9p state files. When state changes from "running" to "idle", send desktop notification: "session {id} ({alias}) completed its work."
-
-Implementation sketch:
-- Poll `/mnt/anvillm/sessions/*/state` periodically
-- Track previous state per session
-- On transition running→idle, call `notify-send` or similar
-- Bonus: watch all sessions, report which one finished
-
 ## Shared Context
 
 Inject context from one session into another.

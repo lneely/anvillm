@@ -1,0 +1,44 @@
+#!/bin/sh
+
+# Poll all anvillm sessions and notify on running->idle transitions
+
+# Track previous states: session_id=state
+prev_states=""
+
+get_sessions() {
+	9p read agent/list 2>/dev/null | awk '{print $1}'
+}
+
+get_state() {
+	9p read "agent/$1/state" 2>/dev/null
+}
+
+get_alias() {
+	9p read "agent/$1/alias" 2>/dev/null
+}
+
+get_prev() {
+	echo "$prev_states" | tr ' ' '\n' | grep "^$1=" | cut -d= -f2
+}
+
+set_prev() {
+	prev_states=$(echo "$prev_states" | tr ' ' '\n' | grep -v "^$1=" | tr '\n' ' ')
+	prev_states="$prev_states $1=$2"
+}
+
+while true; do
+	for id in $(get_sessions); do
+		[ -z "$id" ] && continue
+		state=$(get_state "$id")
+		prev=$(get_prev "$id")
+		
+		if [ "$prev" = "running" ] && [ "$state" = "idle" ]; then
+			name=$(get_alias "$id")
+			[ -z "$name" ] && name=$id
+			notify-send "session $name completed its work"
+		fi
+		
+		set_prev "$id" "$state"
+	done
+	sleep 1
+done

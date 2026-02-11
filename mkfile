@@ -4,6 +4,8 @@ all:V: install
 
 build:V:
 	go build -o $INSTALL_PATH/Assist .
+	cp anvillm-notify $INSTALL_PATH/anvillm-notify
+	chmod +x $INSTALL_PATH/anvillm-notify
 
 install:V: build
 

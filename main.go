@@ -60,6 +60,15 @@ func main() {
 	}
 	defer srv.Close()
 
+	// Start notification daemon in background
+	notifyCmd := exec.Command("anvillm-notify")
+	notifyCmd.Start()
+	defer func() {
+		if notifyCmd.Process != nil {
+			notifyCmd.Process.Kill()
+		}
+	}()
+
 	// Rename chat window when alias changes
 	var aliasChangeFunc func(Session)
 	aliasChangeFunc = func(sess Session) {
