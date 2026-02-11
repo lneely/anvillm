@@ -3,8 +3,15 @@ package sandbox
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 )
+
+// pathEntry holds a path with its permission type
+type pathEntry struct {
+	path string
+	flag string // --ro, --rox, --rw, --rwx
+}
 
 // WrapCommand wraps a command with landrun based on the configuration.
 // Returns the wrapped command args, or the original command if landrun is unavailable.
@@ -44,36 +51,44 @@ func WrapCommand(cfg *Config, originalCmd []string, cwd string) []string {
 		args = append(args, "--add-exec")
 	}
 
-	// Filesystem permissions - RO (read-only, no execute)
+	// Collect all filesystem paths
+	var entries []pathEntry
 	for _, path := range cfg.Filesystem.RO {
 		expanded := expandPath(path, cwd, home, tmpdir)
 		if pathExists(expanded) {
-			args = append(args, "--ro", expanded)
+			entries = append(entries, pathEntry{expanded, "--ro"})
 		}
 	}
-
-	// Filesystem permissions - ROX (read-only with execute)
 	for _, path := range cfg.Filesystem.ROX {
 		expanded := expandPath(path, cwd, home, tmpdir)
 		if pathExists(expanded) {
-			args = append(args, "--rox", expanded)
+			entries = append(entries, pathEntry{expanded, "--rox"})
 		}
 	}
-
-	// Filesystem permissions - RW (read-write, no execute)
 	for _, path := range cfg.Filesystem.RW {
 		expanded := expandPath(path, cwd, home, tmpdir)
 		if pathExists(expanded) {
-			args = append(args, "--rw", expanded)
+			entries = append(entries, pathEntry{expanded, "--rw"})
 		}
 	}
-
-	// Filesystem permissions - RWX (read-write with execute)
 	for _, path := range cfg.Filesystem.RWX {
 		expanded := expandPath(path, cwd, home, tmpdir)
 		if pathExists(expanded) {
-			args = append(args, "--rwx", expanded)
+			entries = append(entries, pathEntry{expanded, "--rwx"})
 		}
+	}
+
+	// Sort paths so parents come before children (shorter paths first, then alphabetically)
+	sort.Slice(entries, func(i, j int) bool {
+		if len(entries[i].path) != len(entries[j].path) {
+			return len(entries[i].path) < len(entries[j].path)
+		}
+		return entries[i].path < entries[j].path
+	})
+
+	// Add sorted paths to args
+	for _, e := range entries {
+		args = append(args, e.flag, e.path)
 	}
 
 	// Network permissions

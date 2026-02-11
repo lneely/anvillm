@@ -4,7 +4,6 @@ package p9
 import (
 	"anvillm/internal/backend"
 	"anvillm/internal/backend/tmux"
-	"anvillm/internal/backends"
 	"anvillm/internal/session"
 	"context"
 	"errors"
@@ -29,7 +28,7 @@ agent/
     ctl                 (write) "new <backend> <cwd>" creates session, returns id
     list                (read)  list sessions: "id state pid cwd"
     {session-id}/
-        ctl             (write) "save [path]", "load path", "kill"
+        ctl             (write) "stop", "kill"
         in              (write) send prompt, blocks until response
         out             (read)  response from last prompt
         err             (read)  stderr/debug output
@@ -322,27 +321,12 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		}
 		args := strings.Fields(input)
 		if len(args) == 0 {
-			return errFcall(fc, "usage: stop | save [path] | load path | kill")
+			return errFcall(fc, "usage: stop | kill")
 		}
 		switch args[0] {
 		case "stop":
 			ctx := context.Background()
 			if err := sess.Stop(ctx); err != nil {
-				return errFcall(fc, err.Error())
-			}
-		case "save":
-			path := backends.SavePath(sess.ID())
-			if len(args) > 1 {
-				path = args[1]
-			}
-			if err := backends.SendCtl(sess, "/chat save "+path); err != nil {
-				return errFcall(fc, err.Error())
-			}
-		case "load":
-			if len(args) < 2 {
-				return errFcall(fc, "load requires path")
-			}
-			if err := backends.Load(sess, args[1]); err != nil {
 				return errFcall(fc, err.Error())
 			}
 		case "kill":

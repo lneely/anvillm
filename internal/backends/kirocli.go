@@ -4,7 +4,6 @@ package backends
 import (
 	"anvillm/internal/backend"
 	"anvillm/internal/backend/tmux"
-	"anvillm/internal/debug"
 	"context"
 	"fmt"
 	"os"
@@ -301,7 +300,7 @@ func stripANSI(s string) string {
 // SessionsDir returns the path to the sessions storage directory
 func SessionsDir() string {
 	home, _ := os.UserHomeDir()
-	dir := filepath.Join(home, ".config", "acme-q", "sessions")
+	dir := filepath.Join(home, ".config", "anvillm", "sessions")
 	os.MkdirAll(dir, 0755)
 	return dir
 }
@@ -395,48 +394,8 @@ func contains(slice []string, item string) bool {
 	return false
 }
 
-// SavePath returns the save file path for a session ID
-func SavePath(id string) string {
-	return filepath.Join(SessionsDir(), id+".json")
-}
-
 // SendCtl is a helper to send a control command to kiro-cli
 func SendCtl(sess backend.Session, cmd string) error {
 	_, err := sess.Send(context.Background(), cmd)
 	return err
-}
-
-// Save saves a session using kiro-cli's /chat save command
-func Save(sess backend.Session, id string) error {
-	return SendCtl(sess, "/chat save "+SavePath(id))
-}
-
-// Load loads a session using kiro-cli's /chat load command
-func Load(sess backend.Session, path string) error {
-	return SendCtl(sess, "/chat load "+path)
-}
-
-// SaveWithSmartFilename saves with a generated filename
-func SaveWithSmartFilename(sess backend.Session, id string, bodyText string) (string, error) {
-	tempPath := SavePath(id)
-	if err := SendCtl(sess, "/chat save "+tempPath); err != nil {
-		return "", err
-	}
-
-	smartPath, err := GenerateSmartFilename(tempPath, bodyText)
-	if err != nil {
-		debug.Log("[session %s] Smart filename failed: %v, keeping %s", id, err, tempPath)
-		return tempPath, nil
-	}
-
-	if smartPath != tempPath {
-		if err := os.Rename(tempPath, smartPath); err == nil {
-			return smartPath, nil
-		} else {
-			debug.Log("[session %s] Rename failed: %v", id, err)
-			return tempPath, nil
-		}
-	}
-
-	return smartPath, nil
 }

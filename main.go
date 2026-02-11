@@ -297,7 +297,7 @@ func openChatWindow(sess backend.Session) (*acme.Win, error) {
 		return nil, err
 	}
 	w.Name(name)
-	w.Write("tag", []byte("Send Stop Attach Alias Save Sessions "))
+	w.Write("tag", []byte("Send Stop Attach Alias Sessions "))
 	w.Fprintf("body", "# Session %s\n# cwd: %s\n\nUSER:\n", sess.ID(), meta.Cwd)
 	w.Ctl("clean")
 
@@ -372,32 +372,6 @@ func handleChatWindow(w *acme.Win, sess backend.Session) {
 				newName := filepath.Join(meta.Cwd, fmt.Sprintf("+Chat.%s", arg))
 				w.Name(newName)
 				fmt.Printf("Alias set to %s\n", arg)
-			case "Save":
-				// Grab first part of window content for filename hints
-				var bodyText string
-				if body, err := w.ReadAll("body"); err == nil && len(body) > 0 {
-					if len(body) > 500 {
-						body = body[:500]
-					}
-					bodyText = string(body)
-				}
-				go func() {
-					var savePath string
-					var err error
-					if arg != "" {
-						// Save to explicit path
-						savePath = arg
-						err = backends.SendCtl(sess, "/chat save "+savePath)
-					} else {
-						// Save with smart filename
-						savePath, err = backends.SaveWithSmartFilename(sess, sess.ID(), bodyText)
-					}
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "Error saving: %v\n", err)
-						return
-					}
-					fmt.Printf("Saved to %s\n", savePath)
-				}()
 			case "Sessions":
 				openSessionsWindow(w, sess)
 			default:
