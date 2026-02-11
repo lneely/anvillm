@@ -94,7 +94,7 @@ func main() {
 	defer w.CloseFiles()
 
 	w.Name(windowName)
-	w.Write("tag", []byte("Kiro Claude Open Kill Get Sandbox Login "))
+	w.Write("tag", []byte("Kiro Claude Open Kill Attach Get Sandbox Login "))
 	refreshList(w, mgr)
 	w.Ctl("clean")
 
@@ -214,6 +214,30 @@ func main() {
 					}
 				}
 				refreshList(w, mgr)
+			case "Attach":
+				if arg == "" {
+					fmt.Fprintf(os.Stderr, "Usage: Attach <session-id>\n")
+					continue
+				}
+				sess := mgr.Get(arg)
+				if sess == nil {
+					fmt.Fprintf(os.Stderr, "Session not found: %s\n", arg)
+					continue
+				}
+				meta := sess.Metadata()
+				tmuxSession, hasSession := meta.Extra["tmux_session"]
+				tmuxWindow, hasWindow := meta.Extra["tmux_window"]
+				if hasSession && hasWindow {
+					go func() {
+						target := fmt.Sprintf("%s:%s", tmuxSession, tmuxWindow)
+						cmd := exec.Command(terminalCommand, "-e", "tmux", "attach", "-t", target)
+						if err := cmd.Start(); err != nil {
+							fmt.Fprintf(os.Stderr, "Failed to launch terminal: %v\n", err)
+						}
+					}()
+				} else {
+					fmt.Fprintf(os.Stderr, "Attach not supported: not a tmux-based backend\n")
+				}
 			case "Get":
 				refreshList(w, mgr)
 			case "Debug":
