@@ -142,10 +142,21 @@ func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error
 				return fmt.Errorf("session closed")
 			}
 			s.output.Write(data)
+			output := s.output.String()
+
+			// Check for error patterns that indicate launch failure
+			if strings.Contains(output, "Error:") ||
+			   strings.Contains(output, "ERROR") ||
+			   strings.Contains(output, "Failed to apply sandbox") ||
+			   strings.Contains(output, "missing kernel Landlock support") {
+				fmt.Fprintf(os.Stderr, "Error: backend failed to launch\n")
+				fmt.Fprintf(os.Stderr, "Backend output:\n%s\n", output)
+				return fmt.Errorf("backend launch failed")
+			}
 
 			// If we have a startup handler and it hasn't completed, call it
 			if !startupDone && s.startupHandler != nil {
-				keys, done := s.startupHandler.HandleStartup(s.output.String())
+				keys, done := s.startupHandler.HandleStartup(output)
 				if keys != "" {
 					debug.Log("[session %s] startup handler sending keys: %q", s.id, keys)
 					if err := sendKeys(s.target(), keys); err != nil {
@@ -160,13 +171,20 @@ func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error
 			}
 
 			// Check if ready (only after startup is done)
-			if startupDone && s.detector.IsReady(s.output.String()) {
+			if startupDone && s.detector.IsReady(output) {
 				debug.Log("[session %s] ready detected", s.id)
 				return nil
 			}
 		case <-time.After(time.Until(deadline)):
 			if time.Now().After(deadline) {
-				debug.Log("[session %s] timeout, current output: %s", s.id, s.output.String())
+				output := s.output.String()
+				debug.Log("[session %s] timeout, current output: %s", s.id, output)
+				if output != "" {
+					fmt.Fprintf(os.Stderr, "Error: timeout waiting for backend to be ready\n")
+					fmt.Fprintf(os.Stderr, "Backend output:\n%s\n", output)
+				} else {
+					fmt.Fprintf(os.Stderr, "Error: timeout waiting for backend to be ready (no output received)\n")
+				}
 				return fmt.Errorf("timeout waiting for ready")
 			}
 		}

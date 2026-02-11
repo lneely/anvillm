@@ -4,6 +4,7 @@ package tmux
 import (
 	"anvillm/internal/backend"
 	"anvillm/internal/debug"
+	"anvillm/internal/sandbox"
 	"context"
 	"crypto/rand"
 	"fmt"
@@ -78,6 +79,7 @@ func New(cfg Config) backend.Backend {
 	if cfg.TmuxSize.Cols == 0 {
 		cfg.TmuxSize.Cols = 120
 	}
+
 	return &Backend{
 		cfg:         cfg,
 		tmuxSession: fmt.Sprintf("anvillm-%s", cfg.Name),
@@ -114,6 +116,14 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 	windowName := id // Use session ID as window name
 
 	debug.Log("[session %s] creating window in tmux session %s", id, b.tmuxSession)
+
+	// Load sandbox configuration fresh for each session
+	sandboxCfg, err := sandbox.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading sandbox config: %v (using defaults)\n", err)
+		debug.Log("[session %s] failed to load sandbox config: %v, using defaults", id, err)
+		sandboxCfg = sandbox.DefaultConfig()
+	}
 
 	// 1. Ensure persistent tmux session exists
 	if err := b.ensureTmuxSession(); err != nil {
@@ -164,9 +174,29 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 		fifoOpenCh <- f
 	}()
 
-	// 7. Start the command in tmux window
+	// 7. Wrap command with landrun if sandboxing enabled
+	command := b.cfg.Command
+	if sandboxCfg.General.Enabled {
+		if !sandbox.IsAvailable() {
+			if sandboxCfg.General.BestEffort {
+				fmt.Fprintf(os.Stderr, "Warning: landrun not available, running unsandboxed (best-effort mode)\n")
+			} else {
+				os.Remove(fifoPath)
+				killWindow(b.tmuxSession, windowName)
+				fmt.Fprintf(os.Stderr, "Error: sandboxing enabled but landrun not available\n")
+				fmt.Fprintf(os.Stderr, "Install landrun or enable best_effort mode in ~/.config/anvillm/sandbox.yaml\n")
+				return nil, fmt.Errorf("sandboxing enabled but landrun not available")
+			}
+		}
+		command = sandbox.WrapCommand(sandboxCfg, command, cwd)
+		debug.Log("[session %s] sandboxed command: %v", id, command)
+	} else {
+		debug.Log("[session %s] unsandboxed command: %v", id, command)
+	}
+
+	// 8. Build command string for tmux
 	cmdStr := ""
-	for i, arg := range b.cfg.Command {
+	for i, arg := range command {
 		if i > 0 {
 			cmdStr += " "
 		}
@@ -179,7 +209,7 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 	}
 
 	// Change to working directory first
-	if err := sendKeys(target, "cd", fmt.Sprintf("\"%s\"", cwd), "C-m"); err != nil {
+	if err := sendKeys(target, fmt.Sprintf("cd \"%s\"", cwd), "C-m"); err != nil {
 		os.Remove(fifoPath)
 		killWindow(b.tmuxSession, windowName)
 		return nil, fmt.Errorf("failed to change directory: %w", err)

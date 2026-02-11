@@ -18,7 +18,7 @@ import (
 // NewClaude creates a claude CLI backend
 //
 // Uses tmux backend to handle interactive TUI dialogs programmatically.
-// The startup handler automatically accepts the --dangerously-skip-permissions dialog.
+// Runs with --dangerously-skip-permissions because landrun provides the actual sandboxing.
 //
 // Sessions are automatically saved by Claude to ~/.claude/projects/<dir-path>/<session-id>.jsonl
 func NewClaude() backend.Backend {

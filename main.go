@@ -8,6 +8,7 @@ import (
 	"anvillm/internal/debug"
 	"anvillm/internal/p9"
 	"anvillm/internal/session"
+	"anvillm/internal/ui"
 	"context"
 	"flag"
 	"fmt"
@@ -85,7 +86,7 @@ func main() {
 	defer w.CloseFiles()
 
 	w.Name(windowName)
-	w.Write("tag", []byte("Kiro Claude Open Kill Get Login "))
+	w.Write("tag", []byte("Kiro Claude Open Kill Get Sandbox Login "))
 	refreshList(w, mgr)
 	w.Ctl("clean")
 
@@ -210,6 +211,10 @@ func main() {
 					state = "enabled"
 				}
 				fmt.Printf("Debug mode %s\n", state)
+			case "Sandbox":
+				if err := ui.OpenSandboxWindow(); err != nil {
+					fmt.Fprintf(os.Stderr, "Error opening sandbox window: %v\n", err)
+				}
 			case "Login":
 				cmd := exec.Command("firefox")
 				cmd.Start()

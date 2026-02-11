@@ -216,6 +216,135 @@ Backends create persistent tmux sessions named `anvillm-<backend>`:
 
 These sessions persist across AnviLLM restarts and are cleaned up on exit.
 
+## Sandboxing
+
+AnviLLM uses [landrun](https://github.com/landlock-lsm/landrun) to sandbox backend processes for enhanced security. Sandboxing restricts filesystem and network access for LLM-controlled processes while allowing backends to run with full permissions (`--dangerously-skip-permissions`, `--trust-all-tools`) within the sandbox.
+
+### How It Works
+
+```
+landrun --rw /project --rox /usr --connect-tcp 443 -- claude --dangerously-skip-permissions
+         ↑                                                   ↑
+         Sandbox layer (restricts access)                   Backend runs with full permissions
+                                                             (but only within sandbox)
+```
+
+### Quick Start
+
+Sandboxing is **enabled by default** with a locked-down policy:
+- **Filesystem**: Read/write access to session working directory only
+- **System binaries**: Read-only + execute access to `/usr`, `/lib`, `/bin`, `/sbin`
+- **Network**: HTTPS (port 443) for API calls
+- **Config files**: Access to `~/.claude`, `~/.kiro`, `~/.config/anvillm`
+
+### Requirements
+
+- **landrun**: Install with `go install github.com/landlock-lsm/landrun@latest`
+- **Linux Kernel**: 5.13+ with Landlock support
+- **Fallback**: Runs unsandboxed if landrun unavailable (best-effort mode)
+
+### Configuration
+
+Configure sandboxing via the `Sandbox` tag command in the main `/AnviLLM/` window:
+
+1. Click **Sandbox** to open the configuration window
+2. Click **Edit** to modify `~/.config/anvillm/sandbox.yaml`
+3. Click **Reload** to reload configuration from disk
+4. Create new sessions to apply changes
+
+Configuration file: `~/.config/anvillm/sandbox.yaml`
+
+**Important**: Changes apply to NEW sessions only. Active sessions are NOT affected.
+
+### Path Templates
+
+Use these templates in filesystem paths:
+- `{CWD}` - Session working directory
+- `{HOME}` - User home directory (`~`)
+- `{TMPDIR}` - Temporary directory (`/tmp`)
+
+### Common Configurations
+
+#### Development (Permissive)
+```yaml
+network:
+  enabled: true
+  connect_tcp:
+    - "443"
+    - "80"
+    - "3000-9000"
+
+filesystem:
+  rw:
+    - "{CWD}"
+    - "{HOME}/.npm"
+    - "{HOME}/.cache"
+    - "{HOME}/.local"
+  rox:
+    - "/usr"
+    - "/lib"
+    - "/bin"
+```
+
+#### Code Review (Restrictive)
+```yaml
+network:
+  enabled: false
+
+filesystem:
+  ro:
+    - "{CWD}"  # Read-only project access
+  rw:
+    - "{TMPDIR}"
+  rox:
+    - "/usr"
+    - "/bin"
+```
+
+#### Disabled (Testing Only)
+```yaml
+general:
+  enabled: false
+```
+
+### Security Model
+
+**Default protections**:
+- ✓ Cannot read sensitive files outside CWD (e.g., `~/.ssh/id_rsa`, `~/.aws/credentials`)
+- ✓ Cannot modify system files
+- ✓ Cannot make unauthorized network connections
+- ✓ Cannot access files in other users' directories
+
+**User can still**:
+- Modify files in session CWD (by design - project workspace)
+- Weaken sandboxing via config (user choice)
+
+### Troubleshooting
+
+**Landrun not available?**
+- Install: `go install github.com/landlock-lsm/landrun@latest`
+- Check status: Click `Sandbox` → `Status` in AnviLLM
+
+**Network errors?**
+- Ensure `connect_tcp = ["443"]` in config for API calls
+- Or set `unrestricted = true` for full network access
+
+**File access denied?**
+- Add required paths to `rw` or `ro` in config
+- Example for SSH keys: `ro = ["{HOME}/.ssh"]`
+- Example for NPM: `rw = ["{HOME}/.npm", "{HOME}/.cache"]`
+
+**Check sandbox status**:
+```sh
+# View current config
+cat ~/.config/anvillm/sandbox.yaml
+
+# Test landrun availability
+landrun --version
+```
+
+For more details, see [landrun documentation](https://github.com/landlock-lsm/landrun).
+
 ## Troubleshooting
 
 ### "Backend not found" error
