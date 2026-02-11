@@ -13,6 +13,7 @@ type Config struct {
 	General    GeneralConfig    `yaml:"general"`
 	Filesystem FilesystemConfig `yaml:"filesystem"`
 	Network    NetworkConfig    `yaml:"network"`
+	Env        []string         `yaml:"env"`
 	Advanced   AdvancedConfig   `yaml:"advanced"`
 }
 
@@ -82,6 +83,13 @@ func DefaultConfig() *Config {
 			Unrestricted: true, // Unrestricted network (fine-grained restrictions require Landlock v5+)
 			BindTCP:      []string{},
 			ConnectTCP:   []string{"443"}, // Example: HTTPS for API calls (when Enabled: true)
+		},
+		Env: []string{
+			"HOME",
+			"USER",
+			"PATH",
+			"LANG",
+			"TERM",
 		},
 		Advanced: AdvancedConfig{
 			LDD:     false, // Disabled: fails on Node.js scripts like claude

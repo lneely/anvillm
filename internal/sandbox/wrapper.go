@@ -89,6 +89,11 @@ func WrapCommand(cfg *Config, originalCmd []string, cwd string) []string {
 	}
 	// If network not enabled and not unrestricted, no network flags = no network access
 
+	// Environment variables
+	for _, name := range cfg.Env {
+		args = append(args, "--env", name)
+	}
+
 	// Append original command after --
 	args = append(args, "--")
 	args = append(args, originalCmd...)
@@ -138,6 +143,12 @@ func BuildSummary(cfg *Config) string {
 		}
 	} else {
 		lines = append(lines, "Network: BLOCKED")
+	}
+
+	// Environment
+	if len(cfg.Env) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, fmt.Sprintf("Environment: %s", strings.Join(cfg.Env, ", ")))
 	}
 
 	return strings.Join(lines, "\n")
