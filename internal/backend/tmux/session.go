@@ -336,7 +336,10 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 
 func (s *Session) waitForComplete(ctx context.Context, prompt string) error {
 	const minContent = 50
-	const quiescence = 400 * time.Millisecond
+	const quiescence = 300 * time.Millisecond
+	const pollInterval = 100 * time.Millisecond
+
+	var quiesceStart time.Time
 
 	for {
 		select {
@@ -349,10 +352,29 @@ func (s *Session) waitForComplete(ctx context.Context, prompt string) error {
 				return fmt.Errorf("session closed")
 			}
 			s.output.Write(data)
+			quiesceStart = time.Time{} // Reset quiescence on new data
 
-		case <-time.After(quiescence):
-			if s.output.Len() > minContent {
-				debug.Log("[session %s] quiescence detected, %d bytes", s.id, s.output.Len())
+		case <-time.After(pollInterval):
+			// Check if we have minimum content
+			if s.output.Len() < minContent {
+				continue
+			}
+
+			// Check process tree: if kiro-cli-chat has tool children, still running
+			if hasToolChildren(s.pid) {
+				quiesceStart = time.Time{} // Reset quiescence
+				continue
+			}
+
+			// No tool children - start or continue quiescence timer
+			if quiesceStart.IsZero() {
+				quiesceStart = time.Now()
+				continue
+			}
+
+			// Check if quiescence period has passed
+			if time.Since(quiesceStart) >= quiescence {
+				debug.Log("[session %s] idle detected (no tool children, %d bytes)", s.id, s.output.Len())
 				return nil
 			}
 		}
