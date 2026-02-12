@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -40,8 +41,7 @@ func newClaudeWithCommand(command []string) backend.Backend {
 		Name:    "claude",
 		Command: command,
 		Environment: map[string]string{
-			"TERM":     "xterm-256color",
-			"NO_COLOR": "1",
+			"TERM": "xterm-256color",
 		},
 		TmuxSize: tmux.TmuxSize{
 			Rows: 40,
@@ -52,6 +52,7 @@ func newClaudeWithCommand(command []string) backend.Backend {
 		Cleaner:        &claudeCleaner{},
 		Commands:       &claudeCommands{},
 		StartupHandler: &claudeStartupHandler{},
+		StateInspector: &claudeStateInspector{},
 	})
 }
 
@@ -435,6 +436,34 @@ func (c *claudeCleaner) isBottomChrome(line string) bool {
 	}
 
 	return false
+}
+
+// claudeStateInspector implements StateInspector for claude CLI
+type claudeStateInspector struct{}
+
+func (i *claudeStateInspector) IsBusy(panePID int) bool {
+	// Process tree: pane -> bash -> claude (main process)
+	// Claude spawns child processes when executing tools
+
+	// Find bash PID
+	bashPID := tmux.FindChildByName(panePID, "bash")
+	if bashPID == 0 {
+		return false
+	}
+
+	// Find claude PID (could be "claude" or "node" running claude)
+	claudePID := tmux.FindChildByName(bashPID, "claude")
+	if claudePID == 0 {
+		// Try "node" as fallback (claude might be running as node process)
+		claudePID = tmux.FindChildByName(bashPID, "node")
+	}
+	if claudePID == 0 {
+		return false
+	}
+
+	// Check if claude has any children (tool executions, bash spawns, etc.)
+	cmd := exec.Command("pgrep", "-P", fmt.Sprintf("%d", claudePID))
+	return cmd.Run() == nil
 }
 
 // claudeCommands blocks all slash commands with a helpful error

@@ -38,6 +38,7 @@ type Session struct {
 	cleaner        Cleaner
 	commands       backend.CommandHandler
 	startupHandler StartupHandler
+	stateInspector StateInspector
 
 	mu sync.Mutex
 }
@@ -360,13 +361,13 @@ func (s *Session) waitForComplete(ctx context.Context, prompt string) error {
 				continue
 			}
 
-			// Check process tree: if kiro-cli-chat has tool children, still running
-			if hasToolChildren(s.pid) {
+			// Check process tree: if backend is busy (has child processes), still running
+			if s.stateInspector != nil && s.stateInspector.IsBusy(s.pid) {
 				quiesceStart = time.Time{} // Reset quiescence
 				continue
 			}
 
-			// No tool children - start or continue quiescence timer
+			// Not busy - start or continue quiescence timer
 			if quiesceStart.IsZero() {
 				quiesceStart = time.Now()
 				continue
@@ -383,13 +384,36 @@ func (s *Session) waitForComplete(ctx context.Context, prompt string) error {
 
 func (s *Session) SendAsync(ctx context.Context, prompt string) error {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.fifo == nil {
-		s.mu.Unlock()
 		return fmt.Errorf("session not running")
 	}
-	target := s.target()
-	s.mu.Unlock()
 
+	if s.state == "starting" {
+		return fmt.Errorf("session still starting")
+	}
+
+	if s.state == "running" {
+		return fmt.Errorf("session busy")
+	}
+
+	// Check command support if applicable
+	if strings.HasPrefix(prompt, "/") && s.commands != nil {
+		if !s.commands.IsSupported(prompt) {
+			cmd := strings.Fields(prompt)[0]
+			return fmt.Errorf("slash command not supported by %s backend: %s\nTo use manually, middle-click Attach", s.backendName, cmd)
+		}
+	}
+
+	// Prepend context if set (skip for slash commands)
+	if s.context != "" && !strings.HasPrefix(prompt, "/") {
+		prompt = s.context + "\n\n" + prompt
+	}
+
+	target := s.target()
+
+	// Send without waiting for completion
 	if err := sendLiteral(target, prompt); err != nil {
 		return err
 	}

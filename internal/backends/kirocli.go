@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -28,10 +29,11 @@ func NewKiroCLI() backend.Backend {
 			Rows: 40,
 			Cols: 120,
 		},
-		StartupTime: 30 * time.Second,
-		Detector:    &kiroDetector{},
-		Cleaner:     &kiroCleaner{},
-		Commands:    &kiroCommands{},
+		StartupTime:    30 * time.Second,
+		Detector:       &kiroDetector{},
+		Cleaner:        &kiroCleaner{},
+		Commands:       &kiroCommands{},
+		StateInspector: &kiroStateInspector{},
 	})
 }
 
@@ -264,6 +266,20 @@ func (c *kiroCleaner) isNoise(line string) bool {
 	}
 
 	return false
+}
+
+// kiroStateInspector implements StateInspector for kiro-cli
+type kiroStateInspector struct{}
+
+func (i *kiroStateInspector) IsBusy(panePID int) bool {
+	// Find kiro-cli-chat PID in the process tree: pane -> bash -> kiro-cli -> kiro-cli-chat
+	chatPID := tmux.FindKiroChatPID(panePID)
+	if chatPID == 0 {
+		return false
+	}
+	// Check if kiro-cli-chat has any children (tool executions)
+	cmd := exec.Command("pgrep", "-P", fmt.Sprintf("%d", chatPID))
+	return cmd.Run() == nil
 }
 
 // kiroCommands implements command handling for kiro-cli

@@ -42,6 +42,13 @@ type StartupHandler interface {
 	HandleStartup(output string) (keys string, done bool)
 }
 
+// StateInspector checks if the backend is busy by inspecting the process tree
+type StateInspector interface {
+	// IsBusy checks if the backend has running child processes (tools, etc.)
+	// Takes the pane PID from tmux
+	IsBusy(panePID int) bool
+}
+
 // Config holds tmux backend configuration
 type Config struct {
 	Name           string
@@ -53,6 +60,7 @@ type Config struct {
 	Cleaner        Cleaner
 	Commands       backend.CommandHandler
 	StartupHandler StartupHandler // Optional: handles startup dialogs
+	StateInspector StateInspector // Optional: for process tree inspection
 }
 
 // Backend implements backend.Backend for tmux-based CLI tools
@@ -263,6 +271,7 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 		cleaner:        b.cfg.Cleaner,
 		commands:       b.cfg.Commands,
 		startupHandler: b.cfg.StartupHandler,
+		stateInspector: b.cfg.StateInspector,
 	}
 
 	// 10. Start reader goroutine

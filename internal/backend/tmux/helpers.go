@@ -109,34 +109,22 @@ func getPanePID(target string) (int, error) {
 	return pid, err
 }
 
-// hasToolChildren checks if kiro-cli-chat has any child processes (tool executions)
-func hasToolChildren(panePID int) bool {
-	// Find kiro-cli-chat PID in the process tree: pane -> bash -> kiro-cli -> kiro-cli-chat
-	chatPID := findKiroChatPID(panePID)
-	if chatPID == 0 {
-		return false
-	}
-	// Check if kiro-cli-chat has any children
-	cmd := exec.Command("pgrep", "-P", fmt.Sprintf("%d", chatPID))
-	return cmd.Run() == nil
-}
-
-// findKiroChatPID traverses the process tree to find kiro-cli-chat
-func findKiroChatPID(panePID int) int {
+// FindKiroChatPID traverses the process tree to find kiro-cli-chat
+func FindKiroChatPID(panePID int) int {
 	// pane (kiro-cli-term) -> bash -> kiro-cli -> kiro-cli-chat
-	bashPID := findChildByName(panePID, "bash")
+	bashPID := FindChildByName(panePID, "bash")
 	if bashPID == 0 {
 		return 0
 	}
-	kiroPID := findChildByName(bashPID, "kiro-cli")
+	kiroPID := FindChildByName(bashPID, "kiro-cli")
 	if kiroPID == 0 {
 		return 0
 	}
-	return findChildByName(kiroPID, "kiro-cli-chat")
+	return FindChildByName(kiroPID, "kiro-cli-chat")
 }
 
-// findChildByName finds a child process with the given name
-func findChildByName(parentPID int, name string) int {
+// FindChildByName finds a child process with the given name
+func FindChildByName(parentPID int, name string) int {
 	cmd := exec.Command("pgrep", "-P", fmt.Sprintf("%d", parentPID), "-x", name)
 	out, err := cmd.Output()
 	if err != nil {

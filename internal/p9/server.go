@@ -29,7 +29,7 @@ agent/
     list                (read)  list sessions: "id alias state pid cwd"
     {session-id}/
         ctl             (write) "stop", "kill"
-        in              (write) send prompt, blocks until response
+        in              (write) send prompt (non-blocking, validates and returns immediately)
         out             (read)  response from last prompt
         err             (read)  stderr/debug output
         winid           (r/w)   acme window id
@@ -348,15 +348,20 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
-	// /{id}/in - send prompt
+	// /{id}/in - send prompt (async, non-blocking)
 	if len(parts) == 3 && parts[2] == "in" {
 		sess := s.mgr.Get(parts[1])
 		if sess == nil {
 			return errFcall(fc, "session not found")
 		}
-		ctx := context.Background()
-		if _, err := sess.Send(ctx, input); err != nil {
-			return errFcall(fc, err.Error())
+		// Use async send to avoid blocking on response
+		if tmuxSess, ok := sess.(*tmux.Session); ok {
+			ctx := context.Background()
+			if err := tmuxSess.SendAsync(ctx, input); err != nil {
+				return errFcall(fc, err.Error())
+			}
+		} else {
+			return errFcall(fc, "async send not supported for this backend")
 		}
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
