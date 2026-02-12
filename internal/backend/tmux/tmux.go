@@ -19,21 +19,6 @@ type TmuxSize struct {
 	Cols uint16
 }
 
-// Detector handles pattern matching for backend output
-type Detector interface {
-	// IsReady checks if backend is ready for first prompt
-	IsReady(output string) bool
-
-	// IsComplete checks if response to given prompt is complete
-	IsComplete(prompt string, output string) bool
-}
-
-// Cleaner processes raw output from the backend
-type Cleaner interface {
-	// Clean removes noise (ANSI codes, spinners, etc.) and extracts actual content
-	Clean(prompt string, rawOutput string) string
-}
-
 // StartupHandler can send initial commands during startup
 type StartupHandler interface {
 	// HandleStartup is called during waitForReady when output is received
@@ -56,8 +41,6 @@ type Config struct {
 	Environment    map[string]string
 	TmuxSize       TmuxSize
 	StartupTime    time.Duration
-	Detector       Detector
-	Cleaner        Cleaner
 	Commands       backend.CommandHandler
 	StartupHandler StartupHandler // Optional: handles startup dialogs
 	StateInspector StateInspector // Optional: for process tree inspection
@@ -267,8 +250,6 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 		fifo:           fifo,
 		dataCh:         make(chan []byte, 100),
 		stopCh:         make(chan struct{}),
-		detector:       b.cfg.Detector,
-		cleaner:        b.cfg.Cleaner,
 		commands:       b.cfg.Commands,
 		startupHandler: b.cfg.StartupHandler,
 		stateInspector: b.cfg.StateInspector,

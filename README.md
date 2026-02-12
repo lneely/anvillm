@@ -189,18 +189,16 @@ func NewYourBackend() backend.Backend {
             Rows: 40,
             Cols: 120,
         },
-        StartupTime: 15 * time.Second,
-        Detector:    &yourDetector{},
-        Cleaner:     &yourCleaner{},
-        Commands:    &yourCommandHandler{},
+        StartupTime:    15 * time.Second,
+        Commands:       &yourCommandHandler{},
+        StateInspector: &yourStateInspector{},
     })
 }
 ```
 
 2. Implement the required interfaces:
-   - `Detector` - Detect when the backend is ready and when responses complete
-   - `Cleaner` - Strip ANSI codes and noise from output
    - `CommandHandler` - Handle backend-specific slash commands
+   - `StateInspector` - Check if backend is busy via process tree inspection
 
 3. Register in `main.go`:
 

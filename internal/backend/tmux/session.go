@@ -24,7 +24,6 @@ type Session struct {
 	winID       int
 	pid         int
 	state       string
-	lastSummary string
 	context     string // prepended to every prompt
 	createdAt   time.Time
 
@@ -34,8 +33,6 @@ type Session struct {
 	stopCh   chan struct{}
 	output   bytes.Buffer
 
-	detector       Detector
-	cleaner        Cleaner
 	commands       backend.CommandHandler
 	startupHandler StartupHandler
 	stateInspector StateInspector
@@ -62,12 +59,6 @@ func (s *Session) SetAlias(alias string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.alias = alias
-}
-
-func (s *Session) LastSummary() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.lastSummary
 }
 
 func (s *Session) Metadata() backend.SessionMetadata {
@@ -153,8 +144,13 @@ func (s *Session) reader() {
 }
 
 func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error {
+	const minContent = 50
+	const quiescence = 300 * time.Millisecond
+	const pollInterval = 100 * time.Millisecond
+
 	deadline := time.Now().Add(timeout)
 	startupDone := s.startupHandler == nil // If no handler, startup is already "done"
+	var quiesceStart time.Time
 
 	for {
 		select {
@@ -166,6 +162,7 @@ func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error
 			}
 			s.output.Write(data)
 			output := s.output.String()
+			quiesceStart = time.Time{} // Reset quiescence on new data
 
 			// Check for error patterns that indicate launch failure
 			if strings.Contains(output, "Error:") ||
@@ -190,15 +187,22 @@ func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error
 					debug.Log("[session %s] startup handler complete", s.id)
 					startupDone = true
 					s.output.Reset() // Reset output after startup handling
+					quiesceStart = time.Time{} // Reset quiescence after startup
 				}
 			}
 
-			// Check if ready (only after startup is done)
-			if startupDone && s.detector.IsReady(output) {
-				debug.Log("[session %s] ready detected", s.id)
-				return nil
+		case <-time.After(pollInterval):
+			// Only check for ready after startup is complete
+			if !startupDone {
+				continue
 			}
-		case <-time.After(time.Until(deadline)):
+
+			// Check if we have minimum content
+			if s.output.Len() < minContent {
+				continue
+			}
+
+			// Check if past deadline
 			if time.Now().After(deadline) {
 				output := s.output.String()
 				debug.Log("[session %s] timeout, current output: %s", s.id, output)
@@ -209,6 +213,24 @@ func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error
 					fmt.Fprintf(os.Stderr, "Error: timeout waiting for backend to be ready (no output received)\n")
 				}
 				return fmt.Errorf("timeout waiting for ready")
+			}
+
+			// Check process tree: if backend is busy (has child processes), still starting
+			if s.stateInspector != nil && s.stateInspector.IsBusy(s.pid) {
+				quiesceStart = time.Time{} // Reset quiescence
+				continue
+			}
+
+			// Not busy - start or continue quiescence timer
+			if quiesceStart.IsZero() {
+				quiesceStart = time.Now()
+				continue
+			}
+
+			// Check if quiescence period has passed
+			if time.Since(quiesceStart) >= quiescence {
+				debug.Log("[session %s] ready detected (idle, %d bytes)", s.id, s.output.Len())
+				return nil
 			}
 		}
 	}
@@ -291,48 +313,7 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	defer s.mu.Unlock()
 
 	s.state = "idle"
-
-	// Clean output
-	rawLen := s.output.Len()
-	rawOutput := s.output.String()
-	result := s.cleaner.Clean(prompt, rawOutput)
-	s.lastSummary = summarize(result, 100)
-	debug.Log("[session %s] raw: %d bytes, cleaned: %d bytes", s.id, rawLen, len(result))
-	if len(result) == 0 && rawLen > 0 {
-		debug.Log("[session %s] WARNING: cleaner returned 0 bytes", s.id)
-		// Debug: show first and last 500 chars of raw output
-		debugFirst := rawOutput
-		if len(debugFirst) > 500 {
-			debugFirst = debugFirst[:500]
-		}
-		debugLast := rawOutput
-		if len(debugLast) > 500 {
-			debugLast = debugLast[len(debugLast)-500:]
-		}
-		debug.Log("[session %s] DEBUG raw output (first 500 chars): %q", s.id, debugFirst)
-		debug.Log("[session %s] DEBUG raw output (last 500 chars): %q", s.id, debugLast)
-
-		// Check for key markers (simple check, no ANSI stripping)
-		hasBullet := strings.Contains(rawOutput, "●")
-		hasThinking := strings.Contains(rawOutput, "(esc to interrupt)") || strings.Contains(rawOutput, "∴")
-		debug.Log("[session %s] DEBUG markers: hasBullet=%v, hasThinking=%v", s.id, hasBullet, hasThinking)
-
-		// Find where the bullet is
-		if hasBullet {
-			idx := strings.Index(rawOutput, "●")
-			start := idx - 50
-			if start < 0 {
-				start = 0
-			}
-			end := idx + 100
-			if end > len(rawOutput) {
-				end = len(rawOutput)
-			}
-			debug.Log("[session %s] DEBUG bullet context: %q", s.id, rawOutput[start:end])
-		}
-	}
-
-	return result, nil
+	return "", nil
 }
 
 func (s *Session) waitForComplete(ctx context.Context, prompt string) error {
@@ -481,18 +462,4 @@ func (s *Session) Close() error {
 	s.pid = 0
 	s.state = "exited"
 	return nil
-}
-
-// summarize returns first n chars of text, trimmed to word boundary
-func summarize(text string, n int) string {
-	text = strings.TrimSpace(text)
-	text = strings.ReplaceAll(text, "\n", " ")
-	if len(text) <= n {
-		return text
-	}
-	text = text[:n]
-	if i := strings.LastIndex(text, " "); i > n/2 {
-		text = text[:i]
-	}
-	return text + "..."
 }

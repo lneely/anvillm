@@ -72,12 +72,11 @@ const (
 	fileCwd
 	fileAlias
 	fileBackend
-	fileSummary
 	fileContext
 	fileCount
 )
 
-var fileNames = []string{"ctl", "in", "out", "err", "winid", "state", "pid", "cwd", "alias", "backend", "summary", "context"}
+var fileNames = []string{"ctl", "in", "out", "err", "winid", "state", "pid", "cwd", "alias", "backend", "context"}
 
 type Server struct {
 	mgr           *session.Manager
@@ -543,11 +542,6 @@ func (s *Server) getSessionFile(sess backend.Session, idx int) string {
 		return meta.Alias
 	case fileBackend:
 		return meta.Backend
-	case fileSummary:
-		if tmuxSess, ok := sess.(*tmux.Session); ok {
-			return tmuxSess.LastSummary()
-		}
-		return ""
 	case fileContext:
 		if tmuxSess, ok := sess.(*tmux.Session); ok {
 			return tmuxSess.GetContext()
