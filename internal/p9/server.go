@@ -26,7 +26,7 @@ Filesystem layout:
 
 agent/
     ctl                 (write) "new <backend> <cwd>" creates session, returns id
-    list                (read)  list sessions: "id state pid cwd"
+    list                (read)  list sessions: "id alias state pid cwd"
     {session-id}/
         ctl             (write) "stop", "kill"
         in              (write) send prompt, blocks until response
@@ -37,6 +37,13 @@ agent/
         pid             (read)  process id
         cwd             (read)  working directory
         backend         (read)  backend name (e.g., "kiro-cli", "claude")
+        context         (r/w)   text prepended to every prompt
+
+Bot-to-bot communication:
+    Any bot can discover peers via agent/list (shows id, alias, state).
+    To talk to a peer: write prompt to agent/{peer-id}/in, read agent/{peer-id}/out.
+    Use aliases (e.g., "reviewer", "dev") so bots can find each other by role.
+    Set context to inject peer awareness: echo "You are dev. Peer reviewer is at agent/abc123" > agent/{id}/context
 */
 
 const (
@@ -50,6 +57,7 @@ const (
 	qidCtl
 	qidList
 	qidSessionBase = 1000
+	qidPeersBase   = 0x10000000 // peers/{id}/file
 )
 
 // File indices within a session directory
@@ -64,10 +72,12 @@ const (
 	fileCwd
 	fileAlias
 	fileBackend
+	fileSummary
+	fileContext
 	fileCount
 )
 
-var fileNames = []string{"ctl", "in", "out", "err", "winid", "state", "pid", "cwd", "alias", "backend"}
+var fileNames = []string{"ctl", "in", "out", "err", "winid", "state", "pid", "cwd", "alias", "backend", "summary", "context"}
 
 type Server struct {
 	mgr           *session.Manager
@@ -386,6 +396,18 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
+	// /{id}/context - set context prefix
+	if len(parts) == 3 && parts[2] == "context" {
+		sess := s.mgr.Get(parts[1])
+		if sess == nil {
+			return errFcall(fc, "session not found")
+		}
+		if tmuxSess, ok := sess.(*tmux.Session); ok {
+			tmuxSess.SetContext(input)
+		}
+		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
+	}
+
 	return errFcall(fc, "read-only")
 }
 
@@ -430,7 +452,7 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 			mode := uint32(0444)
 			if name == "ctl" || name == "in" {
 				mode = 0222
-			} else if name == "winid" || name == "alias" {
+			} else if name == "winid" || name == "alias" || name == "context" {
 				mode = 0644
 			}
 			content := s.getSessionFile(sess, i)
@@ -463,7 +485,11 @@ func (s *Server) readFile(path string) string {
 			sess := s.mgr.Get(id)
 			if sess != nil {
 				meta := sess.Metadata()
-				lines = append(lines, fmt.Sprintf("%s\t%s\t%d\t%s", sess.ID(), sess.State(), meta.Pid, meta.Cwd))
+				alias := meta.Alias
+				if alias == "" {
+					alias = "-"
+				}
+				lines = append(lines, fmt.Sprintf("%s\t%s\t%s\t%d\t%s", sess.ID(), alias, sess.State(), meta.Pid, meta.Cwd))
 			}
 		}
 		return strings.Join(lines, "\n") + "\n"
@@ -512,6 +538,16 @@ func (s *Server) getSessionFile(sess backend.Session, idx int) string {
 		return meta.Alias
 	case fileBackend:
 		return meta.Backend
+	case fileSummary:
+		if tmuxSess, ok := sess.(*tmux.Session); ok {
+			return tmuxSess.LastSummary()
+		}
+		return ""
+	case fileContext:
+		if tmuxSess, ok := sess.(*tmux.Session); ok {
+			return tmuxSess.GetContext()
+		}
+		return ""
 	}
 	return ""
 }

@@ -24,6 +24,8 @@ type Session struct {
 	winID       int
 	pid         int
 	state       string
+	lastSummary string
+	context     string // prepended to every prompt
 	createdAt   time.Time
 
 	fifoPath string
@@ -59,6 +61,12 @@ func (s *Session) SetAlias(alias string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.alias = alias
+}
+
+func (s *Session) LastSummary() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastSummary
 }
 
 func (s *Session) Metadata() backend.SessionMetadata {
@@ -102,6 +110,20 @@ func (s *Session) GetPid() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.pid
+}
+
+// SetContext sets the context prefix for all prompts
+func (s *Session) SetContext(ctx string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.context = ctx
+}
+
+// GetContext gets the context prefix
+func (s *Session) GetContext() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.context
 }
 
 // reader continuously reads from FIFO and sends to dataCh
@@ -219,6 +241,11 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 		}
 	}
 
+	// Prepend context if set (skip for slash commands)
+	if s.context != "" && !strings.HasPrefix(prompt, "/") {
+		prompt = s.context + "\n\n" + prompt
+	}
+
 	// Reset stopCh for this request
 	select {
 	case <-s.stopCh:
@@ -268,6 +295,7 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	rawLen := s.output.Len()
 	rawOutput := s.output.String()
 	result := s.cleaner.Clean(prompt, rawOutput)
+	s.lastSummary = summarize(result, 100)
 	debug.Log("[session %s] raw: %d bytes, cleaned: %d bytes", s.id, rawLen, len(result))
 	if len(result) == 0 && rawLen > 0 {
 		debug.Log("[session %s] WARNING: cleaner returned 0 bytes", s.id)
@@ -307,6 +335,9 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 }
 
 func (s *Session) waitForComplete(ctx context.Context, prompt string) error {
+	const minContent = 50
+	const quiescence = 400 * time.Millisecond
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -319,22 +350,28 @@ func (s *Session) waitForComplete(ctx context.Context, prompt string) error {
 			}
 			s.output.Write(data)
 
-			if s.detector.IsComplete(prompt, s.output.String()) {
-				// Drain any remaining data
-				for {
-					select {
-					case extra, ok := <-s.dataCh:
-						if ok {
-							s.output.Write(extra)
-						}
-					case <-time.After(200 * time.Millisecond):
-						debug.Log("[session %s] response complete, %d bytes", s.id, s.output.Len())
-						return nil
-					}
-				}
+		case <-time.After(quiescence):
+			if s.output.Len() > minContent {
+				debug.Log("[session %s] quiescence detected, %d bytes", s.id, s.output.Len())
+				return nil
 			}
 		}
 	}
+}
+
+func (s *Session) SendAsync(ctx context.Context, prompt string) error {
+	s.mu.Lock()
+	if s.fifo == nil {
+		s.mu.Unlock()
+		return fmt.Errorf("session not running")
+	}
+	target := s.target()
+	s.mu.Unlock()
+
+	if err := sendLiteral(target, prompt); err != nil {
+		return err
+	}
+	return sendKeys(target, "C-m")
 }
 
 func (s *Session) SendStream(ctx context.Context, prompt string) (io.ReadCloser, error) {
@@ -398,4 +435,18 @@ func (s *Session) Close() error {
 	s.pid = 0
 	s.state = "exited"
 	return nil
+}
+
+// summarize returns first n chars of text, trimmed to word boundary
+func summarize(text string, n int) string {
+	text = strings.TrimSpace(text)
+	text = strings.ReplaceAll(text, "\n", " ")
+	if len(text) <= n {
+		return text
+	}
+	text = text[:n]
+	if i := strings.LastIndex(text, " "); i > n/2 {
+		text = text[:i]
+	}
+	return text + "..."
 }

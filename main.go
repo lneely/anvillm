@@ -17,7 +17,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"syscall"
 
@@ -94,7 +93,7 @@ func main() {
 	defer w.CloseFiles()
 
 	w.Name(windowName)
-	w.Write("tag", []byte("Kiro Claude Open Kill Attach Get Sandbox Login "))
+	w.Write("tag", []byte("Kiro Claude Open Kill Attach Alias Context Get Sandbox Login "))
 	refreshList(w, mgr)
 	w.Ctl("clean")
 
@@ -129,6 +128,12 @@ func main() {
 			} else if strings.HasPrefix(cmd, "Open ") {
 				arg = strings.TrimPrefix(cmd, "Open ")
 				cmd = "Open"
+			} else if strings.HasPrefix(cmd, "Alias ") {
+				arg = strings.TrimPrefix(cmd, "Alias ")
+				cmd = "Alias"
+			} else if strings.HasPrefix(cmd, "Context ") {
+				arg = strings.TrimPrefix(cmd, "Context ")
+				cmd = "Context"
 			}
 
 			switch cmd {
@@ -174,33 +179,16 @@ func main() {
 				// WinID is set inside openChatWindow
 			case "Kill":
 				if arg == "" {
-					fmt.Fprintf(os.Stderr, "Usage: Kill <pid>\n")
+					fmt.Fprintf(os.Stderr, "Usage: Kill <session-id>\n")
 					continue
 				}
-				pid, err := strconv.Atoi(arg)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Invalid pid: %s\n", arg)
+				sess := mgr.Get(arg)
+				if sess == nil {
+					fmt.Fprintf(os.Stderr, "Session not found: %s\n", arg)
 					continue
 				}
-				// Find session by pid and kill it
-				for _, id := range mgr.List() {
-					sess := mgr.Get(id)
-					if sess != nil {
-						meta := sess.Metadata()
-						if meta.Pid == pid {
-							// First kill the process
-							if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
-								debug.Log("[session %s] Failed to kill PID %d: %v", id, pid, err)
-							} else {
-								debug.Log("[session %s] Killed PID %d", id, pid)
-							}
-							// Then close the tmux window
-							sess.Close()
-							mgr.Remove(id)
-							break
-						}
-					}
-				}
+				sess.Close()
+				mgr.Remove(arg)
 				refreshList(w, mgr)
 			case "Attach":
 				if arg == "" {
@@ -228,6 +216,41 @@ func main() {
 				}
 			case "Get":
 				refreshList(w, mgr)
+			case "Alias":
+				parts := strings.Fields(arg)
+				if len(parts) < 2 {
+					fmt.Fprintf(os.Stderr, "Usage: Alias <session-id> <name>\n")
+					continue
+				}
+				sess := mgr.Get(parts[0])
+				if sess == nil {
+					fmt.Fprintf(os.Stderr, "Session not found: %s\n", parts[0])
+					continue
+				}
+				alias := parts[1]
+				matched, _ := regexp.MatchString(`^[A-Za-z0-9_-]+$`, alias)
+				if !matched {
+					fmt.Fprintf(os.Stderr, "Invalid alias: must match [A-Za-z0-9_-]+\n")
+					continue
+				}
+				sess.SetAlias(alias)
+				if srv.OnAliasChange != nil {
+					srv.OnAliasChange(sess)
+				}
+				refreshList(w, mgr)
+			case "Context":
+				if arg == "" {
+					fmt.Fprintf(os.Stderr, "Usage: Context <session-id>\n")
+					continue
+				}
+				sess := mgr.Get(arg)
+				if sess == nil {
+					fmt.Fprintf(os.Stderr, "Session not found: %s\n", arg)
+					continue
+				}
+				if err := openContextWindow(sess); err != nil {
+					fmt.Fprintf(os.Stderr, "Error opening context window: %v\n", err)
+				}
 			case "Debug":
 				debug.Enabled = !debug.Enabled
 				state := "disabled"
@@ -333,6 +356,50 @@ func openChatWindow(sess backend.Session) (*acme.Win, error) {
 	go handleChatWindow(w, sess)
 
 	return w, nil
+}
+
+func openContextWindow(sess backend.Session) error {
+	w, err := acme.New()
+	if err != nil {
+		return err
+	}
+	w.Name(fmt.Sprintf("/AnviLLM/%s/context", sess.ID()))
+	w.Write("tag", []byte("Put "))
+
+	// Load existing context
+	if tmuxSess, ok := sess.(*tmux.Session); ok {
+		if ctx := tmuxSess.GetContext(); ctx != "" {
+			w.Write("body", []byte(ctx))
+		}
+	}
+	w.Ctl("clean")
+
+	go handleContextWindow(w, sess)
+	return nil
+}
+
+func handleContextWindow(w *acme.Win, sess backend.Session) {
+	defer w.CloseFiles()
+
+	for e := range w.EventChan() {
+		if e.C2 == 'x' || e.C2 == 'X' {
+			if string(e.Text) == "Put" {
+				// Read body and write to session context
+				body, err := w.ReadAll("body")
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error reading body: %v\n", err)
+					continue
+				}
+				if tmuxSess, ok := sess.(*tmux.Session); ok {
+					tmuxSess.SetContext(strings.TrimSpace(string(body)))
+					w.Ctl("clean")
+					fmt.Printf("Context updated for session %s\n", sess.ID())
+				}
+				continue
+			}
+		}
+		w.WriteEvent(e)
+	}
 }
 
 func handleChatWindow(w *acme.Win, sess backend.Session) {
