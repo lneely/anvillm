@@ -135,6 +135,9 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 		return nil, fmt.Errorf("failed to create window: %w", err)
 	}
 
+	// Give shell time to initialize (login scripts, etc.)
+	time.Sleep(500 * time.Millisecond)
+
 	target := windowTarget(b.tmuxSession, windowName)
 
 	// 3. Set environment variables for this window
