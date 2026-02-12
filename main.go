@@ -91,7 +91,7 @@ func main() {
 	defer w.CloseFiles()
 
 	w.Name(windowName)
-	w.Write("tag", []byte("Kiro Claude Open Kill Attach Alias Context Get Sandbox "))
+	w.Write("tag", []byte("Get Attach Kill Alias Context Sandbox "))
 	refreshList(w, mgr)
 	w.Ctl("clean")
 
@@ -123,9 +123,6 @@ func main() {
 			} else if strings.HasPrefix(cmd, "Kill ") {
 				arg = strings.TrimPrefix(cmd, "Kill ")
 				cmd = "Kill"
-			} else if strings.HasPrefix(cmd, "Open ") {
-				arg = strings.TrimPrefix(cmd, "Open ")
-				cmd = "Open"
 			} else if strings.HasPrefix(cmd, "Alias ") {
 				arg = strings.TrimPrefix(cmd, "Alias ")
 				cmd = "Alias"
@@ -159,21 +156,6 @@ func main() {
 					continue
 				}
 				refreshList(w, mgr)
-			case "Open":
-				if arg == "" {
-					fmt.Fprintf(os.Stderr, "Usage: Open <session-id>\n")
-					continue
-				}
-				sess := mgr.Get(arg)
-				if sess == nil {
-					fmt.Fprintf(os.Stderr, "Session not found: %s\n", arg)
-					continue
-				}
-				_, err := openPromptWindow(sess)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error opening prompt: %v\n", err)
-					continue
-				}
 			case "Kill":
 				if arg == "" {
 					fmt.Fprintf(os.Stderr, "Usage: Kill <session-id>\n")
@@ -288,6 +270,8 @@ func main() {
 
 func refreshList(w *acme.Win, mgr *session.Manager) {
 	var buf strings.Builder
+	// Backends line
+	buf.WriteString("Backends: [Kiro] [Claude]\n\n")
 	// Header: ID=5, Backend=10, State=9, PID=8, Alias=16, Cwd=remaining
 	buf.WriteString(fmt.Sprintf("%-5s %-10s %-9s %-8s %-16s %s\n", "ID", "Backend", "State", "PID", "Alias", "Cwd"))
 	buf.WriteString(fmt.Sprintf("%-5s %-10s %-9s %-8s %-16s %s\n", "-----", "----------", "---------", "--------", "----------------", strings.Repeat("-", 40)))
