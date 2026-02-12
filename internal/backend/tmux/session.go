@@ -197,11 +197,6 @@ func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error
 				continue
 			}
 
-			// Check if we have minimum content
-			if s.output.Len() < minContent {
-				continue
-			}
-
 			// Check if past deadline
 			if time.Now().After(deadline) {
 				output := s.output.String()

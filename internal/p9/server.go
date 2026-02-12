@@ -307,19 +307,22 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	// /ctl - create new session
 	if f.path == "/ctl" {
 		args := strings.Fields(input)
+		fmt.Fprintf(os.Stderr, "[DEBUG] ctl write: input=%q args=%v len=%d fc.Count=%d len(fc.Data)=%d\n",
+			input, args, len(args), fc.Count, len(fc.Data))
 		if len(args) < 2 || args[0] != "new" {
 			return errFcall(fc, "usage: new <backend> <cwd>")
 		}
 		backendName := args[1]
 		cwd, _ := os.Getwd()
 		if len(args) > 2 {
-			cwd = args[2]
+			cwd = strings.Trim(args[2], `"`)
 		}
-		sess, err := s.mgr.New(backendName, cwd)
+		_, err := s.mgr.New(backendName, cwd)
 		if err != nil {
 			return errFcall(fc, err.Error())
 		}
-		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(sess.ID()))}
+		fmt.Fprintf(os.Stderr, "[DEBUG] ctl write: session created, returning Count=%d\n", uint32(len(fc.Data)))
+		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
 	// /{id}/ctl - session control

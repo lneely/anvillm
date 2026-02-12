@@ -258,16 +258,26 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 	// 10. Start reader goroutine
 	go sess.reader()
 
-	// 11. Wait for ready
-	if err := sess.waitForReady(ctx, b.cfg.StartupTime); err != nil {
-		sess.Close()
-		return nil, err
-	}
+	// 11. Start background startup watcher that moves to "idle" when ready
+	go func() {
+		// Use background context, not the RPC context
+		bgCtx := context.Background()
+		if err := sess.waitForReady(bgCtx, b.cfg.StartupTime); err != nil {
+			debug.Log("[session %s] startup failed: %v", sess.ID(), err)
+			// Don't close the session - let user debug via tmux attach
+			sess.mu.Lock()
+			sess.state = "error"
+			sess.mu.Unlock()
+			return
+		}
+		sess.mu.Lock()
+		sess.state = "idle"
+		sess.output.Reset()
+		sess.mu.Unlock()
+		debug.Log("[session %s] ready (tmux=%s:%s, pid=%d)", sess.ID(), b.tmuxSession, windowName, sess.pid)
+	}()
 
-	sess.state = "idle"
-	sess.output.Reset()
-	debug.Log("[session %s] ready (tmux=%s:%s, pid=%d)", sess.ID(), b.tmuxSession, windowName, sess.pid)
-
+	// Return immediately - session starts in "starting" state
 	return sess, nil
 }
 
