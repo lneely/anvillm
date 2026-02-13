@@ -1,0 +1,115 @@
+#!/bin/bash
+# KiroPlanning - Research/Engineering/Tech-Editor workflow
+# Usage: ./scripts/KiroPlanning.sh /path/to/docs [ticket-id]
+
+set -e
+
+if [ $# -lt 1 ]; then
+    echo "Usage: $0 /path/to/docs [ticket-id]"
+    exit 1
+fi
+
+DOC_PATH="$1"
+TICKET_ID="${2:-}"
+
+# Generate random alias prefix
+RANDOM_WORD=$(shuf -n1 -e alpha beta gamma delta zeta theta kappa sigma omega lambda)
+RANDOM_NUM=$(printf "%02d" $((RANDOM % 100)))
+ALIAS_PREFIX="${RANDOM_WORD}${RANDOM_NUM}"
+
+NAMESPACE=$(namespace)
+if [ -z "$NAMESPACE" ]; then
+    echo "Error: No namespace found. Is anvillm running?"
+    exit 1
+fi
+
+AGENT="agent"
+
+# Helper to create session and capture ID
+create_session() {
+    local backend="$1" cwd="$2"
+    local before after
+    before=$(9p read $AGENT/list | awk '{print $1}' | sort)
+    echo "new $backend $cwd" | 9p write $AGENT/ctl
+    after=$(9p read $AGENT/list | awk '{print $1}' | sort)
+    comm -13 <(echo "$before") <(echo "$after") | head -1
+}
+
+echo "Creating research session..."
+RESEARCH_ID=$(create_session kiro-cli "$DOC_PATH")
+echo "  ID: $RESEARCH_ID"
+
+echo "Creating engineering session..."
+ENG_ID=$(create_session kiro-cli "$DOC_PATH")
+echo "  ID: $ENG_ID"
+
+echo "Creating tech-editor session..."
+EDITOR_ID=$(create_session kiro-cli "$DOC_PATH")
+echo "  ID: $EDITOR_ID"
+
+# Set aliases
+echo "${ALIAS_PREFIX}-research" | 9p write $AGENT/$RESEARCH_ID/alias
+echo "${ALIAS_PREFIX}-engineering" | 9p write $AGENT/$ENG_ID/alias
+echo "${ALIAS_PREFIX}-techeditor" | 9p write $AGENT/$EDITOR_ID/alias
+
+# Research context
+cat <<EOF | 9p write $AGENT/$RESEARCH_ID/context
+Your job is to research system architecture and code for requested information. Use the agent-kb skill.
+
+- Input: knowledge base (agent-kb) and relevant code
+- Output: concrete human- and LLM-readable knowledge about the system
+- Prefer updating existing kb documents over creating new ones
+- Only create new KB documents if the knowledge discovered is significant and reusable
+
+When you receive a query from engineering ($ENG_ID), research and respond:
+  echo {answer} | 9p write agent/$ENG_ID/in
+
+Do not actively await responses.
+EOF
+
+# Engineering context
+TICKET_NOTE=""
+[ -n "$TICKET_ID" ] && TICKET_NOTE="Read $TICKET_ID in Jira to understand the task. "
+cat <<EOF | 9p write $AGENT/$ENG_ID/context
+Your job is to update design documentation in $DOC_PATH. ${TICKET_NOTE}Follow agent-kb conventions. Search the knowledge base for relevant documents.
+
+If documentation is insufficient, query the research bot (check state is idle first):
+  9p read agent/$RESEARCH_ID/state  # must be "idle"
+  echo {query} | 9p write agent/$RESEARCH_ID/in
+
+Include in your query:
+- The question and context
+- Request for full path to new/updated docs, or a direct answer
+- Reply instructions: echo {answer} | 9p write agent/$ENG_ID/in
+
+You will receive edit requests from tech-editor ($EDITOR_ID). Apply changes and acknowledge:
+  echo {done} | 9p write agent/$EDITOR_ID/in
+
+Do not actively await responses.
+EOF
+
+# Tech-editor context
+cat <<EOF | 9p write $AGENT/$EDITOR_ID/context
+You are a professional technical writer. Ensure documentation in $DOC_PATH is high quality, readable, and at the right detail level for software engineers.
+
+Do not edit documents directly. Send recommended changes to engineering:
+  echo {changes} | 9p write agent/$ENG_ID/in
+
+Include:
+- Your recommended changes
+- Request for acknowledgment: echo {done} | 9p write agent/$EDITOR_ID/in
+
+When engineering acknowledges, proofread again. Iterate until satisfied.
+
+Do not actively await responses.
+EOF
+
+echo ""
+echo "✓ KiroPlanning workflow ready ($ALIAS_PREFIX)"
+echo ""
+echo "Sessions:"
+echo "  ${ALIAS_PREFIX}-research:    $RESEARCH_ID"
+echo "  ${ALIAS_PREFIX}-engineering: $ENG_ID"
+echo "  ${ALIAS_PREFIX}-techeditor:  $EDITOR_ID"
+echo ""
+echo "Start by giving engineering a task, or tech-editor a document to review."
