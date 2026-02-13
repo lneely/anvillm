@@ -65,8 +65,8 @@ agent/
 
 Example:
 ```sh
-echo 'new claude /home/user/project' > agent/ctl
-echo 'Hello' > agent/a3f2b9d1/in
+echo 'new claude /home/user/project' | 9p write agent/ctl
+echo 'Hello' | 9p write agent/a3f2b9d1/in
 9p read agent/a3f2b9d1/state
 ```
 
