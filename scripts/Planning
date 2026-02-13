@@ -65,7 +65,7 @@ Your job is to research system architecture and code for requested information. 
 When you receive a query from engineering ($ENG_ID), research and respond:
   echo {answer} | 9p write agent/$ENG_ID/in
 
-Do not actively await responses.
+Do not actively await responses, but stop working until you receive an explicit request to conduct research.
 EOF
 
 # Engineering context
@@ -84,7 +84,7 @@ Include in your query:
 You will receive edit requests from tech-editor ($EDITOR_ID). Apply changes and acknowledge:
   echo {done} | 9p write agent/$EDITOR_ID/in
 
-Do not actively await responses.
+Do not actively await responses, but stop working until you receive an explicit request to make a change from the tech-editor.
 EOF
 
 # Tech-editor context
@@ -100,7 +100,7 @@ Include:
 
 When engineering acknowledges, proofread again. Iterate until satisfied.
 
-Do not actively await responses.
+Do not actively await responses, but stop working until you receive an explicit request to perform work.
 EOF
 
 echo ""
