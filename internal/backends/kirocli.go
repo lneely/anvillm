@@ -46,7 +46,27 @@ func (i *kiroStateInspector) IsBusy(panePID int) bool {
 	}
 	// Check if kiro-cli-chat has any children (tool executions)
 	cmd := exec.Command("pgrep", "-P", fmt.Sprintf("%d", chatPID))
-	return cmd.Run() == nil
+	if cmd.Run() == nil {
+		return true // has children = busy
+	}
+	// No children - check if process is actively running (not sleeping waiting for input)
+	return isProcessActive(chatPID)
+}
+
+// isProcessActive checks if a process is doing work (not blocked waiting for input)
+func isProcessActive(pid int) bool {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return false
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) < 3 {
+		return false
+	}
+	state := fields[2]
+	// R = running, D = disk sleep (I/O), both indicate active work
+	// S = interruptible sleep (waiting for input) = idle
+	return state == "R" || state == "D"
 }
 
 // kiroCommands implements command handling for kiro-cli

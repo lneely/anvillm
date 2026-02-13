@@ -31,6 +31,9 @@ type Session interface {
 	// State returns current state ("starting", "idle", "running", "error: ...", "exited")
 	State() string
 
+	// Refresh retries startup if in error state, or refreshes state detection
+	Refresh(ctx context.Context) error
+
 	// Send sends a prompt and returns the response
 	// Blocks until response is complete
 	Send(ctx context.Context, prompt string) (string, error)

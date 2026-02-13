@@ -475,3 +475,23 @@ func (s *Session) Close() error {
 	s.state = "exited"
 	return nil
 }
+
+// Refresh re-detects state based on process activity
+func (s *Session) Refresh(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.state == "exited" {
+		return nil
+	}
+
+	// Check if process is busy
+	busy := s.stateInspector != nil && s.stateInspector.IsBusy(s.pid)
+	if busy {
+		s.state = "running"
+	} else {
+		s.state = "idle"
+	}
+	debug.Log("[session %s] refresh: state=%s", s.id, s.state)
+	return nil
+}
