@@ -5,8 +5,8 @@ Acme-native interface for LLM chat backends. Sessions appear as Acme windows and
 ## Requirements
 
 - Go 1.21+, plan9port, tmux
-- [landrun](https://github.com/landlock-lsm/landrun) (sandboxing, Linux kernel 5.13+)
-- Backend CLI: [Claude Code](https://github.com/anthropics/claude-code) or [kiro-cli](https://github.com/stillmatic/kiro)
+- [landrun](https://github.com/zouuup/landrun) (sandboxing, Linux kernel 5.13+)
+- Backend CLI: [Claude Code](https://github.com/anthropics/claude-code) or [Kiro CLI](https://kiro.dev)
 
 ## Installation
 
@@ -75,7 +75,7 @@ echo 'Hello' | 9p write agent/a3f2b9d1/in
 | Backend | Install |
 |---------|---------|
 | Claude | `npm install -g @anthropic-ai/claude-code` |
-| Kiro | [kiro-cli](https://github.com/stillmatic/kiro) |
+| Kiro | [Kiro CLI](https://kiro.dev) |
 
 Both run with full permissions inside the sandbox (`--dangerously-skip-permissions`, `--trust-all-tools`).
 
@@ -85,7 +85,7 @@ Create `internal/backends/yourbackend.go`, implement `CommandHandler` and `State
 
 ## Sandboxing
 
-Backends run inside [landrun](https://github.com/landlock-lsm/landrun) sandboxes. **Sandboxing cannot be disabled** — it's the only safety layer.
+Backends run inside [landrun](https://github.com/zouuup/landrun) sandboxes. **Sandboxing cannot be disabled** — it's the only safety layer.
 
 ### Defaults
 
