@@ -126,6 +126,56 @@ Set `best_effort: true` for graceful degradation on older kernels.
 
 **Warning**: If landrun is missing or kernel lacks Landlock, sessions run **completely unsandboxed**. Only enable if you accept this risk.
 
+## Reproducible Workflows
+
+The 9P filesystem enables scripted multi-agent workflows. Create sessions, set contexts, and wire agents together programmatically.
+
+### Example: Developer-Reviewer
+
+Two agents collaborate on code changes — one implements, one reviews:
+
+```sh
+./scripts/DevReview claude /path/to/project
+```
+
+Creates paired sessions with contexts that instruct agents to:
+1. Developer implements and stages changes
+2. Developer sends review request via `agent/{reviewer-id}/in`
+3. Reviewer examines diff, sends feedback or "LGTM"
+4. Loop until approved
+
+### Example: Planning
+
+Three-agent workflow for documentation tasks:
+
+```sh
+./scripts/Planning kiro /path/to/docs [TICKET-ID]
+```
+
+- **Research**: Queries codebase and knowledge base
+- **Engineering**: Writes/updates documentation, queries research when needed
+- **Tech-editor**: Reviews for quality, requests changes from engineering
+
+### Writing Your Own
+
+Key patterns from the example scripts:
+
+```sh
+# Create session, capture ID
+echo "new claude /project" | 9p write agent/ctl
+ID=$(9p read agent/list | tail -1 | awk '{print $1}')
+
+# Set context (defines agent behavior)
+cat <<EOF | 9p write agent/$ID/context
+You are a code reviewer. When you receive code...
+EOF
+
+# Agents communicate via each other's in files
+echo "Please review staged changes" | 9p write agent/$PEER_ID/in
+```
+
+See `scripts/DevReview` and `scripts/Planning` for complete examples.
+
 ## Troubleshooting
 
 | Problem | Solution |
