@@ -1,18 +1,17 @@
 #!/bin/bash
 # Planning - Research/Engineering/Tech-Editor workflow
-# Usage: ./scripts/Planning <backend> <workdir> [ticket-id]
+# Usage: ./scripts/Planning <backend> <workdir>
 
 set -e
 
-if [ $# -lt 2 ]; then
-    echo "Usage: $0 <backend> <workdir> [ticket-id]"
+if [ $# -ne 2 ]; then
+    echo "Usage: $0 <backend> <workdir>"
     echo "  backend: claude, kiro-cli"
     exit 1
 fi
 
 BACKEND="$1"
 DOC_PATH="$2"
-TICKET_ID="${3:-}"
 
 # Generate random alias prefix
 RANDOM_WORD=$(shuf -n1 -e alpha beta gamma delta zeta theta kappa sigma omega lambda)
@@ -70,10 +69,8 @@ Do not actively await responses.
 EOF
 
 # Engineering context
-TICKET_NOTE=""
-[ -n "$TICKET_ID" ] && TICKET_NOTE="Read $TICKET_ID in Jira to understand the task. "
 cat <<EOF | 9p write $AGENT/$ENG_ID/context
-Your job is to update design documentation in $DOC_PATH. ${TICKET_NOTE}Follow agent-kb conventions. Search the knowledge base for relevant documents.
+Your job is to update design documentation in $DOC_PATH. Follow agent-kb conventions. Search the knowledge base for relevant documents.
 
 If documentation is insufficient, query the research bot (check state is idle first):
   9p read agent/$RESEARCH_ID/state  # must be "idle"

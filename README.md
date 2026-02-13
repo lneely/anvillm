@@ -151,7 +151,7 @@ Creates paired sessions with contexts that instruct agents to:
 Three-agent workflow for documentation tasks:
 
 ```sh
-./scripts/Planning kiro /path/to/docs [TICKET-ID]
+./scripts/Planning kiro /path/to/docs
 ```
 
 - **Research**: Queries codebase and knowledge base
