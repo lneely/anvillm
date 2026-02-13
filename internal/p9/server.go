@@ -331,7 +331,7 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		}
 		args := strings.Fields(input)
 		if len(args) == 0 {
-			return errFcall(fc, "usage: stop | kill")
+			return errFcall(fc, "usage: stop | kill | refresh")
 		}
 		switch args[0] {
 		case "stop":
@@ -342,6 +342,11 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		case "kill":
 			sess.Close()
 			s.mgr.Remove(sess.ID())
+		case "refresh":
+			ctx := context.Background()
+			if err := sess.Refresh(ctx); err != nil {
+				return errFcall(fc, err.Error())
+			}
 		default:
 			return errFcall(fc, "unknown command")
 		}

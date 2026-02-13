@@ -91,7 +91,7 @@ func main() {
 	defer w.CloseFiles()
 
 	w.Name(windowName)
-	w.Write("tag", []byte("Get Attach Kill Alias Context Sandbox "))
+	w.Write("tag", []byte("Get Attach Kill Refresh Alias Context Sandbox "))
 	refreshList(w, mgr)
 	w.Ctl("clean")
 
@@ -215,6 +215,23 @@ func main() {
 				sess.SetAlias(alias)
 				if srv.OnAliasChange != nil {
 					srv.OnAliasChange(sess)
+				}
+				refreshList(w, mgr)
+			case "Refresh":
+				if arg == "" {
+					// Refresh all sessions
+					for _, id := range mgr.List() {
+						if sess := mgr.Get(id); sess != nil {
+							sess.Refresh(context.Background())
+						}
+					}
+				} else {
+					sess := mgr.Get(arg)
+					if sess == nil {
+						fmt.Fprintf(os.Stderr, "Session not found: %s\n", arg)
+						continue
+					}
+					sess.Refresh(context.Background())
 				}
 				refreshList(w, mgr)
 			case "Context":
