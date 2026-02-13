@@ -72,10 +72,10 @@ echo 'Hello' | 9p write agent/a3f2b9d1/in
 
 ## Backends
 
-| Backend | Install | Notes |
-|---------|---------|-------|
-| Claude | `npm install -g @anthropic-ai/claude-code` | Auto-saves to `~/.claude/projects/` |
-| Kiro | [kiro-cli](https://github.com/stillmatic/kiro) | `/chat save` and `/chat load` |
+| Backend | Install |
+|---------|---------|
+| Claude | `npm install -g @anthropic-ai/claude-code` |
+| Kiro | [kiro-cli](https://github.com/stillmatic/kiro) |
 
 Both run with full permissions inside the sandbox (`--dangerously-skip-permissions`, `--trust-all-tools`).
 
