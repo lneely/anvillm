@@ -57,7 +57,10 @@ agent/
     ├── state       # idle, running, exited
     ├── context     # Prepended to prompts (r/w)
     ├── alias       # Session name (r/w)
-    └── pid, cwd, winid, backend
+    ├── pid         # Process ID
+    ├── cwd         # Working directory
+    ├── winid       # Acme window ID
+    └── backend     # Backend name
 ```
 
 Example:
