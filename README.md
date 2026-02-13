@@ -57,8 +57,7 @@ agent/
     ├── state       # idle, running, exited
     ├── context     # Prepended to prompts (r/w)
     ├── alias       # Session name (r/w)
-    ├── pid, cwd, winid, backend
-    └── err         # (unused)
+    └── pid, cwd, winid, backend
 ```
 
 Example:

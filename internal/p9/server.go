@@ -31,7 +31,6 @@ agent/
         ctl             (write) "stop", "kill"
         in              (write) send prompt (non-blocking, validates and returns immediately)
         out             (read)  response from last prompt
-        err             (read)  stderr/debug output
         winid           (r/w)   acme window id
         state           (read)  "running" or "idle"
         pid             (read)  process id
@@ -65,7 +64,6 @@ const (
 	fileCtl = iota
 	fileIn
 	fileOut
-	fileErr
 	fileWinID
 	fileState
 	filePid
@@ -76,7 +74,7 @@ const (
 	fileCount
 )
 
-var fileNames = []string{"ctl", "in", "out", "err", "winid", "state", "pid", "cwd", "alias", "backend", "context"}
+var fileNames = []string{"ctl", "in", "out", "winid", "state", "pid", "cwd", "alias", "backend", "context"}
 
 type Server struct {
 	mgr           *session.Manager
@@ -528,8 +526,6 @@ func (s *Server) getSessionFile(sess backend.Session, idx int) string {
 			_ = tmuxSess
 		}
 		return ""
-	case fileErr:
-		return "" // Error output not currently stored
 	case fileWinID:
 		return strconv.Itoa(meta.WinID)
 	case fileState:
