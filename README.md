@@ -8,7 +8,7 @@ AnviLLM brings Claude, Kiro, and other LLM chat interfaces directly into your Ac
 - **9P filesystem**: Sessions exposed as files (`9p ls agent`)
 - **Multi-backend support**: Run sessions for Claude and Kiro (and other supported backends) simultaneously
 - **Tmux isolation**: Each session runs in its own tmux window for direct access when needed
-- **Session management**: Save/load transcripts (if supported by backend, otherwise take advantage of acme), alias sessions, switch between multiple conversations .
+- **Session management**: Alias sessions, set context, switch between multiple conversations
 - **If all else fails**: Fire up a terminal and attach to the correct `tmux` session with a single click.
 
 ## Architecture
@@ -17,8 +17,8 @@ AnviLLM brings Claude, Kiro, and other LLM chat interfaces directly into your Ac
 ┌─────────────────────────────────────────────────┐
 │                 Acme Windows                    │
 │  ┌──────────────┐  ┌──────────────┐             │
-│  │ /AnviLLM/    │  │ /chat/claude │             │
-│  │ Sessions     │  │ Save Load    │             │
+│  │ /AnviLLM/    │  │ +Prompt.abc1 │             │
+│  │ Sessions     │  │ Send         │             │
 │  └──────────────┘  └──────────────┘             │
 └─────────────────────────────────────────────────┘
                        │
@@ -35,12 +35,14 @@ AnviLLM brings Claude, Kiro, and other LLM chat interfaces directly into your Ac
          ▼                           ▼
 ┌──────────────────┐      ┌──────────────────────┐
 │  9P Filesystem   │      │   Tmux Sessions      │
-│  /mnt/anvillm/   │      │  anvillm-claude      │
-│   agent/         │      │  anvillm-kiro-cli    │
-│     <id>/        │      └──────────────────────┘
+│   agent/         │      │  anvillm-claude      │
+│     ctl          │      │  anvillm-kiro-cli    │
+│     list         │      └──────────────────────┘
+│     <id>/        │
 │       in         │
 │       out        │
 │       ctl        │
+│       context    │
 │       backend    │
 └──────────────────┘
 ```
@@ -70,7 +72,7 @@ mk  # installs to $HOME/bin
 
 ### Starting AnviLLM
 
-Type `Assist` somewhere in Acme, and middle click. This opens the main `/AnviLLM/` window in Acme showing all active sessions (probably empty).
+Type `Assist` somewhere in Acme and middle-click. This opens the main `/AnviLLM/` window showing all active sessions.
 
 ### Creating Sessions
 
@@ -79,28 +81,32 @@ From the `/AnviLLM/` window, use tag commands:
 - **Kiro** `<directory>` - Start a kiro-cli session in the specified directory
 - **Claude** `<directory>` - Start a Claude Code session in the specified directory
 
-Example: Click on a path, and 2-1 chord on `Claude` to start a Claude session.
+Example: Click on a path, then 2-1 chord on `Claude` to start a Claude session.
 
-Each session opens a new `$PWD/+Chat.<session-id>` window where you can:
+Each session opens a `$PWD/+Prompt.<session-id>` window where you can:
 - Type prompts in the window body
-- Use `Get` to send the text as a prompt
-- Use `Save` to export the transcript
-- Use `Load` to import a previous transcript
-- Use `Attach` to open the underlying tmux window
+- Use `Send` to submit the prompt to the LLM
 
 ### Session Management Commands
 
 #### Main Window (`/AnviLLM/`)
-- **Open** `<session-id>` - Reopen a session window (2-1 chord with session ID highlighted). Or, just right-click the session ID!
-- **Kill** `<pid>` - Terminate a session (2-1 chord with pid highlighted)
 
-#### Chat Windows (`/chat/<backend>/<id>`)
+Tag: `Get Attach Kill Alias Context Sandbox`
+
+- **Get** - Refresh the session list
+- **Kill** `<session-id>` - Terminate a session (2-1 chord with session ID)
+- **Attach** `<session-id>` - Open the tmux window for direct terminal access
+- **Alias** `<session-id> <name>` - Give a session a memorable name
+- **Context** `<session-id>` - Open context editor window (text prepended to every prompt)
+- **Sandbox** - Open sandbox configuration window
+
+Right-click a session ID to reopen its prompt window.
+
+#### Prompt Windows (`+Prompt.<id>`)
+
+Tag: `Send`
+
 - **Send** - Send the window body as a prompt to the LLM
-- **Save** `[path]` - Save transcript to file (if backend supportrs it, defaults to `~/.config/anvillm/transcripts/<timestamp>.txt`)
-- **Load** `<path>` - Load a previous transcript (if backend supports it)
-- **Alias** `<name>` - Give the session a memorable name (2-1 click with a `name` argument)
-- **Attach** - Open the tmux window for direct terminal access
-- **Stop** - Interrupt the current running prompt (CTRL+C)
 
 #### Fire-and-Forget Prompts
 
@@ -108,13 +114,13 @@ Select text anywhere in Acme, then 2-1 chord on a session ID (the 8-character he
 
 ### Notifications
 
-The `anvillm-notify` script monitors sessions and sends desktop notifications when a session finishes working (transitions from running to idle).
+The `anvillm-notify` script monitors sessions and sends desktop notifications when a session transitions from running to idle.
 
 ```sh
 anvillm-notify &
 ```
 
-Requires `notify-send` (libnotify).
+Requires `notify-send` (libnotify). Starts automatically with AnviLLM.
 
 ## 9P Filesystem
 
@@ -122,18 +128,19 @@ AnviLLM exports a 9P filesystem at `agent`:
 
 ```
 agent/
-└── ctl             # Control file (create new sessions)
-└── list            # list of active sessions
+├── ctl             # Control file (create new sessions)
+├── list            # List of active sessions
 └── <session-id>/
     ├── in          # Write prompts here
     ├── out         # Read responses here
-    ├── err         # Error output
-    ├── ctl         # Session control (stop, close)
+    ├── err         # Error output (currently unused)
+    ├── ctl         # Session control (stop, kill)
     ├── state       # Current state (idle, running, exited)
     ├── pid         # Process ID
     ├── cwd         # Working directory
-    ├── alias       # Session alias
-    ├── winid       # Acme window ID
+    ├── alias       # Session alias (r/w)
+    ├── winid       # Acme window ID (r/w)
+    ├── context     # Text prepended to every prompt (r/w)
     └── backend     # Backend name (claude, kiro-cli)
 ```
 
@@ -142,6 +149,12 @@ agent/
 Create a new session:
 ```sh
 echo 'new claude /home/user/project' > agent/ctl
+```
+
+List sessions:
+```sh
+9p read agent/list
+# Output: a3f2b9d1  -  idle  12345  /home/user/project
 ```
 
 Send a prompt:
@@ -156,17 +169,24 @@ Check session state:
 # Output: idle
 ```
 
+Set context for bot-to-bot communication:
+```sh
+echo 'You are dev. Peer reviewer is at agent/abc123' > agent/a3f2b9d1/context
+```
+
 ## Backends
 
 ### Supported Backends
 
 #### Claude (Claude Code CLI)
 - Official Anthropic CLI for Claude
-- Supports chat, session save/load, slash commands
+- Runs with `--dangerously-skip-permissions` (sandboxing via landrun)
+- Auto-saves conversations to `~/.claude/projects/<dir-path>/<session-id>.jsonl`
 - Install: `npm install -g @anthropic-ai/claude-code`
 
 #### Kiro-CLI
-- Alternative Claude interface provided by Amazon for AWS development
+- AWS CLI interface for Kiro
+- Runs with `--trust-all-tools` (sandboxing via landrun)
 - Supports `/chat load` and `/chat save` for session persistence
 - Install: See [kiro-cli repository](https://github.com/stillmatic/kiro)
 
@@ -247,11 +267,11 @@ landrun --rw /project --rox /usr --connect-tcp 443 -- claude --dangerously-skip-
 
 ### Quick Start
 
-Sandboxing is **ALWAYS ENABLED** and **cannot be disabled**. The default policy is **locked-down**:
+Sandboxing is **always enabled** and cannot be disabled. The default policy:
 - **Filesystem**: Read/write access to session working directory, temp dir, and config dirs only
 - **System binaries**: Read-only + execute access to `/usr`, `/lib`, `/bin`, `/sbin`
 - **System files**: Read-only access to essential files (`/etc/passwd`, `/dev/null`, `/proc/meminfo`, etc.)
-- **Network**: Unrestricted (works on all kernel versions; fine-grained control requires kernel 6.10+)
+- **Network**: Disabled by default (enable in config if needed)
 - **Config files**: Access to `~/.claude`, `~/.claude.json`, `~/.kiro`, `~/.config/anvillm`
 
 **Security philosophy**:
@@ -265,9 +285,7 @@ AnviLLM runs backends with `--dangerously-skip-permissions` and `--trust-all-too
     - Kernel doesn't support Landlock (< 5.13)
   - Security-first: Explicit failure is safer than silent degradation to completely unsandboxed mode
   - **Do NOT change to `true`** unless you understand the security implications (see Troubleshooting below)
-- **`unrestricted: true`** for network: Works on all kernel versions (fine-grained port control requires kernel 6.10+)
-
-The default policy provides strong filesystem isolation while maintaining compatibility with older kernels.
+- **`network.enabled: false`**: Network disabled by default; enable and configure ports as needed
 
 ### Requirements
 
@@ -321,14 +339,11 @@ Use these templates in filesystem paths:
 
 ### Common Configurations
 
-#### Development (Permissive)
+#### Development (Network Enabled)
 ```yaml
 network:
   enabled: true
-  connect_tcp:
-    - "443"
-    - "80"
-    - "3000-9000"
+  unrestricted: true
 
 filesystem:
   rw:
