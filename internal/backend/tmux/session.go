@@ -287,7 +287,10 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 		return "", fmt.Errorf("send literal failed: %w", err)
 	}
 
-	// Send Enter
+	// Small delay to ensure tmux processes the literal text before sending submit
+	time.Sleep(200 * time.Millisecond)
+
+	// Send Enter (C-m) to submit the prompt
 	if err := sendKeys(s.target(), "C-m"); err != nil {
 		s.mu.Lock()
 		s.state = "idle"
@@ -389,11 +392,25 @@ func (s *Session) SendAsync(ctx context.Context, prompt string) error {
 
 	target := s.target()
 
+	debug.Log("[session %s] SendAsync: target=%s prompt=%q", s.id, target, prompt)
+
 	// Send without waiting for completion
 	if err := sendLiteral(target, prompt); err != nil {
+		debug.Log("[session %s] SendAsync: sendLiteral failed: %v", s.id, err)
 		return err
 	}
-	return sendKeys(target, "C-m")
+	debug.Log("[session %s] SendAsync: sendLiteral succeeded, sending Enter", s.id)
+
+	// Small delay to ensure tmux processes the literal text before sending submit
+	time.Sleep(200 * time.Millisecond)
+
+	// Send Enter (C-m) to submit the prompt
+	if err := sendKeys(target, "C-m"); err != nil {
+		debug.Log("[session %s] SendAsync: sendKeys failed: %v", s.id, err)
+		return err
+	}
+	debug.Log("[session %s] SendAsync: sendKeys succeeded", s.id)
+	return nil
 }
 
 func (s *Session) SendStream(ctx context.Context, prompt string) (io.ReadCloser, error) {
