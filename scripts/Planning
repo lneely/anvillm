@@ -1,16 +1,18 @@
 #!/bin/bash
-# KiroPlanning - Research/Engineering/Tech-Editor workflow
-# Usage: ./scripts/KiroPlanning.sh /path/to/docs [ticket-id]
+# Planning - Research/Engineering/Tech-Editor workflow
+# Usage: ./scripts/Planning <backend> <workdir> [ticket-id]
 
 set -e
 
-if [ $# -lt 1 ]; then
-    echo "Usage: $0 /path/to/docs [ticket-id]"
+if [ $# -lt 2 ]; then
+    echo "Usage: $0 <backend> <workdir> [ticket-id]"
+    echo "  backend: claude, kiro-cli"
     exit 1
 fi
 
-DOC_PATH="$1"
-TICKET_ID="${2:-}"
+BACKEND="$1"
+DOC_PATH="$2"
+TICKET_ID="${3:-}"
 
 # Generate random alias prefix
 RANDOM_WORD=$(shuf -n1 -e alpha beta gamma delta zeta theta kappa sigma omega lambda)
@@ -36,15 +38,15 @@ create_session() {
 }
 
 echo "Creating research session..."
-RESEARCH_ID=$(create_session kiro-cli "$DOC_PATH")
+RESEARCH_ID=$(create_session "$BACKEND" "$DOC_PATH")
 echo "  ID: $RESEARCH_ID"
 
 echo "Creating engineering session..."
-ENG_ID=$(create_session kiro-cli "$DOC_PATH")
+ENG_ID=$(create_session "$BACKEND" "$DOC_PATH")
 echo "  ID: $ENG_ID"
 
 echo "Creating tech-editor session..."
-EDITOR_ID=$(create_session kiro-cli "$DOC_PATH")
+EDITOR_ID=$(create_session "$BACKEND" "$DOC_PATH")
 echo "  ID: $EDITOR_ID"
 
 # Set aliases
@@ -105,7 +107,7 @@ Do not actively await responses.
 EOF
 
 echo ""
-echo "✓ KiroPlanning workflow ready ($ALIAS_PREFIX)"
+echo "✓ Planning workflow ready ($ALIAS_PREFIX)"
 echo ""
 echo "Sessions:"
 echo "  ${ALIAS_PREFIX}-research:    $RESEARCH_ID"

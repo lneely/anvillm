@@ -272,9 +272,9 @@ func refreshList(w *acme.Win, mgr *session.Manager) {
 	var buf strings.Builder
 	// Backends line
 	buf.WriteString("Backends: [Kiro] [Claude]\n\n")
-	// Header: ID=5, Backend=10, State=9, PID=8, Alias=16, Cwd=remaining
-	buf.WriteString(fmt.Sprintf("%-5s %-10s %-9s %-8s %-16s %s\n", "ID", "Backend", "State", "PID", "Alias", "Cwd"))
-	buf.WriteString(fmt.Sprintf("%-5s %-10s %-9s %-8s %-16s %s\n", "-----", "----------", "---------", "--------", "----------------", strings.Repeat("-", 40)))
+	// Header: ID=5, Backend=10, State=9, Alias=16, Cwd=remaining
+	buf.WriteString(fmt.Sprintf("%-5s %-10s %-9s %-16s %s\n", "ID", "Backend", "State", "Alias", "Cwd"))
+	buf.WriteString(fmt.Sprintf("%-5s %-10s %-9s %-16s %s\n", "-----", "----------", "---------", "----------------", strings.Repeat("-", 40)))
 	for _, id := range mgr.List() {
 		sess := mgr.Get(id)
 		if sess == nil {
@@ -294,11 +294,7 @@ func refreshList(w *acme.Win, mgr *session.Manager) {
 		if alias == "" {
 			alias = "-"
 		}
-		cwd := meta.Cwd
-		if len(cwd) > 80 {
-			cwd = "..." + cwd[len(cwd)-77:]
-		}
-		buf.WriteString(fmt.Sprintf("%-5s %-10s %-9s %-8d %-16s %s\n", sess.ID(), meta.Backend, sess.State(), meta.Pid, alias, cwd))
+		buf.WriteString(fmt.Sprintf("%-5s %-10s %-9s %-16s %s\n", sess.ID(), meta.Backend, sess.State(), alias, meta.Cwd))
 	}
 	w.Addr(",")
 	w.Write("data", []byte(buf.String()))
