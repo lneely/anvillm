@@ -1,6 +1,6 @@
 # AnviLLM
 
-Acme-native interface for LLM chat backends. Sessions appear as Acme windows and are exposed via 9P filesystem.
+9P-based LLM orchestrator. Front-ends for Acme, Emacs, TUI, and web.
 
 ## Architecture
 
