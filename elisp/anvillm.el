@@ -155,7 +155,7 @@ Format: id alias state pid cwd (whitespace-separated; often tabs)."
   (when-let ((entry (tabulated-list-get-id)))
     entry))
 
-(defun anvillm-send-prompt ()
+(defun anvillm-send-prompt-minibuffer ()
   "Send a prompt to the selected session."
   (interactive)
   (if-let ((session-id (anvillm--get-selected-session)))
@@ -242,7 +242,7 @@ Format: id alias state pid cwd (whitespace-separated; often tabs)."
 
 Keybindings:
 s - Start new session (select backend)
-p - Send prompt to selected session
+p - Compose prompt in buffer (C-c C-c to send, C-c C-k to abort)
 t - Stop selected session
 R - Restart selected session
 K - Kill selected session
@@ -257,6 +257,10 @@ Navigation:
 n, C-n - Next line
 p, C-p - Previous line
 RET - (reserved for future use)
+
+Prompt Composition:
+The prompt buffer supports multi-line input. Lines starting with ;;
+are treated as comments and stripped before sending.
 
 9P Filesystem:
 All operations read/write the 9P filesystem at $NAMESPACE/agent
@@ -274,12 +278,13 @@ Backends:
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map tabulated-list-mode-map)
     (define-key map (kbd "s") #'anvillm-start-session)
-    (define-key map (kbd "p") #'anvillm-send-prompt)
+    (define-key map (kbd "P") #'anvillm-send-prompt-minibuffer)
     (define-key map (kbd "t") #'anvillm-stop-session)
     (define-key map (kbd "R") #'anvillm-restart-session)
     (define-key map (kbd "K") #'anvillm-kill-session)
     (define-key map (kbd "A") #'anvillm-set-alias)
     (define-key map (kbd "a") #'anvillm-attach-session)
+    (define-key map (kbd "p") #'anvillm-compose-prompt)
     (define-key map (kbd "r") #'anvillm-refresh)
     (define-key map (kbd "g") #'anvillm-refresh)
     (define-key map (kbd "d") #'anvillm-daemon-status)
@@ -356,6 +361,116 @@ Backends:
          (message "Failed to attach to session: %s" (error-message-string err))))
     (message "No session selected")))
 
+
+(defvar-local anvillm--prompt-session-id nil
+  "Session ID for the current prompt buffer.")
+
+(defvar anvillm-prompt-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-c C-c") #'anvillm-prompt-send)
+    (define-key map (kbd "C-c C-k") #'anvillm-prompt-abort)
+    map)
+  "Keymap for AnviLLM prompt composition mode.")
+
+(define-derived-mode anvillm-prompt-mode text-mode "AnviLLM-Prompt"
+  "Major mode for composing prompts to send to AnviLLM sessions.
+
+\\{anvillm-prompt-mode-map}"
+  (setq header-line-format
+        (substitute-command-keys
+         "Compose prompt for AnviLLM session. Finish: \\[anvillm-prompt-send] | Abort: \\[anvillm-prompt-abort]")))
+
+(defun anvillm-compose-prompt ()
+  "Open a buffer to compose a prompt for the selected session."
+  (interactive)
+  (if-let ((session-id (anvillm--get-selected-session)))
+      (let* ((session-info (anvillm--get-session-info session-id))
+             (display-name (or (plist-get session-info :alias) 
+                              (substring session-id 0 (min 8 (length session-id)))))
+             (buffer-name (format "*AnviLLM Prompt: %s*" display-name))
+             (buffer (get-buffer-create buffer-name)))
+        (with-current-buffer buffer
+          (anvillm-prompt-mode)
+          (erase-buffer)
+          (setq anvillm--prompt-session-id session-id)
+          (insert (format ";; Prompt for session: %s\n" display-name))
+          (insert (format ";; Backend: %s\n" (plist-get session-info :backend)))
+          (insert (format ";; State: %s\n\n" (plist-get session-info :state)))
+          (insert ";; Type your prompt below (comments will be stripped).\n")
+          (insert ";; Press C-c C-c to send, C-c C-k to abort.\n\n")
+        (pop-to-buffer buffer)
+        (goto-char (point-max)))
+    (message "No session selected")))
+
+(defun anvillm--get-session-info (session-id)
+  "Get session information for SESSION-ID as a plist."
+  (let ((backend (condition-case nil
+                     (string-trim (anvillm--9p-read 
+                                  (concat anvillm-agent-path "/" session-id "/backend")))
+                   (error "")))
+        (state (condition-case nil
+                   (string-trim (anvillm--9p-read 
+                                (concat anvillm-agent-path "/" session-id "/state")))
+                 (error "")))
+        (alias (condition-case nil
+                   (string-trim (anvillm--9p-read 
+                                (concat anvillm-agent-path "/" session-id "/alias")))
+                 (error ""))))
+    (list :backend backend
+          :state state
+          :alias (if (string= alias "") nil alias))))
+
+(defun anvillm-send-prompt ()
+  "Send a prompt to the selected session (using minibuffer)."
+  (interactive)
+  (if-let ((session-id (anvillm--get-selected-session)))
+      (let ((prompt (read-string "Prompt: ")))
+        (when (> (length prompt) 0)
+          (condition-case err
+              (progn
+                (anvillm--9p-write (concat anvillm-agent-path "/" session-id "/in") prompt)
+                (message "Sent prompt to %s" (substring session-id 0 (min 8 (length session-id)))))
+            (error
+             (message "Failed to send prompt: %s" (error-message-string err))))))
+    (message "No session selected")))
+
+(defun anvillm-prompt-abort ()
+  "Abort prompt composition and close the buffer."
+  (interactive)
+  (when (yes-or-no-p "Abort prompt composition? ")
+    (quit-window t)))
+
+(defun anvillm--extract-prompt-text ()
+  "Extract prompt text from buffer, stripping comment lines."
+  (let ((lines (split-string (buffer-string) "\n")))
+    (string-join
+     (delq nil
+           (mapcar (lambda (line)
+                     (unless (string-prefix-p ";;" (string-trim line))
+                       line))
+                   lines))
+     "\n")))
+
+
+(defun anvillm-prompt-send ()
+  "Send the composed prompt to the session and close the buffer."
+  (interactive)
+  (unless anvillm--prompt-session-id
+    (error "No session ID associated with this buffer"))
+  (let ((prompt (anvillm--extract-prompt-text)))
+    (if (string-empty-p (string-trim prompt))
+        (message "Empty prompt, not sending")
+      (condition-case err
+          (progn
+            (anvillm--9p-write 
+             (concat anvillm-agent-path "/" anvillm--prompt-session-id "/in")
+             prompt)
+            (message "Sent prompt to %s" 
+                    (substring anvillm--prompt-session-id 0 
+                              (min 8 (length anvillm--prompt-session-id))))
+            (quit-window t))
+        (error
+         (message "Failed to send prompt: %s" (error-message-string err)))))))
 
 (provide 'anvillm)
 
