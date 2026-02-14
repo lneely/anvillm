@@ -230,11 +230,23 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 		return nil, fmt.Errorf("timeout opening FIFO")
 	}
 
-	// 9. Get PID
-	pid, err := getPanePID(target)
+	// 9. Get PID (find the backend process, not just the bash shell)
+	panePID, err := getPanePID(target)
 	if err != nil {
-		debug.Log("[session %s] warning: failed to get PID: %v", id, err)
-		pid = 0
+		debug.Log("[session %s] warning: failed to get pane PID: %v", id, err)
+		panePID = 0
+	}
+
+	// Find the actual backend process (child of bash shell)
+	pid := 0
+	if panePID != 0 {
+		time.Sleep(200 * time.Millisecond) // Brief delay for backend to start
+		pid = FindBackendPID(panePID)
+		if pid == 0 {
+			debug.Log("[session %s] warning: backend process not found for pane PID %d", id, panePID)
+		} else {
+			debug.Log("[session %s] found backend PID %d (pane PID: %d)", id, pid, panePID)
+		}
 	}
 
 	sess := &Session{

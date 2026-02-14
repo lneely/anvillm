@@ -117,6 +117,26 @@ func getPanePID(target string) (int, error) {
 	return pid, err
 }
 
+// FindBackendPID finds the backend process PID (direct child of bash)
+// This works for both claude and kiro-cli backends
+func FindBackendPID(panePID int) int {
+	// Process tree: panePID (bash) -> backend (claude, kiro-cli, etc.)
+	// Get first child process of the bash shell
+	cmd := exec.Command("pgrep", "-P", fmt.Sprintf("%d", panePID))
+	out, err := cmd.Output()
+	if err != nil {
+		return 0
+	}
+	// pgrep returns one PID per line; take the first one
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) == 0 || lines[0] == "" {
+		return 0
+	}
+	var pid int
+	fmt.Sscanf(lines[0], "%d", &pid)
+	return pid
+}
+
 // FindKiroChatPID traverses the process tree to find kiro-cli-chat
 func FindKiroChatPID(panePID int) int {
 	// pane (kiro-cli-term) -> bash -> kiro-cli -> kiro-cli-chat
