@@ -8,8 +8,8 @@ AnviLLM consists of:
 
 - **anvilsrv**: Background daemon managing sessions via 9P
 - **Assist**: Acme UI client (auto-starts daemon if needed)
-- **anvillm**: Terminal UI (curses-based)
-- **anvillm.el**: Emacs interface
+- **anvillm.el**: For our emacs friends ;)
+- **anvillm**: Terminal UI (curses-based) for everyone else
 
 This separation allows:
 - Multiple clients to connect to the same sessions
@@ -118,6 +118,8 @@ anvillm
 - `?` - Help
 - `q` - Quit
 
+To attach to the anvillm session, simply open a different terminal and use `tmux attach`.
+
 **Navigation:**
 - Arrow keys (`↑`/`↓`)
 - Vim-style (`j`/`k`)
@@ -130,27 +132,28 @@ Like Assist, the TUI reads/writes the 9P filesystem for all operations.
 Run `M-x anvillm` in Emacs for a native Emacs interface:
 
 **Installation:**
-```sh
-mk  # installs anvillm.el to ~/.emacs.d/lisp/
-```
 
-Add to your `~/.emacs` or `~/.emacs.d/init.el`:
+Copy anvillm.el to ~/.emacs.d/lisp/ or wherever your elisp files live. Then, add to your emacs init:
+
 ```elisp
-(add-to-list 'load-path "~/.emacs.d/lisp")
+(add-to-list 'load-path "/path/to/anvillm.el/")
 (require 'anvillm)
 ```
 
 **Keybindings:**
-- `s` - Start new session (select backend)
-- `p` - Send prompt to selected session
-- `t` - Stop selected session
-- `R` - Restart selected session
-- `K` - Kill selected session
-- `a` - Set alias for selected session
-- `r`, `g` - Refresh session list
-- `d` - Daemon status
-- `q` - Quit window
-- `?` - Help
+
+- s - Start new session (select backend)
+- p - Send prompt to selected session
+- P - Send prompt to selected session using minibuffer
+- t - Stop selected session
+- R - Restart selected session
+- K - Kill selected session
+- a - Set alias for selected session
+- r - Refresh session list
+- g - Refresh session list (standard Emacs binding)
+- d - Daemon status
+- q - Quit
+- ? - Help
 
 **Navigation:**
 - Standard Emacs navigation (`n`, `p`, `C-n`, `C-p`)
