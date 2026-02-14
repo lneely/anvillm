@@ -31,10 +31,10 @@ agent/
         ctl             (write) "stop", "restart", "kill", "refresh"
         in              (write) send prompt (non-blocking, validates and returns immediately)
         out             (read)  response from last prompt
-        winid           (r/w)   acme window id
         state           (read)  "starting", "idle", "running", "stopped", "error", "exited"
         pid             (read)  process id
         cwd             (read)  working directory
+        alias           (r/w)   session alias
         backend         (read)  backend name (e.g., "kiro-cli", "claude")
         context         (r/w)   text prepended to every prompt
 
@@ -64,7 +64,6 @@ const (
 	fileCtl = iota
 	fileIn
 	fileOut
-	fileWinID
 	fileState
 	filePid
 	fileCwd
@@ -74,13 +73,13 @@ const (
 	fileCount
 )
 
-var fileNames = []string{"ctl", "in", "out", "winid", "state", "pid", "cwd", "alias", "backend", "context"}
+var fileNames = []string{"ctl", "in", "out", "state", "pid", "cwd", "alias", "backend", "context"}
 
 type Server struct {
-	mgr           *session.Manager
-	listener      net.Listener
-	mu            sync.RWMutex
-	OnAliasChange func(sess backend.Session) // callback when alias changes
+	mgr        *session.Manager
+	listener   net.Listener
+	socketPath string
+	mu         sync.RWMutex
 }
 
 type connState struct {
@@ -119,9 +118,14 @@ func NewServer(mgr *session.Manager) (*Server, error) {
 		return nil, err
 	}
 
-	s := &Server{mgr: mgr, listener: listener}
+	s := &Server{mgr: mgr, listener: listener, socketPath: sockPath}
 	go s.acceptLoop()
 	return s, nil
+}
+
+// SocketPath returns the path to the Unix socket
+func (s *Server) SocketPath() string {
+	return s.socketPath
 }
 
 func (s *Server) acceptLoop() {
@@ -315,7 +319,27 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		if len(args) > 2 {
 			cwd = strings.Trim(args[2], `"`)
 		}
-		_, err := s.mgr.New(backendName, cwd)
+
+		// Validate and clean the path
+		cleanPath := filepath.Clean(cwd)
+
+		// Ensure it's an absolute path
+		if !filepath.IsAbs(cleanPath) {
+			var err error
+			cleanPath, err = filepath.Abs(cleanPath)
+			if err != nil {
+				return errFcall(fc, fmt.Sprintf("invalid path: %v", err))
+			}
+		}
+
+		// Verify the directory exists
+		if info, err := os.Stat(cleanPath); err != nil {
+			return errFcall(fc, fmt.Sprintf("path does not exist: %v", err))
+		} else if !info.IsDir() {
+			return errFcall(fc, fmt.Sprintf("path is not a directory: %s", cleanPath))
+		}
+
+		_, err := s.mgr.New(backendName, cleanPath)
 		if err != nil {
 			return errFcall(fc, err.Error())
 		}
@@ -379,23 +403,6 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
-	// /{id}/winid - set window id
-	if len(parts) == 3 && parts[2] == "winid" {
-		sess := s.mgr.Get(parts[1])
-		if sess == nil {
-			return errFcall(fc, "session not found")
-		}
-		id, err := strconv.Atoi(input)
-		if err != nil {
-			return errFcall(fc, "invalid winid")
-		}
-		// Set WinID if it's a tmux session
-		if tmuxSess, ok := sess.(*tmux.Session); ok {
-			tmuxSess.SetWinID(id)
-		}
-		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
-	}
-
 	// /{id}/alias - set session alias
 	if len(parts) == 3 && parts[2] == "alias" {
 		sess := s.mgr.Get(parts[1])
@@ -408,9 +415,6 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			return errFcall(fc, "invalid alias: must match [A-Za-z0-9_-]+")
 		}
 		sess.SetAlias(input)
-		if s.OnAliasChange != nil {
-			s.OnAliasChange(sess)
-		}
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
@@ -470,7 +474,7 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 			mode := uint32(0444)
 			if name == "ctl" || name == "in" {
 				mode = 0222
-			} else if name == "winid" || name == "alias" || name == "context" {
+			} else if name == "alias" || name == "context" {
 				mode = 0644
 			}
 			content := s.getSessionFile(sess, i)
@@ -536,8 +540,6 @@ func (s *Server) getSessionFile(sess backend.Session, idx int) string {
 			_ = tmuxSess
 		}
 		return ""
-	case fileWinID:
-		return strconv.Itoa(meta.WinID)
 	case fileState:
 		return sess.State()
 	case filePid:

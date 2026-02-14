@@ -1,0 +1,25 @@
+[Unit]
+Description=AnviLLM Backend Server (User Service)
+Documentation=https://github.com/lkn/anvillm
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h
+
+# Environment is inherited from user session
+# But we can override if needed:
+# Environment="PATH=%h/bin:/usr/local/bin:/usr/bin:/bin"
+
+# Start anvilsrv
+ExecStart=%h/bin/anvilsrv start
+
+# Cleanup on stop
+ExecStopPost=/bin/rm -f /tmp/anvilsrv.pid
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target

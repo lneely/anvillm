@@ -1,0 +1,26 @@
+#!/bin/sh
+# runit service script for anvilsrv
+#
+# To install this service:
+#   1. Copy this directory to /etc/sv/anvilsrv
+#   2. Create symlink: ln -s /etc/sv/anvilsrv /var/service/anvilsrv
+#
+# The service will start automatically and restart if it crashes.
+
+exec 2>&1
+
+# Set up environment
+# Adjust these paths as needed for your system
+export HOME=${HOME:-/home/$(whoami)}
+export PATH="${HOME}/bin:/usr/local/bin:/usr/bin:/bin"
+
+# Ensure namespace directory exists
+export NAMESPACE="${NAMESPACE:-/tmp/ns.$(whoami)}"
+mkdir -p "$NAMESPACE"
+
+# Log service start
+echo "Starting anvilsrv..."
+
+# Run anvilsrv in foreground (don't daemonize for runit)
+# The 'start' command will handle the daemon setup
+exec chpst -u $(whoami) anvilsrv start

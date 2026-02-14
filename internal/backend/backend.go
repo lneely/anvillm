@@ -73,7 +73,6 @@ type SessionMetadata struct {
 	Pid       int               // Process ID (0 if not applicable)
 	Cwd       string            // Working directory
 	Alias     string            // User-assigned alias
-	WinID     int               // Acme window ID
 	Backend   string            // Backend name (e.g., "kiro-cli", "claude")
 	CreatedAt time.Time         // Session creation time
 	Extra     map[string]string // Backend-specific metadata

@@ -5,7 +5,7 @@ description: Discover and interact with peer bots in the anvillm 9P filesystem. 
 
 # Peer Bot Interaction
 
-This skill enables you to discover and interact with peer bots running in the anvillm 9P filesystem.
+This skill enables you to discover and interact with peer bots running in the anvillm 9P filesystem. Peer bots are defined as any bot working in the same working directory as your own (Cwd column in the agents list).
 
 ## Currently Available Agents
 

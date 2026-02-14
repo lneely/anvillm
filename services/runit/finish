@@ -1,0 +1,12 @@
+#!/bin/sh
+# runit finish script for anvilsrv
+# Called when the service stops
+
+echo "anvilsrv stopped"
+
+# Remove PID file if it exists
+rm -f /tmp/anvilsrv.pid
+
+# Optional: clean up stale sockets
+# export NAMESPACE="${NAMESPACE:-/tmp/ns.$(whoami)}"
+# rm -f "${NAMESPACE}/agent"

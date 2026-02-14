@@ -1,0 +1,31 @@
+[Unit]
+Description=AnviLLM Backend Server for %i
+Documentation=https://github.com/lkn/anvillm
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+Group=%i
+WorkingDirectory=/home/%i
+
+# Environment
+Environment="PATH=/home/%i/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="HOME=/home/%i"
+
+# Start anvilsrv
+ExecStart=/home/%i/bin/anvilsrv start
+
+# Cleanup on stop
+ExecStopPost=/bin/rm -f /tmp/anvilsrv.pid
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+# Resource limits (optional)
+# LimitNOFILE=65536
+# LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

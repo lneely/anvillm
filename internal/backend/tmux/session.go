@@ -22,7 +22,6 @@ type Session struct {
 	windowName  string // window name within tmux session (same as id)
 	cwd         string
 	alias       string
-	winID       int
 	pid         int
 	state       string
 	context     string // prepended to every prompt
@@ -78,7 +77,6 @@ func (s *Session) Metadata() backend.SessionMetadata {
 		Pid:       s.pid,
 		Cwd:       s.cwd,
 		Alias:     s.alias,
-		WinID:     s.winID,
 		Backend:   s.backendName,
 		CreatedAt: s.createdAt,
 		Extra: map[string]string{
@@ -90,20 +88,6 @@ func (s *Session) Metadata() backend.SessionMetadata {
 
 func (s *Session) Commands() backend.CommandHandler {
 	return s.commands
-}
-
-// SetWinID sets the Acme window ID
-func (s *Session) SetWinID(winID int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.winID = winID
-}
-
-// GetWinID gets the Acme window ID
-func (s *Session) GetWinID() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.winID
 }
 
 // GetPid gets the process ID

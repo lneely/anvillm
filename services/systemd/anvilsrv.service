@@ -1,0 +1,38 @@
+[Unit]
+Description=AnviLLM Backend Server
+Documentation=https://github.com/lkn/anvillm
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+Group=%i
+WorkingDirectory=~
+
+# Environment
+Environment="PATH=/home/%i/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="NAMESPACE=/tmp/ns.%i"
+
+# Ensure namespace directory exists
+ExecStartPre=/bin/mkdir -p /tmp/ns.%i
+ExecStartPre=/bin/chown %i:%i /tmp/ns.%i
+
+# Start anvilsrv
+ExecStart=/home/%i/bin/anvilsrv start
+
+# Cleanup on stop
+ExecStopPost=/bin/rm -f /tmp/anvilsrv.pid
+ExecStopPost=/bin/rm -f /tmp/ns.%i/agent
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+# Security hardening (optional)
+# PrivateTmp=yes
+# NoNewPrivileges=yes
+# ProtectSystem=strict
+# ProtectHome=read-only
+
+[Install]
+WantedBy=default.target
