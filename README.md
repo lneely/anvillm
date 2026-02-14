@@ -10,13 +10,14 @@ AnviLLM consists of:
 - **Assist**: Acme UI client (auto-starts daemon if needed)
 - **anvillm.el**: For our emacs friends ;)
 - **anvillm**: Terminal UI (curses-based) for everyone else
+- **anvilweb**: Web interface for browser-based access
 
 This separation allows:
 - Multiple clients to connect to the same sessions
 - Server survives client crashes/restarts
 - Scriptable workflows via 9P without UI dependencies
 - Service management (systemd/runit integration)
-- Choice of interface: Acme, terminal, or Emacs
+- Choice of interface: Acme, terminal, Emacs, or web browser
 
 ## Requirements
 
@@ -160,6 +161,43 @@ Copy anvillm.el to ~/.emacs.d/lisp/ or wherever your elisp files live. Then, add
 - Sessions displayed in a sortable table (click column headers)
 
 The Emacs interface uses the `9p` command from plan9port to interact with the filesystem.
+
+### Web Interface (anvilweb)
+
+Run `anvilweb` for a browser-based interface:
+
+```sh
+anvilweb              # starts on :8080
+anvilweb -addr :3000  # custom port
+```
+
+**Features:**
+- Start new sessions (Kiro/Claude)
+- View all sessions with live state updates
+- Send prompts, edit context and aliases
+- Stop/restart/kill sessions
+- Auto-refreshes every 5 seconds
+
+**Security Warning:**
+
+⚠️ **The web interface has NO authentication.** Anyone who can reach the server port can:
+- View all sessions
+- Send prompts to any session
+- Start/stop/kill sessions
+- Modify session contexts
+
+**Only run anvilweb on localhost or trusted networks.** For remote access, use SSH port forwarding:
+
+```sh
+# On remote machine
+anvilweb -addr localhost:8080
+
+# On local machine
+ssh -L 8080:localhost:8080 user@remote
+# Then browse to http://localhost:8080
+```
+
+Or use a reverse proxy with authentication (nginx, caddy, etc.).
 
 ### Acme Interface (Assist)
 
@@ -344,6 +382,8 @@ See `scripts/DevReview` and `scripts/Planning` for complete examples.
 | 9P not working | Verify plan9port: `9p ls agent` |
 | Stale PID file | `anvilsrv stop` cleans up automatically |
 | Daemon won't stop | Check logs with `anvilsrv fgstart` |
+| anvilweb can't connect | Ensure anvilsrv is running; check namespace matches |
+| anvilweb port in use | Use `-addr :PORT` to specify different port |
 
 **Debugging**: Run `anvilsrv fgstart` to see daemon logs in foreground.
 

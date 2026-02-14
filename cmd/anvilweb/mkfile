@@ -1,0 +1,2 @@
+anvilweb:V:
+	cd cmd/anvilweb && go build -o $home/bin/anvilweb

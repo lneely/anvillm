@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnviLLM Web</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <style>
+        body { padding: 1rem; }
+        .session-card { margin-bottom: 1rem; }
+        .state-badge { 
+            display: inline-block; 
+            padding: 0.25rem 0.5rem; 
+            border-radius: 0.25rem; 
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        .state-idle { background: var(--pico-primary-background); color: var(--pico-primary-inverse); }
+        .state-running { background: var(--pico-color-amber-550); color: white; }
+        .state-stopped { background: var(--pico-muted-color); color: white; }
+        .state-error { background: var(--pico-color-red-550); color: white; }
+        .session-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .session-actions button { margin: 0; padding: 0.5rem 1rem; }
+        #prompt-area { min-height: 100px; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>AnviLLM</h1>
+        <p>Web interface for LLM session management</p>
+    </header>
+
+    <main>
+        <section>
+            <h2>New Session</h2>
+            <form id="new-session-form">
+                <div class="grid">
+                    <label>
+                        Backend
+                        <select name="backend" required>
+                            <option value="kiro-cli">Kiro</option>
+                            <option value="claude">Claude</option>
+                        </select>
+                    </label>
+                    <label>
+                        Working Directory
+                        <input type="text" name="cwd" placeholder="/path/to/project" required>
+                    </label>
+                </div>
+                <button type="submit">Start Session</button>
+            </form>
+        </section>
+
+        <section>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>Sessions</h2>
+                <button onclick="loadSessions()">Refresh</button>
+            </div>
+            <div id="sessions"></div>
+        </section>
+
+        <dialog id="prompt-dialog">
+            <article>
+                <header>
+                    <button aria-label="Close" rel="prev" onclick="closePromptDialog()"></button>
+                    <h3>Send Prompt</h3>
+                </header>
+                <form id="prompt-form">
+                    <label>
+                        Prompt
+                        <textarea id="prompt-area" name="prompt" required></textarea>
+                    </label>
+                    <footer>
+                        <button type="button" onclick="closePromptDialog()" class="secondary">Cancel</button>
+                        <button type="submit">Send</button>
+                    </footer>
+                </form>
+            </article>
+        </dialog>
+
+        <dialog id="context-dialog">
+            <article>
+                <header>
+                    <button aria-label="Close" rel="prev" onclick="closeContextDialog()"></button>
+                    <h3>Edit Context</h3>
+                </header>
+                <form id="context-form">
+                    <label>
+                        Context (prepended to all prompts)
+                        <textarea id="context-area" name="context" rows="10"></textarea>
+                    </label>
+                    <footer>
+                        <button type="button" onclick="closeContextDialog()" class="secondary">Cancel</button>
+                        <button type="submit">Save</button>
+                    </footer>
+                </form>
+            </article>
+        </dialog>
+
+        <dialog id="alias-dialog">
+            <article>
+                <header>
+                    <button aria-label="Close" rel="prev" onclick="closeAliasDialog()"></button>
+                    <h3>Set Alias</h3>
+                </header>
+                <form id="alias-form">
+                    <label>
+                        Alias
+                        <input type="text" id="alias-input" name="alias" required>
+                    </label>
+                    <footer>
+                        <button type="button" onclick="closeAliasDialog()" class="secondary">Cancel</button>
+                        <button type="submit">Save</button>
+                    </footer>
+                </form>
+            </article>
+        </dialog>
+    </main>
+
+    <script>
+        let currentSessionId = null;
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function loadSessions() {
+            try {
+                const res = await fetch('/api/sessions');
+                const sessions = await res.json();
+                
+                const container = document.getElementById('sessions');
+                if (sessions.length === 0) {
+                    container.innerHTML = '<p>No sessions running</p>';
+                    return;
+                }
+
+                container.innerHTML = sessions.map(s => {
+                    const alias = escapeHtml(s.alias || s.id);
+                    const backend = escapeHtml(s.backend || 'unknown');
+                    const cwd = escapeHtml(s.cwd);
+                    const pid = escapeHtml(s.pid);
+                    const state = escapeHtml(s.state);
+                    
+                    return `
+                    <article class="session-card">
+                        <header>
+                            <strong>${alias}</strong>
+                            <span class="state-badge state-${state}">${state}</span>
+                        </header>
+                        <p>
+                            <small>
+                                <strong>Backend:</strong> ${backend}<br>
+                                <strong>CWD:</strong> ${cwd}<br>
+                                <strong>PID:</strong> ${pid}
+                            </small>
+                        </p>
+                        <div class="session-actions">
+                            <button onclick="openPromptDialog('${escapeHtml(s.id)}')" ${s.state !== 'idle' ? 'disabled' : ''}>Prompt</button>
+                            <button onclick="openContextDialog('${escapeHtml(s.id)}')" class="secondary">Context</button>
+                            <button onclick="openAliasDialog('${escapeHtml(s.id)}')" class="secondary">Alias</button>
+                            <button onclick="controlSession('${escapeHtml(s.id)}', 'stop')" ${s.state === 'stopped' ? 'disabled' : ''} class="secondary">Stop</button>
+                            <button onclick="controlSession('${escapeHtml(s.id)}', 'restart')" ${s.state !== 'stopped' ? 'disabled' : ''} class="secondary">Restart</button>
+                            <button onclick="controlSession('${escapeHtml(s.id)}', 'kill')" class="contrast">Kill</button>
+                        </div>
+                    </article>
+                `}).join('');
+            } catch (err) {
+                console.error('Failed to load sessions:', err);
+                document.getElementById('sessions').innerHTML = '<p>Failed to connect to server</p>';
+            }
+        }
+
+        document.getElementById('new-session-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const data = new FormData(form);
+            
+            try {
+                const res = await fetch('/api/sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        backend: data.get('backend'),
+                        cwd: data.get('cwd')
+                    })
+                });
+                
+                if (res.ok) {
+                    form.reset();
+                    setTimeout(loadSessions, 500);
+                } else {
+                    alert('Failed to create session');
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        });
+
+        function openPromptDialog(id) {
+            currentSessionId = id;
+            document.getElementById('prompt-dialog').showModal();
+            document.getElementById('prompt-area').focus();
+        }
+
+        function closePromptDialog() {
+            document.getElementById('prompt-dialog').close();
+            document.getElementById('prompt-form').reset();
+        }
+
+        document.getElementById('prompt-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const prompt = document.getElementById('prompt-area').value;
+            
+            try {
+                const res = await fetch(`/api/session/${currentSessionId}/prompt`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt })
+                });
+                
+                if (res.ok) {
+                    closePromptDialog();
+                    loadSessions();
+                } else {
+                    alert('Failed to send prompt');
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        });
+
+        async function openContextDialog(id) {
+            currentSessionId = id;
+            try {
+                const res = await fetch(`/api/session/${id}/context`);
+                const data = await res.json();
+                document.getElementById('context-area').value = data.content || '';
+                document.getElementById('context-dialog').showModal();
+            } catch (err) {
+                alert('Error loading context: ' + err.message);
+            }
+        }
+
+        function closeContextDialog() {
+            document.getElementById('context-dialog').close();
+        }
+
+        document.getElementById('context-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const content = document.getElementById('context-area').value;
+            
+            try {
+                const res = await fetch(`/api/session/${currentSessionId}/context`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content })
+                });
+                
+                if (res.ok) {
+                    closeContextDialog();
+                } else {
+                    alert('Failed to save context');
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        });
+
+        async function openAliasDialog(id) {
+            currentSessionId = id;
+            try {
+                const res = await fetch(`/api/session/${id}/alias`);
+                const data = await res.json();
+                document.getElementById('alias-input').value = data.content || '';
+                document.getElementById('alias-dialog').showModal();
+            } catch (err) {
+                alert('Error loading alias: ' + err.message);
+            }
+        }
+
+        function closeAliasDialog() {
+            document.getElementById('alias-dialog').close();
+        }
+
+        document.getElementById('alias-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const content = document.getElementById('alias-input').value;
+            
+            try {
+                const res = await fetch(`/api/session/${currentSessionId}/alias`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content })
+                });
+                
+                if (res.ok) {
+                    closeAliasDialog();
+                    loadSessions();
+                } else {
+                    alert('Failed to save alias');
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        });
+
+        async function controlSession(id, cmd) {
+            try {
+                const res = await fetch(`/api/session/${id}/ctl`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: cmd })
+                });
+                
+                if (res.ok) {
+                    setTimeout(loadSessions, 500);
+                } else {
+                    alert(`Failed to ${cmd} session`);
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        // Load sessions on page load
+        loadSessions();
+        
+        // Auto-refresh every 5 seconds
+        setInterval(loadSessions, 5000);
+    </script>
+</body>
+</html>
