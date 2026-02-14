@@ -44,6 +44,8 @@ type Session struct {
 
 	transitioning   bool // True during Stop/Restart/Close operations to prevent concurrent modifications
 	readerGeneration int  // Incremented on each restart to prevent old readers from updating state
+	intentionallyStopped bool // True if user explicitly stopped the session (prevents auto-restart)
+	lastRestartAttempt time.Time // Last time auto-restart was attempted (prevents spam)
 
 	mu sync.Mutex
 }
@@ -647,6 +649,7 @@ func (s *Session) Stop(ctx context.Context) error {
 		return fmt.Errorf("another operation in progress")
 	}
 	s.transitioning = true
+	s.intentionallyStopped = true // Mark as intentional stop
 
 	// stopInternal returns with lock held, so defer just clears flag and unlocks
 	defer func() {
@@ -680,6 +683,7 @@ func (s *Session) Restart(ctx context.Context) error {
 		return fmt.Errorf("another operation in progress")
 	}
 	s.transitioning = true
+	s.intentionallyStopped = false // Clear intentional stop flag on restart
 	s.mu.Unlock()
 
 	// Clear transitioning flag on exit (any error or success path)
@@ -887,10 +891,41 @@ func (s *Session) Refresh(ctx context.Context) error {
 	if s.pid != 0 {
 		// Verify the process exists by sending signal 0
 		if err := syscall.Kill(s.pid, 0); err != nil {
-			// Process is not running
-			debug.Log("[session %s] refresh: PID %d not running, setting to stopped", s.id, s.pid)
-			s.pid = 0
-			s.state = "stopped"
+			// Process is not running - this is an unexpected crash
+			debug.Log("[session %s] refresh: PID %d not running (unexpected crash)", s.id, s.pid)
+			
+			// Check if this was an intentional stop
+			if s.intentionallyStopped {
+				debug.Log("[session %s] refresh: intentional stop, not auto-restarting", s.id)
+				s.pid = 0
+				s.state = "stopped"
+				return nil
+			}
+			
+			// Check if we recently attempted a restart (prevent spam)
+			if time.Since(s.lastRestartAttempt) < 5*time.Second {
+				debug.Log("[session %s] refresh: skipping auto-restart (too soon since last attempt)", s.id)
+				s.pid = 0
+				s.state = "stopped"
+				return nil
+			}
+			
+			// Auto-restart on unexpected crash
+			debug.Log("[session %s] refresh: auto-restarting after unexpected crash", s.id)
+			s.lastRestartAttempt = time.Now()
+			s.mu.Unlock()
+			
+			err := s.Restart(ctx)
+			
+			s.mu.Lock()
+			if err != nil {
+				debug.Log("[session %s] refresh: auto-restart failed: %v", s.id, err)
+				s.pid = 0
+				s.state = "stopped"
+				return nil // Don't propagate error - just mark as stopped
+			}
+			
+			debug.Log("[session %s] refresh: auto-restart successful", s.id)
 			return nil
 		}
 	}

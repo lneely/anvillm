@@ -7,6 +7,7 @@ import (
 	"anvillm/internal/backends"
 	"anvillm/internal/p9"
 	"anvillm/internal/session"
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -174,9 +175,29 @@ func start(daemonize bool) {
 	log.Println("anvilsrv started successfully")
 	log.Printf("9P server listening on %s", srv.SocketPath())
 
+	// Start background monitor for self-healing
+	stopMonitor := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				for _, id := range mgr.List() {
+					if sess := mgr.Get(id); sess != nil {
+						sess.Refresh(context.Background())
+					}
+				}
+			case <-stopMonitor:
+				return
+			}
+		}
+	}()
+
 	// Wait for termination signal
 	sig := <-sigChan
 	log.Printf("Received signal %v, shutting down", sig)
+	close(stopMonitor)
 }
 
 func stop() {
