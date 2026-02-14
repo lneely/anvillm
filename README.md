@@ -95,7 +95,30 @@ NAMESPACE=/tmp/ns.$USER.:1 Assist
 
 This enables running separate AnviLLM environments for different projects or Acme workspaces.
 
-### Acme Interface
+### Terminal UI (anvillm)
+
+Run `anvillm` for a curses-based interface (no Acme required):
+
+```sh
+anvillm
+```
+
+**Keyboard shortcuts:**
+- `k` - Create Kiro session
+- `c` - Create Claude session
+- `p` - Send prompt to selected session
+- `s` - Stop selected session
+- `R` - Restart selected session
+- `K` - Kill selected session
+- `a` - Set session alias
+- `r` - Refresh session list
+- `d` - Daemon status
+- `?` - Help
+- `q` - Quit
+
+Like Assist, the TUI reads/writes the 9P filesystem for all operations.
+
+### Acme Interface (Assist)
 
 Type `Assist` in Acme and middle-click to open the `/AnviLLM/` session manager.
 

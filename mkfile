@@ -5,6 +5,7 @@ all:V: install
 build:V:
 	go build -o $INSTALL_PATH/anvilsrv ./cmd/anvilsrv
 	go build -o $INSTALL_PATH/Assist ./cmd/Assist
+	go build -o $INSTALL_PATH/anvillm ./cmd/anvillm
 	cp anvillm-notify $INSTALL_PATH/anvillm-notify
 	chmod 0755 $INSTALL_PATH/anvillm-notify
 	mkdir -p $INSTALL_PATH/Workflows
