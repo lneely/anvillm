@@ -6,7 +6,18 @@
     <title>AnviLLM Web</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <style>
-        body { padding: 1rem; }
+        body { padding: 0; }
+        header { 
+            background: var(--pico-primary-background);
+            padding: 0.75rem 2rem;
+            margin-bottom: 1rem;
+        }
+        header h1 { 
+            margin: 0; 
+            font-size: 1.25rem;
+            color: white;
+        }
+        main { padding: 0 2rem; }
         .state-badge { 
             display: inline-block; 
             padding: 0.25rem 0.5rem; 
@@ -34,7 +45,6 @@
 <body>
     <header>
         <h1>AnviLLM</h1>
-        <p>Web interface for LLM session management</p>
     </header>
 
     <main>
@@ -46,7 +56,7 @@
                     <button onclick="loadSessions()" class="secondary">Refresh</button>
                 </div>
             </div>
-            <input type="search" id="search-box" placeholder="Search sessions...">
+            <input type="search" id="search-box" placeholder="Search sessions..." style="margin-top: 1rem;">
             <div id="sessions-container"></div>
         </section>
 
