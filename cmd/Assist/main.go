@@ -64,23 +64,27 @@ func main() {
 		log.Printf("anvilsrv not running, attempting to start...")
 		startCmd := exec.Command("anvilsrv", "start")
 		if err := startCmd.Run(); err != nil {
-			log.Fatalf("Failed to start anvilsrv: %v", err)
-		}
-
-		// Wait a moment for daemon to initialize
-		for i := 0; i < 20; i++ {
-			fs, err = connectToServer()
-			if err == nil {
-				break
+			log.Printf("ERROR: Failed to start anvilsrv: %v", err)
+			log.Printf("Continuing without daemon connection. Use 'Daemon' command to manage server.")
+		} else {
+			// Wait a moment for daemon to initialize
+			for i := 0; i < 20; i++ {
+				fs, err = connectToServer()
+				if err == nil {
+					break
+				}
+				time.Sleep(100 * time.Millisecond)
 			}
-			time.Sleep(100 * time.Millisecond)
-		}
 
-		if err != nil {
-			log.Fatalf("Failed to connect to anvilsrv after starting: %v", err)
+			if err != nil {
+				log.Printf("ERROR: Failed to connect to anvilsrv after starting: %v", err)
+				log.Printf("Continuing without daemon connection. Use 'Daemon' command to manage server.")
+			}
 		}
 	}
-	defer fs.Close()
+	if fs != nil {
+		defer fs.Close()
+	}
 
 	// Start notification daemon in background
 	notifyCmd := exec.Command("anvillm-notify")
@@ -100,7 +104,7 @@ func main() {
 	defer w.CloseFiles()
 
 	w.Name(windowName)
-	w.Write("tag", []byte("Get Attach Stop Restart Kill Refresh Alias Context Sandbox "))
+	w.Write("tag", []byte("Get Attach Stop Restart Kill Refresh Alias Context Daemon Sandbox "))
 	refreshList(w)
 	w.Ctl("clean")
 
@@ -247,6 +251,10 @@ func main() {
 				if err := openSandboxWindow(); err != nil {
 					fmt.Fprintf(os.Stderr, "Error opening sandbox window: %v\n", err)
 				}
+			case "Daemon":
+				if err := openDaemonWindow(); err != nil {
+					fmt.Fprintf(os.Stderr, "Error opening daemon window: %v\n", err)
+				}
 
 			default:
 				w.WriteEvent(e)
@@ -310,7 +318,14 @@ func connectToServer() (*client.Fsys, error) {
 	return client.MountService("agent")
 }
 
+func isConnected() bool {
+	return fs != nil
+}
+
 func createSession(backend, cwd string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv (use Daemon command to start server)")
+	}
 	// Validate and clean the path
 	cleanPath := filepath.Clean(cwd)
 
@@ -342,6 +357,9 @@ func createSession(backend, cwd string) error {
 }
 
 func controlSession(id, cmd string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
 	path := filepath.Join(id, "ctl")
 	fid, err := fs.Open(path, plan9.OWRITE)
 	if err != nil {
@@ -354,6 +372,9 @@ func controlSession(id, cmd string) error {
 }
 
 func sendPrompt(id, prompt string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
 	path := filepath.Join(id, "in")
 	fid, err := fs.Open(path, plan9.OWRITE)
 	if err != nil {
@@ -366,6 +387,9 @@ func sendPrompt(id, prompt string) error {
 }
 
 func setAlias(id, alias string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
 	path := filepath.Join(id, "alias")
 	fid, err := fs.Open(path, plan9.OWRITE)
 	if err != nil {
@@ -410,6 +434,9 @@ func getSession(id string) (*SessionInfo, error) {
 }
 
 func listSessions() ([]*SessionInfo, error) {
+	if !isConnected() {
+		return nil, fmt.Errorf("not connected to anvilsrv")
+	}
 	data, err := readFile("list")
 	if err != nil {
 		return nil, err
@@ -447,6 +474,9 @@ func listSessions() ([]*SessionInfo, error) {
 }
 
 func readFile(path string) ([]byte, error) {
+	if !isConnected() {
+		return nil, fmt.Errorf("not connected to anvilsrv")
+	}
 	fid, err := fs.Open(path, plan9.OREAD)
 	if err != nil {
 		return nil, err
@@ -468,6 +498,9 @@ func readFile(path string) ([]byte, error) {
 }
 
 func writeFile(path string, data []byte) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
 	fid, err := fs.Open(path, plan9.OWRITE)
 	if err != nil {
 		return err
@@ -479,14 +512,28 @@ func writeFile(path string, data []byte) error {
 }
 
 func refreshList(w *acme.Win) {
-	sessions, err := listSessions()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to list sessions: %v\n", err)
+	var buf strings.Builder
+	buf.WriteString("Backends: [Kiro] [Claude]\n\n")
+
+	if !isConnected() {
+		buf.WriteString("Not connected to anvilsrv daemon.\n")
+		buf.WriteString("Use 'Daemon' command to start the server.\n")
+		w.Addr(",")
+		w.Write("data", []byte(buf.String()))
+		w.Ctl("clean")
 		return
 	}
 
-	var buf strings.Builder
-	buf.WriteString("Backends: [Kiro] [Claude]\n\n")
+	sessions, err := listSessions()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to list sessions: %v\n", err)
+		buf.WriteString("Error listing sessions: " + err.Error() + "\n")
+		w.Addr(",")
+		w.Write("data", []byte(buf.String()))
+		w.Ctl("clean")
+		return
+	}
+
 	buf.WriteString(fmt.Sprintf("%-5s %-10s %-9s %-16s %s\n", "ID", "Backend", "State", "Alias", "Cwd"))
 	buf.WriteString(fmt.Sprintf("%-5s %-10s %-9s %-16s %s\n", "-----", "----------", "---------", "----------------", strings.Repeat("-", 40)))
 
@@ -774,4 +821,162 @@ func showSandboxStatus(w *acme.Win) {
 
 	w.Addr("$")
 	w.Write("data", []byte(buf.String()))
+}
+
+// openDaemonWindow opens the daemon management window
+func openDaemonWindow() error {
+	w, err := acme.New()
+	if err != nil {
+		return err
+	}
+
+	w.Name("/AnviLLM/Daemon")
+	w.Write("tag", []byte("Get Stop Start Restart "))
+
+	go handleDaemonWindow(w)
+	return nil
+}
+
+func handleDaemonWindow(w *acme.Win) {
+	defer w.CloseFiles()
+
+	// Load and display current status
+	refreshDaemonWindow(w)
+
+	for e := range w.EventChan() {
+		switch e.C2 {
+		case 'x', 'X':
+			cmd := string(e.Text)
+
+			switch cmd {
+			case "Get":
+				refreshDaemonWindow(w)
+			case "Stop":
+				stopDaemon(w)
+				time.Sleep(500 * time.Millisecond)
+				refreshDaemonWindow(w)
+			case "Start":
+				startDaemon(w)
+				time.Sleep(1 * time.Second)
+				refreshDaemonWindow(w)
+			case "Restart":
+				stopDaemon(w)
+				time.Sleep(500 * time.Millisecond)
+				startDaemon(w)
+				time.Sleep(1 * time.Second)
+				refreshDaemonWindow(w)
+			default:
+				w.WriteEvent(e)
+			}
+		default:
+			w.WriteEvent(e)
+		}
+	}
+}
+
+func refreshDaemonWindow(w *acme.Win) {
+	var buf strings.Builder
+
+	buf.WriteString("AnviLLM Daemon Status\n")
+	buf.WriteString(strings.Repeat("=", 60) + "\n\n")
+
+	// Check daemon status
+	statusCmd := exec.Command("anvilsrv", "status")
+	output, err := statusCmd.CombinedOutput()
+
+	if err != nil {
+		// Not running or error
+		buf.WriteString("Status: NOT RUNNING\n")
+		if len(output) > 0 {
+			buf.WriteString(string(output))
+		}
+		buf.WriteString("\n")
+	} else {
+		// Running
+		buf.WriteString("Status: RUNNING\n")
+		buf.WriteString(string(output))
+		buf.WriteString("\n")
+	}
+
+	// Check socket
+	ns := client.Namespace()
+	if ns != "" {
+		sockPath := filepath.Join(ns, "agent")
+		if _, err := os.Stat(sockPath); err == nil {
+			buf.WriteString("9P Socket: " + sockPath + " (exists)\n")
+		} else {
+			buf.WriteString("9P Socket: " + sockPath + " (missing)\n")
+		}
+	}
+
+	// Check connection
+	if fs != nil {
+		buf.WriteString("Connection: CONNECTED\n")
+	} else {
+		buf.WriteString("Connection: DISCONNECTED\n")
+	}
+
+	buf.WriteString("\n")
+	buf.WriteString(strings.Repeat("-", 60) + "\n")
+	buf.WriteString("Commands:\n")
+	buf.WriteString("  Start   - Start the daemon (anvilsrv start)\n")
+	buf.WriteString("  Stop    - Stop the daemon (anvilsrv stop)\n")
+	buf.WriteString("  Restart - Restart the daemon\n")
+	buf.WriteString("  Get     - Refresh this window\n\n")
+
+	buf.WriteString("Note: Use 'anvilsrv fgstart' in terminal for debug logs.\n")
+
+	w.Addr(",")
+	w.Write("data", []byte(buf.String()))
+	w.Ctl("clean")
+}
+
+func startDaemon(w *acme.Win) {
+	w.Addr("$")
+	w.Write("data", []byte("\nStarting daemon...\n"))
+
+	cmd := exec.Command("anvilsrv", "start")
+	output, err := cmd.CombinedOutput()
+
+	if err != nil {
+		w.Write("data", []byte(fmt.Sprintf("Error: %v\n%s\n", err, output)))
+	} else {
+		w.Write("data", []byte("Daemon started successfully\n"))
+		if len(output) > 0 {
+			w.Write("data", []byte(string(output)+"\n"))
+		}
+
+		// Try to reconnect
+		time.Sleep(500 * time.Millisecond)
+		if newFs, err := connectToServer(); err == nil {
+			if fs != nil {
+				fs.Close()
+			}
+			fs = newFs
+			w.Write("data", []byte("Reconnected to daemon\n"))
+		}
+	}
+}
+
+func stopDaemon(w *acme.Win) {
+	w.Addr("$")
+	w.Write("data", []byte("\nStopping daemon...\n"))
+
+	cmd := exec.Command("anvilsrv", "stop")
+	output, err := cmd.CombinedOutput()
+
+	if err != nil {
+		w.Write("data", []byte(fmt.Sprintf("Error: %v\n%s\n", err, output)))
+	} else {
+		w.Write("data", []byte("Daemon stopped\n"))
+		if len(output) > 0 {
+			w.Write("data", []byte(string(output)+"\n"))
+		}
+
+		// Disconnect
+		if fs != nil {
+			fs.Close()
+			fs = nil
+		}
+	}
 }
