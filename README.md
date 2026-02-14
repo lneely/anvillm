@@ -275,6 +275,19 @@ Both run with full permissions inside the sandbox (`--dangerously-skip-permissio
 
 Create `internal/backends/yourbackend.go`, implement `CommandHandler` and `StateInspector` interfaces, register in `main.go`. See existing backends for examples.
 
+## Self-Healing
+
+The `anvilsrv` daemon monitors all sessions every 5 seconds and automatically restarts sessions that crash unexpectedly. This ensures long-running workflows remain resilient to backend failures.
+
+**Behavior:**
+- Detects when a session process terminates without explicit `Stop` command
+- Automatically restarts the session in the same working directory
+- Preserves session context and alias
+- Rate-limited to prevent restart loops (minimum 5 seconds between attempts)
+- Does not restart sessions stopped intentionally via `Stop` command
+
+Sessions that crash are transparently restarted without user intervention. Check logs with `anvilsrv fgstart` to see auto-restart activity.
+
 ## Sandboxing
 
 Backends run inside [landrun](https://github.com/zouuup/landrun) sandboxes. **Sandboxing cannot be disabled** — it's the only safety layer.
