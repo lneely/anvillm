@@ -191,10 +191,6 @@ Right-click a session ID to open its prompt window. Select text anywhere and 2-1
 
 Type prompt, click `Send`.
 
-### Notifications
-
-Desktop notifications on session completion via `anvillm-notify` (starts automatically, requires `notify-send`).
-
 ## 9P Filesystem
 
 The `anvilsrv` daemon exposes sessions via a 9P filesystem at `$NAMESPACE/agent` (typically `/tmp/ns.$USER/agent`).

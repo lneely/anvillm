@@ -6,8 +6,6 @@ build:V:
 	go build -o $INSTALL_PATH/anvilsrv ./cmd/anvilsrv
 	go build -o $INSTALL_PATH/Assist ./cmd/Assist
 	go build -o $INSTALL_PATH/anvillm ./cmd/anvillm
-	cp anvillm-notify $INSTALL_PATH/anvillm-notify
-	chmod 0755 $INSTALL_PATH/anvillm-notify
 	mkdir -p $INSTALL_PATH/Workflows
 	cp scripts/DevReview $INSTALL_PATH/Workflows/DevReview
 	chmod 0755 $INSTALL_PATH/Workflows/DevReview
@@ -21,4 +19,3 @@ install:V: build
 clean:V:
 	rm -f $INSTALL_PATH/anvilsrv
 	rm -f $INSTALL_PATH/Assist
-	rm -f $INSTALL_PATH/anvillm-notify

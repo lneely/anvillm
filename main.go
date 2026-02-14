@@ -58,15 +58,6 @@ func main() {
 	}
 	defer srv.Close()
 
-	// Start notification daemon in background
-	notifyCmd := exec.Command("anvillm-notify")
-	notifyCmd.Start()
-	defer func() {
-		if notifyCmd.Process != nil {
-			notifyCmd.Process.Kill()
-		}
-	}()
-
 	// Rename prompt window when alias changes
 	srv.OnAliasChange = func(sess Session) {
 		meta := sess.Metadata()

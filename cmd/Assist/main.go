@@ -86,17 +86,6 @@ func main() {
 		defer fs.Close()
 	}
 
-	// Start notification daemon in background
-	notifyCmd := exec.Command("anvillm-notify")
-	if err := notifyCmd.Start(); err != nil {
-		log.Printf("Warning: Failed to start anvillm-notify: %v", err)
-	}
-	defer func() {
-		if notifyCmd.Process != nil {
-			notifyCmd.Process.Kill()
-		}
-	}()
-
 	w, err := acme.New()
 	if err != nil {
 		log.Fatal(err)
