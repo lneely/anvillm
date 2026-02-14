@@ -63,7 +63,8 @@ func setupUI() {
 	// Session list table
 	sessionList = tview.NewTable().
 		SetBorders(false).
-		SetSelectable(true, false)
+		SetSelectable(true, false).
+		SetFixed(1, 0) // Fix header row
 	sessionList.SetBorder(true).SetTitle(" Sessions ").SetTitleAlign(tview.AlignLeft)
 
 	// Status bar
@@ -85,6 +86,8 @@ func setupUI() {
 
 	// Key bindings for main view
 	sessionList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		row, col := sessionList.GetSelection()
+
 		switch event.Key() {
 		case tcell.KeyRune:
 			switch event.Rune() {
@@ -94,16 +97,13 @@ func setupUI() {
 			case 'r':
 				refreshSessions()
 				return nil
-			case 'k':
-				showCreateSession("kiro-cli")
-				return nil
-			case 'c':
-				showCreateSession("claude")
+			case 's':
+				showBackendSelectionMenu()
 				return nil
 			case 'p':
 				showPromptDialog()
 				return nil
-			case 's':
+			case 't':
 				stopSelectedSession()
 				return nil
 			case 'R':
@@ -121,7 +121,29 @@ func setupUI() {
 			case '?':
 				showHelp()
 				return nil
+			// Vim keybindings
+			case 'j':
+				if row < sessionList.GetRowCount()-1 {
+					sessionList.Select(row+1, col)
+				}
+				return nil
+			case 'k':
+				if row > 1 { // Don't go above first data row
+					sessionList.Select(row-1, col)
+				}
+				return nil
 			}
+		// Emacs keybindings
+		case tcell.KeyCtrlN:
+			if row < sessionList.GetRowCount()-1 {
+				sessionList.Select(row+1, col)
+			}
+			return nil
+		case tcell.KeyCtrlP:
+			if row > 1 {
+				sessionList.Select(row-1, col)
+			}
+			return nil
 		}
 		return event
 	})
@@ -154,13 +176,36 @@ func refreshSessions() {
 
 	sessionList.Clear()
 
-	// Header
-	sessionList.SetCell(0, 0, tview.NewTableCell("ID").SetTextColor(tcell.ColorYellow).SetSelectable(false))
-	sessionList.SetCell(0, 1, tview.NewTableCell("Alias").SetTextColor(tcell.ColorYellow).SetSelectable(false))
-	sessionList.SetCell(0, 2, tview.NewTableCell("Backend").SetTextColor(tcell.ColorYellow).SetSelectable(false))
-	sessionList.SetCell(0, 3, tview.NewTableCell("State").SetTextColor(tcell.ColorYellow).SetSelectable(false))
-	sessionList.SetCell(0, 4, tview.NewTableCell("PID").SetTextColor(tcell.ColorYellow).SetSelectable(false))
-	sessionList.SetCell(0, 5, tview.NewTableCell("Cwd").SetTextColor(tcell.ColorYellow).SetSelectable(false))
+	// Header with blue background and white text
+	headerStyle := tcell.StyleDefault.
+		Background(tcell.ColorBlue).
+		Foreground(tcell.ColorWhite).
+		Bold(true)
+
+	sessionList.SetCell(0, 0, tview.NewTableCell(" ID ").
+		SetStyle(headerStyle).
+		SetSelectable(false).
+		SetExpansion(1))
+	sessionList.SetCell(0, 1, tview.NewTableCell(" Alias ").
+		SetStyle(headerStyle).
+		SetSelectable(false).
+		SetExpansion(1))
+	sessionList.SetCell(0, 2, tview.NewTableCell(" Backend ").
+		SetStyle(headerStyle).
+		SetSelectable(false).
+		SetExpansion(1))
+	sessionList.SetCell(0, 3, tview.NewTableCell(" State ").
+		SetStyle(headerStyle).
+		SetSelectable(false).
+		SetExpansion(1))
+	sessionList.SetCell(0, 4, tview.NewTableCell(" PID ").
+		SetStyle(headerStyle).
+		SetSelectable(false).
+		SetExpansion(1))
+	sessionList.SetCell(0, 5, tview.NewTableCell(" Cwd ").
+		SetStyle(headerStyle).
+		SetSelectable(false).
+		SetExpansion(3))
 
 	// Sessions
 	for i, sess := range sessions {
@@ -182,15 +227,15 @@ func refreshSessions() {
 			stateColor = tcell.ColorRed
 		}
 
-		sessionList.SetCell(row, 0, tview.NewTableCell(sess.ID[:8]))
-		sessionList.SetCell(row, 1, tview.NewTableCell(alias))
-		sessionList.SetCell(row, 2, tview.NewTableCell(sess.Backend))
-		sessionList.SetCell(row, 3, tview.NewTableCell(sess.State).SetTextColor(stateColor))
-		sessionList.SetCell(row, 4, tview.NewTableCell(fmt.Sprintf("%d", sess.Pid)))
-		sessionList.SetCell(row, 5, tview.NewTableCell(sess.Cwd))
+		sessionList.SetCell(row, 0, tview.NewTableCell(" "+sess.ID[:8]+" ").SetExpansion(1))
+		sessionList.SetCell(row, 1, tview.NewTableCell(" "+alias+" ").SetExpansion(1))
+		sessionList.SetCell(row, 2, tview.NewTableCell(" "+sess.Backend+" ").SetExpansion(1))
+		sessionList.SetCell(row, 3, tview.NewTableCell(" "+sess.State+" ").SetTextColor(stateColor).SetExpansion(1))
+		sessionList.SetCell(row, 4, tview.NewTableCell(fmt.Sprintf(" %d ", sess.Pid)).SetExpansion(1))
+		sessionList.SetCell(row, 5, tview.NewTableCell(" "+sess.Cwd+" ").SetExpansion(3))
 	}
 
-	updateStatus(fmt.Sprintf("Sessions: %d | [yellow]r[white]:refresh [yellow]k[white]:kiro [yellow]c[white]:claude [yellow]p[white]:prompt [yellow]s[white]:stop [yellow]K[white]:kill [yellow]a[white]:alias [yellow]?[white]:help [yellow]q[white]:quit", len(sessions)))
+	updateStatus(fmt.Sprintf("Sessions: %d | [yellow]s[white]:start [yellow]p[white]:prompt [yellow]t[white]:stop [yellow]R[white]:restart [yellow]K[white]:kill [yellow]a[white]:alias [yellow]r[white]:refresh [yellow]j/k,C-n/C-p[white]:nav [yellow]?[white]:help [yellow]q[white]:quit", len(sessions)))
 }
 
 func listSessions() ([]*SessionInfo, error) {
@@ -289,10 +334,42 @@ func getSelectedSession() *SessionInfo {
 	return nil
 }
 
+func showBackendSelectionMenu() {
+	backends := []string{"claude", "kiro-cli"}
+
+	list := tview.NewList().
+		ShowSecondaryText(false)
+
+	for _, backend := range backends {
+		b := backend // capture for closure
+		list.AddItem(b, "", 0, func() {
+			pages.RemovePage("backend-menu")
+			showCreateSession(b)
+		})
+	}
+
+	list.SetBorder(true).
+		SetTitle(" Select Backend ").
+		SetTitleAlign(tview.AlignLeft).
+		SetBorderColor(tcell.ColorBlue)
+
+	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape || event.Rune() == 'q' {
+			pages.RemovePage("backend-menu")
+			return nil
+		}
+		return event
+	})
+
+	pages.AddPage("backend-menu", createModal(list, 30, 5), true, true)
+}
+
 func showCreateSession(backend string) {
 	input := tview.NewInputField().
-		SetLabel(fmt.Sprintf("Create %s session (directory): ", backend)).
-		SetFieldWidth(50)
+		SetLabel("Directory: ").
+		SetFieldWidth(0).
+		SetFieldTextColor(tcell.ColorBlack).
+		SetFieldBackgroundColor(tcell.ColorWhite)
 
 	input.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
@@ -310,7 +387,17 @@ func showCreateSession(backend string) {
 		pages.RemovePage("input")
 	})
 
-	pages.AddPage("input", createModal(input, 60, 3), true, true)
+	// Wrap input in a flex container with border
+	container := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(input, 1, 0, true)
+
+	container.SetBorder(true).
+		SetTitle(fmt.Sprintf(" Create %s Session ", backend)).
+		SetTitleAlign(tview.AlignLeft).
+		SetBorderColor(tcell.ColorBlue)
+
+	pages.AddPage("input", createModal(container, 60, 5), true, true)
 }
 
 func showPromptDialog() {
@@ -343,7 +430,11 @@ func showPromptDialog() {
 		pages.RemovePage("prompt")
 	})
 
-	form.SetBorder(true).SetTitle(fmt.Sprintf(" Send Prompt to %s ", sess.ID[:8]))
+	form.SetBorder(true).
+		SetTitle(fmt.Sprintf(" Send Prompt to %s ", sess.ID[:8])).
+		SetTitleAlign(tview.AlignLeft).
+		SetBorderColor(tcell.ColorBlue)
+
 	pages.AddPage("prompt", createModal(form, 80, 20), true, true)
 }
 
@@ -357,7 +448,9 @@ func showAliasDialog() {
 	input := tview.NewInputField().
 		SetLabel("Alias: ").
 		SetText(sess.Alias).
-		SetFieldWidth(30)
+		SetFieldWidth(0).
+		SetFieldTextColor(tcell.ColorBlack).
+		SetFieldBackgroundColor(tcell.ColorWhite)
 
 	input.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
@@ -373,7 +466,17 @@ func showAliasDialog() {
 		pages.RemovePage("alias")
 	})
 
-	pages.AddPage("alias", createModal(input, 50, 3), true, true)
+	// Wrap input in a flex container with border
+	container := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(input, 1, 0, true)
+
+	container.SetBorder(true).
+		SetTitle(fmt.Sprintf(" Set Alias for %s ", sess.ID[:8])).
+		SetTitleAlign(tview.AlignLeft).
+		SetBorderColor(tcell.ColorBlue)
+
+	pages.AddPage("alias", createModal(container, 50, 5), true, true)
 }
 
 func stopSelectedSession() {
@@ -434,9 +537,8 @@ func showHelp() {
 [yellow]AnviLLM TUI - Keyboard Shortcuts[-]
 
 [yellow]Session Management:[-]
-  k       Create Kiro session
-  c       Create Claude session
-  s       Stop selected session
+  s       Start new session (shows backend menu)
+  t       Stop selected session
   R       Restart selected session
   K       Kill selected session
   a       Set session alias
@@ -446,16 +548,22 @@ func showHelp() {
   r       Refresh session list
 
 [yellow]Navigation:[-]
-  ↑/↓     Select session
-  Enter   (reserved)
+  ↑/↓     Select session (arrow keys)
+  j/k     Select session (vim-style)
+  C-n/C-p Select session (emacs-style)
 
 [yellow]Other:[-]
   d       Daemon status
   ?       Show this help
-  q       Quit
+  q       Quit (or ESC in dialogs)
 
 [yellow]9P Filesystem:[-]
 All operations read/write the 9P filesystem at $NAMESPACE/agent
+
+[yellow]Backends:[-]
+Press 's' to start a new session and choose from:
+  - claude     (Claude Code CLI)
+  - kiro-cli   (Kiro CLI)
 `
 
 	textView := tview.NewTextView().
@@ -472,7 +580,7 @@ All operations read/write the 9P filesystem at $NAMESPACE/agent
 		return event
 	})
 
-	pages.AddPage("help", createModal(textView, 70, 25), true, true)
+	pages.AddPage("help", createModal(textView, 70, 30), true, true)
 }
 
 func createModal(p tview.Primitive, width, height int) tview.Primitive {
