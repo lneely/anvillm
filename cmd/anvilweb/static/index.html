@@ -38,6 +38,14 @@
 
     <main>
         <section>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>Sessions</h2>
+                <button onclick="loadSessions()">Refresh</button>
+            </div>
+            <div id="sessions-container"></div>
+        </section>
+
+        <section>
             <h2>New Session</h2>
             <form id="new-session-form">
                 <div class="grid">
@@ -57,14 +65,6 @@
             </form>
         </section>
 
-        <section>
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <h2>Sessions</h2>
-                <button onclick="loadSessions()">Refresh</button>
-            </div>
-            <div id="sessions-container"></div>
-        </section>
-
         <dialog id="prompt-dialog">
             <article>
                 <header>
@@ -76,9 +76,9 @@
                         Prompt
                         <textarea id="prompt-area" name="prompt" required></textarea>
                     </label>
-                    <footer>
-                        <button type="button" onclick="closePromptDialog()" class="secondary">Cancel</button>
+                    <footer style="display: flex; justify-content: flex-end; gap: 0.5rem;">
                         <button type="submit">Send</button>
+                        <button type="button" onclick="closePromptDialog()" class="secondary">Cancel</button>
                     </footer>
                 </form>
             </article>
@@ -95,9 +95,9 @@
                         Context (prepended to all prompts)
                         <textarea id="context-area" name="context" rows="10"></textarea>
                     </label>
-                    <footer>
-                        <button type="button" onclick="closeContextDialog()" class="secondary">Cancel</button>
+                    <footer style="display: flex; justify-content: flex-end; gap: 0.5rem;">
                         <button type="submit">Save</button>
+                        <button type="button" onclick="closeContextDialog()" class="secondary">Cancel</button>
                     </footer>
                 </form>
             </article>
@@ -114,9 +114,9 @@
                         Alias
                         <input type="text" id="alias-input" name="alias" required>
                     </label>
-                    <footer>
-                        <button type="button" onclick="closeAliasDialog()" class="secondary">Cancel</button>
+                    <footer style="display: flex; justify-content: flex-end; gap: 0.5rem;">
                         <button type="submit">Save</button>
+                        <button type="button" onclick="closeAliasDialog()" class="secondary">Cancel</button>
                     </footer>
                 </form>
             </article>
@@ -142,6 +142,13 @@
                     container.innerHTML = '<p>No sessions running</p>';
                     return;
                 }
+
+                // Sort sessions by alias (case-insensitive)
+                sessions.sort((a, b) => {
+                    const nameA = (a.alias || a.id).toLowerCase();
+                    const nameB = (b.alias || b.id).toLowerCase();
+                    return nameA.localeCompare(nameB);
+                });
 
                 const table = `
                     <table>
