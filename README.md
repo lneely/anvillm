@@ -2,6 +2,19 @@
 
 Acme-native interface for LLM chat backends. Sessions appear as Acme windows and are exposed via 9P filesystem.
 
+## Architecture
+
+AnviLLM splits into two components:
+
+- **anvilsrv**: Background daemon managing sessions via 9P
+- **Assist**: Acme UI client (auto-starts daemon if needed)
+
+This separation allows:
+- Multiple clients to connect to the same sessions
+- Server survives client crashes/restarts
+- Scriptable workflows via 9P without UI dependencies
+- Service management (systemd/runit integration)
+
 ## Requirements
 
 - Go 1.21+, plan9port, tmux
@@ -13,28 +26,70 @@ Acme-native interface for LLM chat backends. Sessions appear as Acme windows and
 ```sh
 git clone https://github.com/lneely/anvillm
 cd anvillm
-mk  # installs to $HOME/bin
+mk  # installs anvilsrv and Assist to $HOME/bin
 ```
 
+### Service Integration
+
+Install as system service (optional):
+
+**systemd**:
+```sh
+# User service (recommended)
+cp services/systemd/anvilsrv-user.service ~/.config/systemd/user/
+systemctl --user enable --now anvilsrv
+
+# System service
+sudo cp services/systemd/anvilsrv.service /etc/systemd/system/
+sudo systemctl enable --now anvilsrv
+```
+
+**runit**:
+```sh
+sudo cp -r services/runit /etc/sv/anvilsrv
+sudo ln -s /etc/sv/anvilsrv /var/service/
+```
+
+See `services/*/README.md` for details.
+
 ## Usage
+
+### Starting the Server
+
+**Automatic**: `Assist` auto-starts `anvilsrv` if not running.
+
+**Manual**:
+```sh
+anvilsrv start       # Daemonize (background)
+anvilsrv fgstart     # Foreground (for debugging)
+anvilsrv status      # Check if running
+anvilsrv stop        # Shutdown
+```
+
+### Acme Interface
 
 Type `Assist` in Acme and middle-click to open the `/AnviLLM/` session manager.
 
 ### Commands
 
-**Main window** (`/AnviLLM/`) tag: `Get Attach Kill Alias Context Sandbox`
+**Main window** (`/AnviLLM/`) tag: `Get Attach Stop Restart Kill Refresh Alias Context Sandbox`
 
 | Command | Description |
 |---------|-------------|
 | `Kiro <dir>` | Start kiro-cli session |
 | `Claude <dir>` | Start Claude session |
+| `Stop <id>` | Stop session (preserves tmux) |
+| `Restart <id>` | Restart stopped session |
 | `Kill <id>` | Terminate session |
+| `Refresh <id>` | Re-detect session state |
 | `Attach <id>` | Open tmux terminal |
 | `Alias <id> <name>` | Name a session |
 | `Context <id>` | Edit context (prepended to prompts) |
-| `Sandbox` | Configure sandboxing |
+| `Sandbox` | Configure sandbox settings |
 
 Right-click a session ID to open its prompt window. Select text anywhere and 2-1 chord on a session ID for fire-and-forget prompts.
+
+**Note**: Assist reconnects to the running `anvilsrv` daemon, so sessions persist across Assist restarts.
 
 **Prompt window** (`+Prompt.<id>`) tag: `Send`
 
@@ -46,6 +101,8 @@ Desktop notifications on session completion via `anvillm-notify` (starts automat
 
 ## 9P Filesystem
 
+The `anvilsrv` daemon exposes sessions via a 9P filesystem at `$NAMESPACE/agent` (typically `/tmp/ns.$USER/agent`).
+
 ```
 agent/
 ├── ctl             # "new <backend> <cwd>" creates session
@@ -53,22 +110,27 @@ agent/
 └── <id>/
     ├── in          # Write prompts
     ├── out         # Read responses
-    ├── ctl         # "stop" or "kill"
-    ├── state       # idle, running, exited
+    ├── ctl         # "stop", "restart", "kill", "refresh"
+    ├── state       # starting, idle, running, stopped, error, exited
     ├── context     # Prepended to prompts (r/w)
     ├── alias       # Session name (r/w)
     ├── pid         # Process ID
     ├── cwd         # Working directory
-    ├── winid       # Acme window ID
     └── backend     # Backend name
 ```
+
+**Path Validation**: Session creation validates and cleans paths (e.g., `/../../../etc` → `/etc`), and rejects nonexistent directories.
 
 Example:
 ```sh
 echo 'new claude /home/user/project' | 9p write agent/ctl
 echo 'Hello' | 9p write agent/a3f2b9d1/in
-9p read agent/a3f2b9d1/state
+9p read agent/a3f2b9d1/state  # → "running"
+echo 'stop' | 9p write agent/a3f2b9d1/ctl
+9p read agent/a3f2b9d1/state  # → "stopped"
 ```
+
+**Security**: See `SECURITY.md` for 9P socket authentication limitations.
 
 ## Backends
 
@@ -182,10 +244,15 @@ See `scripts/DevReview` and `scripts/Planning` for complete examples.
 
 | Problem | Solution |
 |---------|----------|
+| "Failed to connect to anvilsrv" | Check `anvilsrv status`; try `anvilsrv start` |
 | Session won't start | Check stderr; verify `which claude` or `which kiro-cli` |
 | Landlock ABI error | Set `best_effort: true` or upgrade kernel |
 | Permission denied | Add paths to sandbox config |
 | Orphaned tmux | `tmux kill-session -t anvillm-claude` |
 | 9P not working | Verify plan9port: `9p ls agent` |
+| Stale PID file | `anvilsrv stop` cleans up automatically |
+| Daemon won't stop | Check logs with `anvilsrv fgstart` |
 
-Terminal for `Attach` configured in `main.go` (`terminalCommand`).
+**Debugging**: Run `anvilsrv fgstart` to see daemon logs in foreground.
+
+**Terminal**: `Attach` command uses `$ANVILLM_TERMINAL` or defaults to `foot`. Configure in environment or see `cmd/Assist/main.go`.
