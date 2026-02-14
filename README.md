@@ -66,6 +66,35 @@ anvilsrv status      # Check if running
 anvilsrv stop        # Shutdown
 ```
 
+### Multiple Namespaces
+
+`anvilsrv` respects the `$NAMESPACE` environment variable, allowing multiple independent instances for different Acme sessions (similar to running multiple Acme instances with `acme -a`).
+
+**Default namespace**: `/tmp/ns.$USER.:0`
+
+**Example: Running multiple instances**
+```sh
+# Start default instance (namespace :0)
+anvilsrv start
+
+# Start second instance (namespace :1)
+NAMESPACE=/tmp/ns.$USER.:1 anvilsrv start
+
+# Check status of each instance
+anvilsrv status                           # :0
+NAMESPACE=/tmp/ns.$USER.:1 anvilsrv status  # :1
+
+# Each instance has isolated:
+# - PID file: $NAMESPACE/anvilsrv.pid
+# - 9P socket: $NAMESPACE/agent
+# - Session list (completely independent)
+
+# Connect Assist to specific instance
+NAMESPACE=/tmp/ns.$USER.:1 Assist
+```
+
+This enables running separate AnviLLM environments for different projects or Acme workspaces.
+
 ### Acme Interface
 
 Type `Assist` in Acme and middle-click to open the `/AnviLLM/` session manager.
