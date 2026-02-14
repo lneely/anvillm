@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -36,6 +37,14 @@ type Session struct {
 	commands       backend.CommandHandler
 	startupHandler StartupHandler
 	stateInspector StateInspector
+
+	// For restart support
+	backendCommand     []string          // Original backend command (e.g., ["claude", ...])
+	environment        map[string]string // Environment variables
+	originalCommandStr string            // Full command string as sent to tmux (for restart)
+
+	transitioning   bool // True during Stop/Restart/Close operations to prevent concurrent modifications
+	readerGeneration int  // Incremented on each restart to prevent old readers from updating state
 
 	mu sync.Mutex
 }
@@ -120,6 +129,12 @@ func (s *Session) GetContext() string {
 
 // reader continuously reads from FIFO and sends to dataCh
 func (s *Session) reader() {
+	// Capture the reader generation at start to detect if we've been superseded
+	s.mu.Lock()
+	myGeneration := s.readerGeneration
+	myDataCh := s.dataCh // Capture our channel reference
+	s.mu.Unlock()
+
 	buf := make([]byte, 4096)
 	for {
 		n, err := s.fifo.Read(buf)
@@ -128,17 +143,64 @@ func (s *Session) reader() {
 			if err != io.EOF && !strings.Contains(err.Error(), "file already closed") {
 				debug.Log("[session %s] reader error: %v", s.id, err)
 			}
-			close(s.dataCh)
+
+			// Handle EOF/error with single lock acquisition to avoid races
 			s.mu.Lock()
-			s.state = "exited"
-			s.pid = 0
+			superseded := s.readerGeneration != myGeneration
+			exited := s.state == "exited"
+
+			// Only update state if we're still the current reader
+			if !superseded && !exited {
+				// Only set to stopped if not explicitly closed
+				s.state = "stopped"
+				s.pid = 0
+			}
 			s.mu.Unlock()
-			return
+
+			// Exit immediately if superseded or explicitly closed
+			if superseded || exited {
+				close(myDataCh)
+				debug.Log("[session %s] reader exiting (exited=%v, superseded=%v)",
+					s.id, exited, superseded)
+				return
+			}
+
+			// For stopped state, keep reader alive but idle
+			// Wait for either Restart (will increment readerGeneration) or Close (will set state=exited)
+			// Poll state every 100ms instead of busy-looping on EOF
+			debug.Log("[session %s] reader waiting in stopped state", s.id)
+			for {
+				time.Sleep(100 * time.Millisecond)
+				s.mu.Lock()
+				superseded := s.readerGeneration != myGeneration
+				exited := s.state == "exited"
+				s.mu.Unlock()
+
+				if superseded || exited {
+					close(myDataCh)
+					debug.Log("[session %s] reader exiting after stopped wait (exited=%v, superseded=%v)",
+						s.id, exited, superseded)
+					return
+				}
+				// Still stopped, continue waiting
+			}
 		}
 		if n > 0 {
 			data := make([]byte, n)
 			copy(data, buf[:n])
-			s.dataCh <- data
+
+			// Check if we've been superseded before sending (single lock check)
+			s.mu.Lock()
+			superseded := s.readerGeneration != myGeneration
+			s.mu.Unlock()
+
+			if superseded {
+				close(myDataCh)
+				debug.Log("[session %s] reader exiting (superseded during send)", s.id)
+				return
+			}
+
+			myDataCh <- data
 		}
 	}
 }
@@ -243,6 +305,11 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	if s.state == "starting" {
 		s.mu.Unlock()
 		return "", fmt.Errorf("session still starting")
+	}
+
+	if s.state == "stopped" {
+		s.mu.Unlock()
+		return "", fmt.Errorf("session stopped (use Restart to restart)")
 	}
 
 	if s.state == "running" {
@@ -373,6 +440,10 @@ func (s *Session) SendAsync(ctx context.Context, prompt string) error {
 		return fmt.Errorf("session still starting")
 	}
 
+	if s.state == "stopped" {
+		return fmt.Errorf("session stopped (use Restart to restart)")
+	}
+
 	if s.state == "running" {
 		return fmt.Errorf("session busy")
 	}
@@ -422,28 +493,280 @@ func (s *Session) SendStream(ctx context.Context, prompt string) (io.ReadCloser,
 	return io.NopCloser(strings.NewReader(response)), nil
 }
 
-func (s *Session) Stop(ctx context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// stopInternal performs the actual stop operation.
+// Caller must hold s.mu and have set s.transitioning = true.
+// This method will unlock s.mu while performing stop operations.
+func (s *Session) stopInternal(ctx context.Context) error {
+	// Lock is held by caller
+	if s.state == "stopped" || s.state == "exited" {
+		return nil // Already stopped
+	}
 
 	if s.fifo == nil {
 		return fmt.Errorf("session not running")
 	}
 
-	// Signal waiters
+	// Signal waiters first
 	select {
 	case <-s.stopCh:
 	default:
 		close(s.stopCh)
 	}
 
-	// Send CTRL+C
-	return sendKeys(s.target(), "C-c")
+	target := s.target()
+	pid := s.pid
+	sessionID := s.id
+	tmuxSession := s.tmuxSession
+	windowName := s.windowName
+
+	s.mu.Unlock()
+
+	// 1. Send Ctrl+C to interrupt any running operation
+	if err := sendKeys(target, "C-c"); err != nil {
+		debug.Log("[session %s] failed to send Ctrl+C: %v", sessionID, err)
+		return fmt.Errorf("failed to interrupt: %w", err)
+	}
+
+	// 2. Wait briefly for graceful shutdown
+	time.Sleep(100 * time.Millisecond)
+
+	// 3. Send Ctrl+D (EOF) to terminate process gracefully
+	if err := sendKeys(target, "C-d"); err != nil {
+		debug.Log("[session %s] failed to send Ctrl+D: %v", sessionID, err)
+		return fmt.Errorf("failed to send EOF: %w", err)
+	}
+
+	// 4. Wait for process to exit
+	time.Sleep(200 * time.Millisecond)
+
+	// 5. Verify process is gone (check PID)
+	if pid != 0 {
+		// If still alive, send SIGTERM
+		if err := syscall.Kill(pid, syscall.SIGTERM); err == nil {
+			debug.Log("[session %s] sent SIGTERM to PID %d", sessionID, pid)
+			// Process exists, wait for it to die
+			time.Sleep(100 * time.Millisecond)
+
+			// If STILL alive, send SIGKILL
+			if err := syscall.Kill(pid, 0); err == nil {
+				debug.Log("[session %s] process still alive, sending SIGKILL to PID %d", sessionID, pid)
+				if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
+					debug.Log("[session %s] SIGKILL failed: %v", sessionID, err)
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+		} else {
+			debug.Log("[session %s] PID %d already dead: %v", sessionID, pid, err)
+		}
+	}
+
+	// 6. Verify tmux window still exists
+	if !windowExists(tmuxSession, windowName) {
+		debug.Log("[session %s] tmux window was unexpectedly destroyed", sessionID)
+		s.mu.Lock()
+		s.state = "exited"
+		s.pid = 0
+		return fmt.Errorf("tmux window was unexpectedly destroyed")
+	}
+
+	// 7. Update state
+	s.mu.Lock()
+	s.state = "stopped"
+	s.pid = 0
+	// Note: Reset stopCh for next operation
+	s.stopCh = make(chan struct{})
+
+	debug.Log("[session %s] stopped successfully", sessionID)
+
+	// Note: tmux window, FIFO, and reader goroutine remain active
+	// The reader stays in a wait loop until either Restart() or Close()
+	return nil
+}
+
+func (s *Session) Stop(ctx context.Context) error {
+	s.mu.Lock()
+
+	if s.state == "stopped" || s.state == "exited" {
+		s.mu.Unlock()
+		return nil // Already stopped
+	}
+
+	// Check if another operation is in progress
+	if s.transitioning {
+		s.mu.Unlock()
+		return fmt.Errorf("another operation in progress")
+	}
+	s.transitioning = true
+
+	// stopInternal returns with lock held, so defer just clears flag and unlocks
+	defer func() {
+		s.transitioning = false
+		s.mu.Unlock()
+	}()
+
+	// stopInternal will unlock s.mu and re-lock before returning
+	return s.stopInternal(ctx)
+}
+
+// Restart stops the backend process (if running) and starts it again
+// using the same command and configuration. Updates PID accordingly.
+func (s *Session) Restart(ctx context.Context) error {
+	s.mu.Lock()
+
+	// Check if we can restart from this state
+	if s.state == "exited" {
+		s.mu.Unlock()
+		return fmt.Errorf("cannot restart exited session (tmux window destroyed)")
+	}
+
+	if s.originalCommandStr == "" {
+		s.mu.Unlock()
+		return fmt.Errorf("original command not available for restart")
+	}
+
+	// Check if another operation is in progress
+	if s.transitioning {
+		s.mu.Unlock()
+		return fmt.Errorf("another operation in progress")
+	}
+	s.transitioning = true
+	s.mu.Unlock()
+
+	// Clear transitioning flag on exit (any error or success path)
+	defer func() {
+		s.mu.Lock()
+		s.transitioning = false
+		s.mu.Unlock()
+	}()
+
+	// 1. Stop existing process if running (stopInternal expects lock held)
+	s.mu.Lock()
+	if s.state != "stopped" {
+		if err := s.stopInternal(ctx); err != nil {
+			s.mu.Unlock()
+			return fmt.Errorf("failed to stop: %w", err)
+		}
+		// stopInternal returns with lock held
+		s.mu.Unlock()
+	} else {
+		s.mu.Unlock()
+	}
+
+	s.mu.Lock()
+	target := s.target()
+	cwd := s.cwd
+	cmdStr := s.originalCommandStr
+	fifoPath := s.fifoPath
+	environment := s.environment
+	s.mu.Unlock()
+
+	// 2. Close old FIFO if still open
+	s.mu.Lock()
+	if s.fifo != nil {
+		s.fifo.Close()
+		s.fifo = nil
+	}
+	s.mu.Unlock()
+
+	// Small delay to ensure cleanup
+	time.Sleep(100 * time.Millisecond)
+
+	// 3. Re-setup pipe-pane for output capture
+	if err := setupPipePane(target, fifoPath); err != nil {
+		return fmt.Errorf("failed to re-setup pipe-pane: %w", err)
+	}
+
+	// 4. Open FIFO for reading (this blocks until writer connects)
+	fifoOpenCh := make(chan *os.File, 1)
+	fifoErrCh := make(chan error, 1)
+	go func() {
+		f, err := os.OpenFile(fifoPath, os.O_RDONLY, 0600)
+		if err != nil {
+			fifoErrCh <- err
+			return
+		}
+		fifoOpenCh <- f
+	}()
+
+	// 5. Change to working directory (may have changed in shell)
+	if err := sendKeys(target, fmt.Sprintf("cd \"%s\"", cwd), "C-m"); err != nil {
+		return fmt.Errorf("failed to change directory: %w", err)
+	}
+
+	// Small delay for cd to complete
+	time.Sleep(100 * time.Millisecond)
+
+	// 5.5. Restore environment variables
+	for k, v := range environment {
+		if err := setEnvironment(target, k, v); err != nil {
+			return fmt.Errorf("failed to set environment: %w", err)
+		}
+	}
+
+	// 6. Send the original command to tmux
+	if err := sendKeys(target, cmdStr, "C-m"); err != nil {
+		return fmt.Errorf("failed to start command: %w", err)
+	}
+
+	// 7. Wait for FIFO to open
+	var fifo *os.File
+	select {
+	case fifo = <-fifoOpenCh:
+		// Success
+	case err := <-fifoErrCh:
+		return fmt.Errorf("failed to open FIFO: %w", err)
+	case <-time.After(5 * time.Second):
+		return fmt.Errorf("timeout opening FIFO")
+	}
+
+	// 8. Get new PID
+	time.Sleep(500 * time.Millisecond)
+	pid, err := getPanePID(target)
+	if err != nil {
+		debug.Log("[session %s] warning: failed to get PID: %v", s.id, err)
+		pid = 0
+	}
+
+	s.mu.Lock()
+	s.pid = pid
+	s.state = "starting"
+	s.fifo = fifo
+	s.dataCh = make(chan []byte, 100)
+	s.stopCh = make(chan struct{})
+	s.output.Reset()
+	s.readerGeneration++ // Increment to invalidate old reader
+	s.mu.Unlock()
+
+	// 9. Start new reader goroutine
+	go s.reader()
+
+	// 10. Wait for ready (reuse existing waitForReady logic)
+	if err := s.waitForReady(ctx, 30*time.Second); err != nil {
+		s.mu.Lock()
+		s.state = "error"
+		s.mu.Unlock()
+		return fmt.Errorf("restart failed: %w", err)
+	}
+
+	s.mu.Lock()
+	s.state = "idle"
+	s.output.Reset()
+	s.mu.Unlock()
+
+	debug.Log("[session %s] restarted successfully (pid=%d)", s.id, pid)
+	return nil
 }
 
 func (s *Session) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Check if another operation is in progress
+	if s.transitioning {
+		return fmt.Errorf("another operation in progress")
+	}
+	s.transitioning = true
+	// Note: We don't clear transitioning since Close is final
 
 	debug.Log("[session %s] Close() called, killing window %s:%s", s.id, s.tmuxSession, s.windowName)
 
@@ -481,7 +804,9 @@ func (s *Session) Refresh(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.state == "exited" {
+	if s.state == "exited" || s.state == "stopped" {
+		// Cannot refresh exited or stopped sessions
+		// Use Restart() to restart a stopped session
 		return nil
 	}
 

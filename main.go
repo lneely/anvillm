@@ -91,7 +91,7 @@ func main() {
 	defer w.CloseFiles()
 
 	w.Name(windowName)
-	w.Write("tag", []byte("Get Attach Kill Refresh Alias Context Sandbox "))
+	w.Write("tag", []byte("Get Attach Stop Restart Kill Refresh Alias Context Sandbox "))
 	refreshList(w, mgr)
 	w.Ctl("clean")
 
@@ -120,6 +120,12 @@ func main() {
 			} else if strings.HasPrefix(cmd, "Claude ") {
 				arg = strings.TrimPrefix(cmd, "Claude ")
 				cmd = "Claude"
+			} else if strings.HasPrefix(cmd, "Stop ") {
+				arg = strings.TrimPrefix(cmd, "Stop ")
+				cmd = "Stop"
+			} else if strings.HasPrefix(cmd, "Restart ") {
+				arg = strings.TrimPrefix(cmd, "Restart ")
+				cmd = "Restart"
 			} else if strings.HasPrefix(cmd, "Kill ") {
 				arg = strings.TrimPrefix(cmd, "Kill ")
 				cmd = "Kill"
@@ -153,6 +159,36 @@ func main() {
 				_, err := mgr.New("claude", arg)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					continue
+				}
+				refreshList(w, mgr)
+			case "Stop":
+				if arg == "" {
+					fmt.Fprintf(os.Stderr, "Usage: Stop <session-id>\n")
+					continue
+				}
+				sess := mgr.Get(arg)
+				if sess == nil {
+					fmt.Fprintf(os.Stderr, "Session not found: %s\n", arg)
+					continue
+				}
+				if err := sess.Stop(context.Background()); err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to stop session: %v\n", err)
+					continue
+				}
+				refreshList(w, mgr)
+			case "Restart":
+				if arg == "" {
+					fmt.Fprintf(os.Stderr, "Usage: Restart <session-id>\n")
+					continue
+				}
+				sess := mgr.Get(arg)
+				if sess == nil {
+					fmt.Fprintf(os.Stderr, "Session not found: %s\n", arg)
+					continue
+				}
+				if err := sess.Restart(context.Background()); err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to restart session: %v\n", err)
 					continue
 				}
 				refreshList(w, mgr)
@@ -298,14 +334,28 @@ func refreshList(w *acme.Win, mgr *session.Manager) {
 			continue
 		}
 		meta := sess.Metadata()
-		// Remove dead sessions (pid=0 or process not running)
-		if meta.Pid == 0 {
+		state := sess.State()
+
+		// Remove only exited sessions (tmux window destroyed by Close())
+		if state == "exited" {
 			mgr.Remove(id)
 			continue
 		}
-		if err := syscall.Kill(meta.Pid, 0); err != nil {
-			mgr.Remove(id)
-			continue
+
+		// Keep stopped sessions visible (pid=0, state="stopped", can be restarted)
+		// Keep running sessions (pid!=0)
+		// If pid != 0, verify process is still running
+		if meta.Pid != 0 {
+			if err := syscall.Kill(meta.Pid, 0); err != nil {
+				// Process died unexpectedly - trigger Refresh to update state
+				fmt.Fprintf(os.Stderr, "Warning: session %s PID %d died unexpectedly, attempting refresh\n", id, meta.Pid)
+				if refreshErr := sess.Refresh(context.Background()); refreshErr != nil {
+					fmt.Fprintf(os.Stderr, "  Refresh failed: %v\n", refreshErr)
+				}
+				// Reload metadata after refresh
+				meta = sess.Metadata()
+				state = sess.State()
+			}
 		}
 		alias := meta.Alias
 		if alias == "" {

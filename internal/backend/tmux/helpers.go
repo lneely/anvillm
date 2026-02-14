@@ -97,6 +97,14 @@ func sessionExists(name string) bool {
 	return cmd.Run() == nil
 }
 
+// windowExists checks if a window exists in a tmux session
+func windowExists(session, windowName string) bool {
+	target := fmt.Sprintf("%s:%s", session, windowName)
+	// Try to list the window - if it doesn't exist, this will fail
+	cmd := exec.Command("tmux", "list-windows", "-t", target, "-F", "#{window_name}")
+	return cmd.Run() == nil
+}
+
 // getPanePID returns the PID of the process running in a tmux pane
 func getPanePID(target string) (int, error) {
 	// Get the pane PID

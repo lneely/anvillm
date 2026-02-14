@@ -28,11 +28,11 @@ agent/
     ctl                 (write) "new <backend> <cwd>" creates session, returns id
     list                (read)  list sessions: "id alias state pid cwd"
     {session-id}/
-        ctl             (write) "stop", "kill"
+        ctl             (write) "stop", "restart", "kill", "refresh"
         in              (write) send prompt (non-blocking, validates and returns immediately)
         out             (read)  response from last prompt
         winid           (r/w)   acme window id
-        state           (read)  "running" or "idle"
+        state           (read)  "starting", "idle", "running", "stopped", "error", "exited"
         pid             (read)  process id
         cwd             (read)  working directory
         backend         (read)  backend name (e.g., "kiro-cli", "claude")
@@ -331,12 +331,17 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		}
 		args := strings.Fields(input)
 		if len(args) == 0 {
-			return errFcall(fc, "usage: stop | kill | refresh")
+			return errFcall(fc, "usage: stop | restart | kill | refresh")
 		}
 		switch args[0] {
 		case "stop":
 			ctx := context.Background()
 			if err := sess.Stop(ctx); err != nil {
+				return errFcall(fc, err.Error())
+			}
+		case "restart":
+			ctx := context.Background()
+			if err := sess.Restart(ctx); err != nil {
 				return errFcall(fc, err.Error())
 			}
 		case "kill":

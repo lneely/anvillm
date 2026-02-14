@@ -28,11 +28,21 @@ type Session interface {
 	// ID returns the unique session identifier
 	ID() string
 
-	// State returns current state ("starting", "idle", "running", "error: ...", "exited")
+	// State returns current state:
+	//   "starting" - Backend process launching, waiting for ready signal
+	//   "idle"     - Backend ready to receive prompts
+	//   "running"  - Backend processing a prompt
+	//   "stopped"  - Backend process terminated, tmux window preserved, can be restarted via Restart()
+	//   "error"    - Startup failed or unrecoverable error
+	//   "exited"   - Session closed, tmux window destroyed, cannot be restarted
 	State() string
 
 	// Refresh retries startup if in error state, or refreshes state detection
 	Refresh(ctx context.Context) error
+
+	// Restart stops the backend process (if running) and starts it again
+	// using the same command and configuration. Updates PID accordingly.
+	Restart(ctx context.Context) error
 
 	// Send sends a prompt and returns the response
 	// Blocks until response is complete

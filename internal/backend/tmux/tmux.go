@@ -253,6 +253,10 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 		commands:       b.cfg.Commands,
 		startupHandler: b.cfg.StartupHandler,
 		stateInspector: b.cfg.StateInspector,
+		// Store for restart support
+		backendCommand:     b.cfg.Command,
+		environment:        b.cfg.Environment,
+		originalCommandStr: cmdStr,
 	}
 
 	// 10. Start reader goroutine
