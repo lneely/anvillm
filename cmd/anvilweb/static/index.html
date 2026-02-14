@@ -14,17 +14,18 @@
             font-size: 0.875rem;
             font-weight: 600;
         }
-        .state-idle { background: var(--pico-primary-background); color: var(--pico-primary-inverse); }
-        .state-running { background: var(--pico-color-amber-550); color: white; }
-        .state-stopped { background: var(--pico-muted-color); color: white; }
-        .state-error { background: var(--pico-color-red-550); color: white; }
-        .state-starting { background: var(--pico-color-blue-550); color: white; }
-        .state-exited { background: var(--pico-muted-color); color: white; }
+        .state-idle { background: #22c55e; color: white; }
+        .state-running { background: #3b82f6; color: white; }
+        .state-stopped { background: #6b7280; color: white; }
+        .state-error { background: #ef4444; color: white; }
+        .state-starting { background: #f97316; color: white; }
+        .state-exited { background: #9ca3af; color: white; }
         
         table { margin-top: 1rem; }
         table button { margin: 0 0.25rem; padding: 0.25rem 0.5rem; font-size: 0.875rem; }
         table td { vertical-align: middle; }
         .actions-cell { white-space: nowrap; }
+        .session-id { font-family: monospace; font-size: 0.875rem; color: var(--pico-muted-color); }
         
         #prompt-area { min-height: 100px; }
         .hidden { display: none; }
@@ -40,15 +41,21 @@
         <section>
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <h2>Sessions</h2>
-                <button onclick="loadSessions()">Refresh</button>
+                <div>
+                    <button onclick="openNewSessionDialog()">New Session</button>
+                    <button onclick="loadSessions()" class="secondary">Refresh</button>
+                </div>
             </div>
             <div id="sessions-container"></div>
         </section>
 
-        <section>
-            <h2>New Session</h2>
-            <form id="new-session-form">
-                <div class="grid">
+        <dialog id="new-session-dialog">
+            <article>
+                <header>
+                    <button aria-label="Close" rel="prev" onclick="closeNewSessionDialog()"></button>
+                    <h3>New Session</h3>
+                </header>
+                <form id="new-session-form">
                     <label>
                         Backend
                         <select name="backend" required>
@@ -60,10 +67,13 @@
                         Working Directory
                         <input type="text" name="cwd" placeholder="/path/to/project" required>
                     </label>
-                </div>
-                <button type="submit">Start Session</button>
-            </form>
-        </section>
+                    <footer style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                        <button type="submit">Start Session</button>
+                        <button type="button" onclick="closeNewSessionDialog()" class="secondary">Cancel</button>
+                    </footer>
+                </form>
+            </article>
+        </dialog>
 
         <dialog id="prompt-dialog">
             <article>
@@ -155,6 +165,7 @@
                         <thead>
                             <tr>
                                 <th>Alias</th>
+                                <th>ID</th>
                                 <th>State</th>
                                 <th>Backend</th>
                                 <th>Working Directory</th>
@@ -174,17 +185,18 @@
                                 return `
                                     <tr>
                                         <td><strong>${alias}</strong></td>
+                                        <td><span class="session-id">${id}</span></td>
                                         <td><span class="state-badge state-${state}">${state}</span></td>
                                         <td>${backend}</td>
                                         <td><small>${cwd}</small></td>
                                         <td><small>${pid}</small></td>
                                         <td class="actions-cell">
-                                            <button onclick="openPromptDialog('${id}')" ${s.state !== 'idle' ? 'disabled' : ''}>Prompt</button>
-                                            <button onclick="openContextDialog('${id}')" class="secondary">Context</button>
-                                            <button onclick="openAliasDialog('${id}')" class="secondary">Alias</button>
-                                            <button onclick="controlSession('${id}', 'stop')" ${s.state === 'stopped' ? 'disabled' : ''} class="secondary">Stop</button>
-                                            <button onclick="controlSession('${id}', 'restart')" ${s.state !== 'stopped' ? 'disabled' : ''} class="secondary">Restart</button>
-                                            <button onclick="controlSession('${id}', 'kill')" class="contrast">Kill</button>
+                                            <button data-session-id="${id}" data-action="prompt" ${s.state !== 'idle' ? 'disabled' : ''}>Prompt</button>
+                                            <button data-session-id="${id}" data-action="context" class="secondary">Context</button>
+                                            <button data-session-id="${id}" data-action="alias" class="secondary">Alias</button>
+                                            <button data-session-id="${id}" data-action="stop" ${s.state === 'stopped' ? 'disabled' : ''} class="secondary">Stop</button>
+                                            <button data-session-id="${id}" data-action="restart" ${s.state !== 'stopped' ? 'disabled' : ''} class="secondary">Restart</button>
+                                            <button data-session-id="${id}" data-action="kill" class="contrast">Kill</button>
                                         </td>
                                     </tr>
                                 `;
@@ -198,6 +210,15 @@
                 console.error('Failed to load sessions:', err);
                 document.getElementById('sessions-container').innerHTML = '<p>Failed to connect to server</p>';
             }
+        }
+
+        function openNewSessionDialog() {
+            document.getElementById('new-session-dialog').showModal();
+        }
+
+        function closeNewSessionDialog() {
+            document.getElementById('new-session-dialog').close();
+            document.getElementById('new-session-form').reset();
         }
 
         document.getElementById('new-session-form').addEventListener('submit', async (e) => {
@@ -217,6 +238,7 @@
                 
                 if (res.ok) {
                     form.reset();
+                    closeNewSessionDialog();
                     setTimeout(loadSessions, 500);
                 } else {
                     alert('Failed to create session');
@@ -357,6 +379,24 @@
         
         // Auto-refresh every 5 seconds
         setInterval(loadSessions, 5000);
+
+        // Event delegation for session actions
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-session-id]');
+            if (!btn || btn.disabled) return;
+            
+            const id = btn.dataset.sessionId;
+            const action = btn.dataset.action;
+            
+            switch (action) {
+                case 'prompt': openPromptDialog(id); break;
+                case 'context': openContextDialog(id); break;
+                case 'alias': openAliasDialog(id); break;
+                case 'stop': controlSession(id, 'stop'); break;
+                case 'restart': controlSession(id, 'restart'); break;
+                case 'kill': controlSession(id, 'kill'); break;
+            }
+        });
     </script>
 </body>
 </html>
