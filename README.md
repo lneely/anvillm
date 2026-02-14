@@ -4,16 +4,19 @@ Acme-native interface for LLM chat backends. Sessions appear as Acme windows and
 
 ## Architecture
 
-AnviLLM splits into two components:
+AnviLLM consists of:
 
 - **anvilsrv**: Background daemon managing sessions via 9P
 - **Assist**: Acme UI client (auto-starts daemon if needed)
+- **anvillm**: Terminal UI (curses-based)
+- **anvillm.el**: Emacs interface
 
 This separation allows:
 - Multiple clients to connect to the same sessions
 - Server survives client crashes/restarts
 - Scriptable workflows via 9P without UI dependencies
 - Service management (systemd/runit integration)
+- Choice of interface: Acme, terminal, or Emacs
 
 ## Requirements
 
@@ -104,10 +107,9 @@ anvillm
 ```
 
 **Keyboard shortcuts:**
-- `k` - Create Kiro session
-- `c` - Create Claude session
+- `s` - Start new session (shows backend menu)
 - `p` - Send prompt to selected session
-- `s` - Stop selected session
+- `t` - Stop selected session
 - `R` - Restart selected session
 - `K` - Kill selected session
 - `a` - Set session alias
@@ -116,7 +118,45 @@ anvillm
 - `?` - Help
 - `q` - Quit
 
+**Navigation:**
+- Arrow keys (`↑`/`↓`)
+- Vim-style (`j`/`k`)
+- Emacs-style (`C-n`/`C-p`)
+
 Like Assist, the TUI reads/writes the 9P filesystem for all operations.
+
+### Emacs Interface (anvillm.el)
+
+Run `M-x anvillm` in Emacs for a native Emacs interface:
+
+**Installation:**
+```sh
+mk  # installs anvillm.el to ~/.emacs.d/lisp/
+```
+
+Add to your `~/.emacs` or `~/.emacs.d/init.el`:
+```elisp
+(add-to-list 'load-path "~/.emacs.d/lisp")
+(require 'anvillm)
+```
+
+**Keybindings:**
+- `s` - Start new session (select backend)
+- `p` - Send prompt to selected session
+- `t` - Stop selected session
+- `R` - Restart selected session
+- `K` - Kill selected session
+- `a` - Set alias for selected session
+- `r`, `g` - Refresh session list
+- `d` - Daemon status
+- `q` - Quit window
+- `?` - Help
+
+**Navigation:**
+- Standard Emacs navigation (`n`, `p`, `C-n`, `C-p`)
+- Sessions displayed in a sortable table (click column headers)
+
+The Emacs interface uses the `9p` command from plan9port to interact with the filesystem.
 
 ### Acme Interface (Assist)
 
