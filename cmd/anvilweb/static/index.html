@@ -7,7 +7,6 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <style>
         body { padding: 1rem; }
-        .session-card { margin-bottom: 1rem; }
         .state-badge { 
             display: inline-block; 
             padding: 0.25rem 0.5rem; 
@@ -19,8 +18,14 @@
         .state-running { background: var(--pico-color-amber-550); color: white; }
         .state-stopped { background: var(--pico-muted-color); color: white; }
         .state-error { background: var(--pico-color-red-550); color: white; }
-        .session-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-        .session-actions button { margin: 0; padding: 0.5rem 1rem; }
+        .state-starting { background: var(--pico-color-blue-550); color: white; }
+        .state-exited { background: var(--pico-muted-color); color: white; }
+        
+        table { margin-top: 1rem; }
+        table button { margin: 0 0.25rem; padding: 0.25rem 0.5rem; font-size: 0.875rem; }
+        table td { vertical-align: middle; }
+        .actions-cell { white-space: nowrap; }
+        
         #prompt-area { min-height: 100px; }
         .hidden { display: none; }
     </style>
@@ -57,7 +62,7 @@
                 <h2>Sessions</h2>
                 <button onclick="loadSessions()">Refresh</button>
             </div>
-            <div id="sessions"></div>
+            <div id="sessions-container"></div>
         </section>
 
         <dialog id="prompt-dialog">
@@ -132,45 +137,59 @@
                 const res = await fetch('/api/sessions');
                 const sessions = await res.json();
                 
-                const container = document.getElementById('sessions');
+                const container = document.getElementById('sessions-container');
                 if (sessions.length === 0) {
                     container.innerHTML = '<p>No sessions running</p>';
                     return;
                 }
 
-                container.innerHTML = sessions.map(s => {
-                    const alias = escapeHtml(s.alias || s.id);
-                    const backend = escapeHtml(s.backend || 'unknown');
-                    const cwd = escapeHtml(s.cwd);
-                    const pid = escapeHtml(s.pid);
-                    const state = escapeHtml(s.state);
-                    
-                    return `
-                    <article class="session-card">
-                        <header>
-                            <strong>${alias}</strong>
-                            <span class="state-badge state-${state}">${state}</span>
-                        </header>
-                        <p>
-                            <small>
-                                <strong>Backend:</strong> ${backend}<br>
-                                <strong>CWD:</strong> ${cwd}<br>
-                                <strong>PID:</strong> ${pid}
-                            </small>
-                        </p>
-                        <div class="session-actions">
-                            <button onclick="openPromptDialog('${escapeHtml(s.id)}')" ${s.state !== 'idle' ? 'disabled' : ''}>Prompt</button>
-                            <button onclick="openContextDialog('${escapeHtml(s.id)}')" class="secondary">Context</button>
-                            <button onclick="openAliasDialog('${escapeHtml(s.id)}')" class="secondary">Alias</button>
-                            <button onclick="controlSession('${escapeHtml(s.id)}', 'stop')" ${s.state === 'stopped' ? 'disabled' : ''} class="secondary">Stop</button>
-                            <button onclick="controlSession('${escapeHtml(s.id)}', 'restart')" ${s.state !== 'stopped' ? 'disabled' : ''} class="secondary">Restart</button>
-                            <button onclick="controlSession('${escapeHtml(s.id)}', 'kill')" class="contrast">Kill</button>
-                        </div>
-                    </article>
-                `}).join('');
+                const table = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Alias</th>
+                                <th>State</th>
+                                <th>Backend</th>
+                                <th>Working Directory</th>
+                                <th>PID</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${sessions.map(s => {
+                                const alias = escapeHtml(s.alias || s.id);
+                                const backend = escapeHtml(s.backend || 'unknown');
+                                const cwd = escapeHtml(s.cwd);
+                                const pid = escapeHtml(s.pid);
+                                const state = escapeHtml(s.state);
+                                const id = escapeHtml(s.id);
+                                
+                                return `
+                                    <tr>
+                                        <td><strong>${alias}</strong></td>
+                                        <td><span class="state-badge state-${state}">${state}</span></td>
+                                        <td>${backend}</td>
+                                        <td><small>${cwd}</small></td>
+                                        <td><small>${pid}</small></td>
+                                        <td class="actions-cell">
+                                            <button onclick="openPromptDialog('${id}')" ${s.state !== 'idle' ? 'disabled' : ''}>Prompt</button>
+                                            <button onclick="openContextDialog('${id}')" class="secondary">Context</button>
+                                            <button onclick="openAliasDialog('${id}')" class="secondary">Alias</button>
+                                            <button onclick="controlSession('${id}', 'stop')" ${s.state === 'stopped' ? 'disabled' : ''} class="secondary">Stop</button>
+                                            <button onclick="controlSession('${id}', 'restart')" ${s.state !== 'stopped' ? 'disabled' : ''} class="secondary">Restart</button>
+                                            <button onclick="controlSession('${id}', 'kill')" class="contrast">Kill</button>
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                `;
+                
+                container.innerHTML = table;
             } catch (err) {
                 console.error('Failed to load sessions:', err);
-                document.getElementById('sessions').innerHTML = '<p>Failed to connect to server</p>';
+                document.getElementById('sessions-container').innerHTML = '<p>Failed to connect to server</p>';
             }
         }
 
