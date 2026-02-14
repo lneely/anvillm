@@ -16,7 +16,7 @@ import (
 
 // NewKiroCLI creates a kiro-cli backend
 // Runs with --trust-all-tools because landrun provides the actual sandboxing
-func NewKiroCLI() backend.Backend {
+func NewKiroCLI(nsSuffix string) backend.Backend {
 	return tmux.New(tmux.Config{
 		Name:    "kiro-cli",
 		Command: []string{"kiro-cli", "chat", "--trust-all-tools"},
@@ -32,6 +32,7 @@ func NewKiroCLI() backend.Backend {
 		StartupTime:    30 * time.Second,
 		Commands:       &kiroCommands{},
 		StateInspector: &kiroStateInspector{},
+		NsSuffix:       nsSuffix,
 	})
 }
 

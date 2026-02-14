@@ -44,6 +44,7 @@ type Config struct {
 	Commands       backend.CommandHandler
 	StartupHandler StartupHandler // Optional: handles startup dialogs
 	StateInspector StateInspector // Optional: for process tree inspection
+	NsSuffix       string         // Optional: namespace suffix (e.g., "0" for :0)
 }
 
 // Backend implements backend.Backend for tmux-based CLI tools
@@ -71,9 +72,15 @@ func New(cfg Config) backend.Backend {
 		cfg.TmuxSize.Cols = 120
 	}
 
+	// Build tmux session name with namespace suffix if provided
+	sessionName := fmt.Sprintf("anvillm-%s", cfg.Name)
+	if cfg.NsSuffix != "" {
+		sessionName = fmt.Sprintf("%s-%s", sessionName, cfg.NsSuffix)
+	}
+
 	return &Backend{
 		cfg:         cfg,
-		tmuxSession: fmt.Sprintf("anvillm-%s", cfg.Name),
+		tmuxSession: sessionName,
 	}
 }
 

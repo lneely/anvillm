@@ -21,21 +21,21 @@ import (
 // Runs with --dangerously-skip-permissions because landrun provides the actual sandboxing.
 //
 // Sessions are automatically saved by Claude to ~/.claude/projects/<dir-path>/<session-id>.jsonl
-func NewClaude() backend.Backend {
-	return newClaudeWithCommand([]string{"claude", "--dangerously-skip-permissions"})
+func NewClaude(nsSuffix string) backend.Backend {
+	return newClaudeWithCommand([]string{"claude", "--dangerously-skip-permissions"}, nsSuffix)
 }
 
 // NewClaudeWithContinue creates a backend that continues the most recent conversation
-func NewClaudeWithContinue() backend.Backend {
-	return newClaudeWithCommand([]string{"claude", "--dangerously-skip-permissions", "--continue"})
+func NewClaudeWithContinue(nsSuffix string) backend.Backend {
+	return newClaudeWithCommand([]string{"claude", "--dangerously-skip-permissions", "--continue"}, nsSuffix)
 }
 
 // NewClaudeWithResume creates a backend that resumes a specific session by ID
-func NewClaudeWithResume(sessionID string) backend.Backend {
-	return newClaudeWithCommand([]string{"claude", "--dangerously-skip-permissions", "--resume", sessionID})
+func NewClaudeWithResume(sessionID string, nsSuffix string) backend.Backend {
+	return newClaudeWithCommand([]string{"claude", "--dangerously-skip-permissions", "--resume", sessionID}, nsSuffix)
 }
 
-func newClaudeWithCommand(command []string) backend.Backend {
+func newClaudeWithCommand(command []string, nsSuffix string) backend.Backend {
 	return tmux.New(tmux.Config{
 		Name:    "claude",
 		Command: command,
@@ -50,6 +50,7 @@ func newClaudeWithCommand(command []string) backend.Backend {
 		Commands:       &claudeCommands{},
 		StartupHandler: &claudeStartupHandler{},
 		StateInspector: &claudeStateInspector{},
+		NsSuffix:       nsSuffix,
 	})
 }
 

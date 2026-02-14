@@ -21,6 +21,7 @@ import (
 	"syscall"
 
 	"9fans.net/go/acme"
+	"9fans.net/go/plan9/client"
 )
 
 const windowName = "/AnviLLM/"
@@ -32,13 +33,30 @@ const terminalCommand = "foot"
 // Type alias to work around Go parser limitation
 type Session = backend.Session
 
+// getNamespaceSuffix extracts the display number from namespace (e.g., "0" from "/tmp/ns.user.:0")
+func getNamespaceSuffix() string {
+	ns := client.Namespace()
+	if ns == "" {
+		return ""
+	}
+	// Extract :N from /tmp/ns.user.:N
+	parts := strings.Split(ns, ":")
+	if len(parts) >= 2 {
+		suffix := parts[len(parts)-1]
+		// Remove trailing slash if present
+		return strings.TrimSuffix(suffix, "/")
+	}
+	return ""
+}
+
 func main() {
 	flag.Parse()
 
 	// Create all backends
+	nsSuffix := getNamespaceSuffix()
 	backendMap := map[string]backend.Backend{
-		"kiro-cli": backends.NewKiroCLI(),
-		"claude":   backends.NewClaude(),
+		"kiro-cli": backends.NewKiroCLI(nsSuffix),
+		"claude":   backends.NewClaude(nsSuffix),
 	}
 
 	mgr := session.NewManager(backendMap)
