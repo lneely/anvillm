@@ -430,6 +430,33 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
+	// /{id}/state - set session state (with validation)
+	if len(parts) == 3 && parts[2] == "state" {
+		sess := s.mgr.Get(parts[1])
+		if sess == nil {
+			return errFcall(fc, "session not found")
+		}
+
+		// Validate state: only allow valid state values
+		validStates := map[string]bool{
+			"idle":     true,
+			"running":  true,
+			"stopped":  true,
+			"starting": true,
+			"error":    true,
+			"exited":   true,
+		}
+
+		if !validStates[input] {
+			return errFcall(fc, fmt.Sprintf("invalid state: %q (must be one of: idle, running, stopped, starting, error, exited)", input))
+		}
+
+		if tmuxSess, ok := sess.(*tmux.Session); ok {
+			tmuxSess.SetState(input)
+		}
+		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
+	}
+
 	return errFcall(fc, "read-only")
 }
 
@@ -474,7 +501,7 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 			mode := uint32(0444)
 			if name == "ctl" || name == "in" {
 				mode = 0222
-			} else if name == "alias" || name == "context" {
+			} else if name == "alias" || name == "context" || name == "state" {
 				mode = 0644
 			}
 			content := s.getSessionFile(sess, i)

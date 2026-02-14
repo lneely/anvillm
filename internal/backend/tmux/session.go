@@ -63,6 +63,13 @@ func (s *Session) State() string {
 	return s.state
 }
 
+// SetState sets the session state (used for explicit signaling)
+func (s *Session) SetState(state string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.state = state
+}
+
 func (s *Session) SetAlias(alias string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -256,13 +263,7 @@ func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error
 				return fmt.Errorf("timeout waiting for ready")
 			}
 
-			// Check process tree: if backend is busy (has child processes), still starting
-			if s.stateInspector != nil && s.stateInspector.IsBusy(s.pid) {
-				quiesceStart = time.Time{} // Reset quiescence
-				continue
-			}
-
-			// Not busy - start or continue quiescence timer
+			// Start or continue quiescence timer
 			if quiesceStart.IsZero() {
 				quiesceStart = time.Now()
 				continue
@@ -270,7 +271,7 @@ func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error
 
 			// Check if quiescence period has passed
 			if time.Since(quiesceStart) >= quiescence {
-				debug.Log("[session %s] ready detected (idle, %d bytes)", s.id, s.output.Len())
+				debug.Log("[session %s] ready detected (quiescence, %d bytes)", s.id, s.output.Len())
 				return nil
 			}
 		}
@@ -310,9 +311,15 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 		}
 	}
 
+	// Prepend idle signaling instruction at the top of the prompt
+	// This instruction tells the agent to signal when it's done processing
+	idleSignal := fmt.Sprintf("IMPORTANT: When you have completed processing this request and are ready for the next prompt, you MUST signal idle by running:\necho idle | 9p write agent/%s/state\n", s.id)
+
 	// Prepend context if set (skip for slash commands)
 	if s.context != "" && !strings.HasPrefix(prompt, "/") {
-		prompt = s.context + "\n\n" + prompt
+		prompt = idleSignal + "\n" + s.context + "\n\n" + prompt
+	} else if !strings.HasPrefix(prompt, "/") {
+		prompt = idleSignal + "\n" + prompt
 	}
 
 	// Reset stopCh for this request
@@ -366,11 +373,7 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 }
 
 func (s *Session) waitForComplete(ctx context.Context, prompt string) error {
-	const minContent = 50
-	const quiescence = 300 * time.Millisecond
 	const pollInterval = 100 * time.Millisecond
-
-	var quiesceStart time.Time
 
 	for {
 		select {
@@ -383,75 +386,106 @@ func (s *Session) waitForComplete(ctx context.Context, prompt string) error {
 				return fmt.Errorf("session closed")
 			}
 			s.output.Write(data)
-			quiesceStart = time.Time{} // Reset quiescence on new data
 
 		case <-time.After(pollInterval):
-			// Check if we have minimum content
-			if s.output.Len() < minContent {
-				continue
-			}
+			// Wait for state to be explicitly set to "idle" by the agent
+			s.mu.Lock()
+			currentState := s.state
+			s.mu.Unlock()
 
-			// Check process tree: if backend is busy (has child processes), still running
-			if s.stateInspector != nil && s.stateInspector.IsBusy(s.pid) {
-				quiesceStart = time.Time{} // Reset quiescence
-				continue
-			}
-
-			// Not busy - start or continue quiescence timer
-			if quiesceStart.IsZero() {
-				quiesceStart = time.Now()
-				continue
-			}
-
-			// Check if quiescence period has passed
-			if time.Since(quiesceStart) >= quiescence {
-				debug.Log("[session %s] idle detected (no tool children, %d bytes)", s.id, s.output.Len())
+			if currentState == "idle" {
+				debug.Log("[session %s] idle detected (explicit signal, %d bytes)", s.id, s.output.Len())
 				return nil
 			}
 		}
 	}
 }
 
+// SendAsync sends a prompt asynchronously without waiting for completion.
+//
+// State Transitions:
+//   - idle → running (immediately upon successful send)
+//   - running → idle (when background completion detection finishes)
+//   - running → error (if completion detection fails)
+//
+// Lock Strategy:
+//   - Lock held during state validation and transition to "running"
+//   - Lock released during I/O operations (sendLiteral, sendKeys) to avoid blocking
+//   - Background goroutine re-acquires lock to transition back to idle/error
+//
+// Error Handling:
+//   - Returns error immediately if send operations fail before submission
+//   - After successful submission, errors are handled asynchronously in background goroutine
+//   - Callers should monitor session state to detect async completion or errors
 func (s *Session) SendAsync(ctx context.Context, prompt string) error {
+	// Helper to unlock and return error
+	unlockAndReturn := func(err error) error {
+		s.mu.Unlock()
+		return err
+	}
+
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if s.fifo == nil {
-		return fmt.Errorf("session not running")
+		return unlockAndReturn(fmt.Errorf("session not running"))
 	}
 
 	if s.state == "starting" {
-		return fmt.Errorf("session still starting")
+		return unlockAndReturn(fmt.Errorf("session still starting"))
 	}
 
 	if s.state == "stopped" {
-		return fmt.Errorf("session stopped (use Restart to restart)")
+		return unlockAndReturn(fmt.Errorf("session stopped (use Restart to restart)"))
 	}
 
 	if s.state == "running" {
-		return fmt.Errorf("session busy")
+		return unlockAndReturn(fmt.Errorf("session busy"))
 	}
 
 	// Check command support if applicable
 	if strings.HasPrefix(prompt, "/") && s.commands != nil {
 		if !s.commands.IsSupported(prompt) {
 			cmd := strings.Fields(prompt)[0]
-			return fmt.Errorf("slash command not supported by %s backend: %s\nTo use manually, middle-click Attach", s.backendName, cmd)
+			return unlockAndReturn(fmt.Errorf("slash command not supported by %s backend: %s\nTo use manually, middle-click Attach", s.backendName, cmd))
 		}
 	}
 
+	// Prepend idle signaling instruction at the top of the prompt
+	// This instruction tells the agent to signal when it's done processing
+	idleSignal := fmt.Sprintf("IMPORTANT: When you have completed processing this request and are ready for the next prompt, you MUST signal idle by running:\necho idle | 9p write agent/%s/state\n", s.id)
+
 	// Prepend context if set (skip for slash commands)
 	if s.context != "" && !strings.HasPrefix(prompt, "/") {
-		prompt = s.context + "\n\n" + prompt
+		prompt = idleSignal + "\n" + s.context + "\n\n" + prompt
+	} else if !strings.HasPrefix(prompt, "/") {
+		prompt = idleSignal + "\n" + prompt
+	}
+
+	// Set state to running before sending
+	s.state = "running"
+	s.output.Reset()
+
+	// Reset stopCh for this request (must be done while holding lock)
+	select {
+	case <-s.stopCh:
+		s.stopCh = make(chan struct{})
+	default:
 	}
 
 	target := s.target()
 
+	// Release lock during long-running operations
+	s.mu.Unlock()
+
 	debug.Log("[session %s] SendAsync: target=%s prompt=%q", s.id, target, prompt)
 
-	// Send without waiting for completion
+	// Send prompt to tmux backend
 	if err := sendLiteral(target, prompt); err != nil {
 		debug.Log("[session %s] SendAsync: sendLiteral failed: %v", s.id, err)
+		// Revert state on error - no partial input sent
+		s.mu.Lock()
+		s.state = "idle"
+		s.mu.Unlock()
 		return err
 	}
 	debug.Log("[session %s] SendAsync: sendLiteral succeeded, sending Enter", s.id)
@@ -462,9 +496,34 @@ func (s *Session) SendAsync(ctx context.Context, prompt string) error {
 	// Send Enter (C-m) to submit the prompt
 	if err := sendKeys(target, "C-m"); err != nil {
 		debug.Log("[session %s] SendAsync: sendKeys failed: %v", s.id, err)
-		return err
+		// CRITICAL: Partial input was sent but not submitted (Enter failed)
+		// The backend has the prompt text in its input buffer but it's not submitted.
+		// Mark session as error state since it's in an undefined state.
+		s.mu.Lock()
+		s.state = "error"
+		s.mu.Unlock()
+		return fmt.Errorf("failed to submit prompt (partial input sent, session in error state): %w", err)
 	}
 	debug.Log("[session %s] SendAsync: sendKeys succeeded", s.id)
+
+	// Both send operations succeeded - launch background goroutine to wait for completion
+	// The goroutine will transition state from "running" to "idle" (or "error" on failure)
+	go func() {
+		if err := s.waitForComplete(ctx, prompt); err != nil {
+			debug.Log("[session %s] SendAsync: waitForComplete error: %v", s.id, err)
+			// Completion detection failed - mark as error state
+			s.mu.Lock()
+			s.state = "error"
+			s.mu.Unlock()
+			debug.Log("[session %s] SendAsync: error during completion, state set to error", s.id)
+			return
+		}
+		s.mu.Lock()
+		s.state = "idle"
+		s.mu.Unlock()
+		debug.Log("[session %s] SendAsync: completed, state set to idle", s.id)
+	}()
+
 	return nil
 }
 
@@ -819,19 +878,36 @@ func (s *Session) Refresh(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.state == "exited" || s.state == "stopped" {
-		// Cannot refresh exited or stopped sessions
-		// Use Restart() to restart a stopped session
+	if s.state == "exited" {
+		// Cannot refresh exited sessions
 		return nil
 	}
 
-	// Check if process is busy
-	busy := s.stateInspector != nil && s.stateInspector.IsBusy(s.pid)
-	if busy {
-		s.state = "running"
-	} else {
-		s.state = "idle"
+	// Check if PID is valid and process is actually running
+	if s.pid != 0 {
+		// Verify the process exists by sending signal 0
+		if err := syscall.Kill(s.pid, 0); err != nil {
+			// Process is not running
+			debug.Log("[session %s] refresh: PID %d not running, setting to stopped", s.id, s.pid)
+			s.pid = 0
+			s.state = "stopped"
+			return nil
+		}
 	}
-	debug.Log("[session %s] refresh: state=%s", s.id, s.state)
+
+	// If PID is 0, state should be stopped
+	if s.pid == 0 {
+		debug.Log("[session %s] refresh: PID is 0, setting to stopped", s.id)
+		s.state = "stopped"
+		return nil
+	}
+
+	// If already stopped, don't change state
+	if s.state == "stopped" {
+		return nil
+	}
+
+	// State is managed by explicit signaling, so we don't need to infer it here
+	debug.Log("[session %s] refresh: state=%s (managed by explicit signaling)", s.id, s.state)
 	return nil
 }

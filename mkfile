@@ -15,8 +15,6 @@ build:V:
 	chmod 0755 $INSTALL_PATH/Workflows/DevReviewQA
 	cp scripts/Planning $INSTALL_PATH/Workflows/Planning
 	chmod 0755 $INSTALL_PATH/Workflows/Planning
-	mkdir -p $HOME/.emacs.d/lisp
-	cp anvillm.el $HOME/.emacs.d/lisp/anvillm.el
 
 install:V: build
 
