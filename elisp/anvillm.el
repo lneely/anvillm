@@ -241,29 +241,32 @@ Format: id alias state pid cwd (whitespace-separated; often tabs)."
     (princ "AnviLLM - Emacs Interface
 
 Keybindings:
-  s - Start new session (select backend)
-  p - Send prompt to selected session
-  t - Stop selected session
-  R - Restart selected session
-  K - Kill selected session
-  a - Set alias for selected session
-  r, g - Refresh session list
-  d - Daemon status
-  q - Quit
-  ? - This help
+s - Start new session (select backend)
+p - Send prompt to selected session
+t - Stop selected session
+R - Restart selected session
+K - Kill selected session
+a - Set alias for selected session
+A - Attach to tmux session in terminal
+r, g - Refresh session list
+d - Daemon status
+q - Quit
+? - This help
 
 Navigation:
-  n, C-n - Next line
-  p, C-p - Previous line
-  RET - (reserved for future use)
+n, C-n - Next line
+p, C-p - Previous line
+RET - (reserved for future use)
 
 9P Filesystem:
 All operations read/write the 9P filesystem at $NAMESPACE/agent
 
 Backends:
-  - claude     (Claude Code CLI)
-  - kiro-cli   (Kiro CLI)
+- claude (Claude Code CLI)
+- kiro-cli (Kiro CLI)
+
 ")))
+
 
 ;;; Major Mode
 
@@ -275,7 +278,8 @@ Backends:
     (define-key map (kbd "t") #'anvillm-stop-session)
     (define-key map (kbd "R") #'anvillm-restart-session)
     (define-key map (kbd "K") #'anvillm-kill-session)
-    (define-key map (kbd "a") #'anvillm-set-alias)
+    (define-key map (kbd "A") #'anvillm-set-alias)
+    (define-key map (kbd "a") #'anvillm-attach-session)
     (define-key map (kbd "r") #'anvillm-refresh)
     (define-key map (kbd "g") #'anvillm-refresh)
     (define-key map (kbd "d") #'anvillm-daemon-status)
@@ -326,6 +330,32 @@ Backends:
       (anvillm-mode)
       (anvillm--refresh-sessions))
     (switch-to-buffer buffer)))
+
+(defcustom anvillm-terminal-command
+  (or (getenv "ANVILLM_TERMINAL") "foot")
+  "Terminal emulator command for attaching to tmux sessions."
+  :type 'string
+  :group 'anvillm)
+
+(defun anvillm-attach-session ()
+  "Attach to the tmux session for the selected session."
+  (interactive)
+  (if-let ((session-id (anvillm--get-selected-session)))
+      (condition-case err
+          (let* ((backend (string-trim (anvillm--9p-read (concat anvillm-agent-path "/" session-id "/backend"))))
+                 (tmux-session (format "anvillm-%s" backend))
+                 (tmux-window session-id)
+                 (tmux-target (format "%s:%s" tmux-session tmux-window)))
+            (start-process
+             (format "tmux-attach-%s" session-id)
+             nil
+             anvillm-terminal-command
+             "-e" "tmux" "attach" "-t" tmux-target)
+            (message "Attached to tmux session %s" tmux-target))
+        (error
+         (message "Failed to attach to session: %s" (error-message-string err))))
+    (message "No session selected")))
+
 
 (provide 'anvillm)
 
