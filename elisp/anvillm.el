@@ -400,9 +400,20 @@ Backends:
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "r") #'anvillm-log-refresh)
     (define-key map (kbd "g") #'anvillm-log-refresh)
-    (define-key map (kbd "q") #'quit-window)
+    (define-key map (kbd "q") #'anvillm-log-quit)
     map)
   "Keymap for AnviLLM log mode.")
+
+(defun anvillm-log-quit ()
+  "Quit the log window and kill the streaming process."
+  (interactive)
+  ;; Kill the streaming process
+  (when (and anvillm--log-process
+            (process-live-p anvillm--log-process))
+    (delete-process anvillm--log-process)
+    (setq anvillm--log-process nil))
+  ;; Quit the window
+  (quit-window t))
 
 (define-derived-mode anvillm-log-mode special-mode "AnviLLM-Log"
   "Major mode for viewing AnviLLM session logs.
