@@ -106,52 +106,59 @@ Unlike Gas Town's "spawn 30 workers and see what sticks" approach, beads in Anvi
 
 ## Approval Gates
 
-Sessions pause for human or coordinator approval before proceeding.
+Sessions pause for human approval before proceeding.
 
 ### Use Case
 
 Bot completes a task but shouldn't continue until work is reviewed:
 1. Developer bot implements feature
-2. Bot writes summary to `out`, transitions to `await_approval`
-3. Human/reviewer reads summary, examines changes
-4. Human sends approval: `echo 'approve' | 9p write agent/{session}/ctl`
-5. Bot continues with next step
+2. Bot sends approval request via mailbox to human notification system
+3. Human receives notification (desktop, Signal, etc.)
+4. Human reviews work and responds with approval/rejection
+5. Bot receives response and continues or stops
 
-### States
+### Implementation with Mailbox System
 
-Add new state to session lifecycle:
-- `idle` → `running` → `await_approval` → `idle` (if approved)
-- `idle` → `running` → `await_approval` → `stopped` (if rejected)
+Use existing `APPROVAL_REQUEST` and `APPROVAL_RESPONSE` message types:
 
-### 9P Interface
+```bash
+# Bot sends approval request
+cat > /tmp/approval.json <<EOF
+{"to":"human","type":"APPROVAL_REQUEST","subject":"OAuth implementation","body":"Implemented OAuth login. Added 3 files, 200 LOC. All tests pass. Please review and approve."}
+EOF
+9p write agent/dev-123/outbox/msg-$(date +%s).json < /tmp/approval.json
 
+# Bot waits (stays idle, checks inbox for response)
 ```
-agent/<id>/approval    # Read: current approval status
-                       # Write: "approve" or "reject <reason>"
+
+### Human Notification System
+
+External daemon monitors special "human" inbox or approval queue:
+- Watches for `APPROVAL_REQUEST` messages
+- Sends desktop notification or Signal message
+- Presents approval UI (approve/reject with reason)
+- Writes response back to bot's inbox
+
+```bash
+# Human approves (via notification UI or manual command)
+cat > /tmp/response.json <<EOF
+{"to":"dev-123","type":"APPROVAL_RESPONSE","subject":"Approved","body":"LGTM - OAuth implementation looks good. Proceed with deployment."}
+EOF
+9p write agent/human/outbox/msg-$(date +%s).json < /tmp/response.json
 ```
 
-### Workflow Example
+### Bot Behavior
 
-```sh
-# Developer bot context includes:
-# "After implementing, write summary to out and request approval"
-
-# Bot finishes work
-echo "Implemented OAuth login. Added 3 files, 200 LOC. All tests pass." | 9p write agent/dev-123/out
-echo 'request_approval' | 9p write agent/dev-123/ctl
-
-# State transitions to await_approval
-9p read agent/dev-123/state  # → "await_approval"
-
-# Human reviews
-9p read agent/dev-123/out
-git diff
-
-# Approve
-echo 'approve' | 9p write agent/dev-123/approval
-
-# Bot continues (or human sends next prompt)
+Bot context includes:
 ```
+After completing critical tasks:
+1. Send APPROVAL_REQUEST message to "human"
+2. Wait for APPROVAL_RESPONSE in your inbox
+3. If approved, continue with next step
+4. If rejected, address feedback and request approval again
+```
+
+Bot checks inbox periodically or waits for mail processor to deliver response.
 
 ### Integration with Beads
 
@@ -171,6 +178,14 @@ Approval gates ensure precision:
 - Prevents cascading errors from bad decisions
 - Human maintains control over workflow direction
 - Bot can work autonomously within approved boundaries
+- Notification system brings approvals to human's attention
+
+### Status
+
+Mailbox system implemented. Needs:
+- Human notification daemon (desktop/Signal integration)
+- Bot context patterns for approval workflows
+- UI for approval responses
 
 ## Convoy (Grouped Work)
 
