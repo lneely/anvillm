@@ -115,6 +115,9 @@ func setupUI() {
 			case 'a':
 				showAliasDialog()
 				return nil
+			case 'l':
+				showLogViewer()
+				return nil
 			case 'd':
 				showDaemonStatus()
 				return nil
@@ -299,6 +302,31 @@ func readFile(path string) ([]byte, error) {
 			buf = append(buf, tmp[:n]...)
 		}
 		if err != nil {
+			break
+		}
+	}
+	return buf, nil
+}
+
+func readLogFile(path string) ([]byte, error) {
+	fid, err := fs.Open(path, plan9.OREAD)
+	if err != nil {
+		return nil, err
+	}
+	defer fid.Close()
+
+	// Read in chunks, but stop when we get less than requested
+	// This prevents blocking on the streaming log file
+	var buf []byte
+	tmp := make([]byte, 8192)
+	for {
+		n, err := fid.Read(tmp)
+		if n > 0 {
+			buf = append(buf, tmp[:n]...)
+		}
+		// Stop if we got less than buffer size (no more data available)
+		// or if there was an error
+		if n < len(tmp) || err != nil {
 			break
 		}
 	}
@@ -527,6 +555,69 @@ func killSelectedSession() {
 	}
 }
 
+func showLogViewer() {
+	sess := getSelectedSession()
+	if sess == nil {
+		updateStatus("[yellow]No session selected")
+		return
+	}
+
+	// Read the log from the 'log' file
+	path := filepath.Join(sess.ID, "log")
+	logData, err := readLogFile(path)
+	if err != nil {
+		updateStatus(fmt.Sprintf("[red]Error reading log: %v", err))
+		return
+	}
+
+	logText := string(logData)
+	if logText == "" {
+		logText = "[gray]No log output yet[-]"
+	}
+
+	textView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetText(logText).
+		SetScrollable(true).
+		SetWordWrap(true)
+
+	textView.SetBorder(true).
+		SetTitle(fmt.Sprintf(" Log: %s ", sess.ID[:8])).
+		SetTitleAlign(tview.AlignLeft)
+
+	// Scroll to bottom
+	textView.ScrollToEnd()
+
+	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Rune() {
+		case 'q':
+			pages.RemovePage("log")
+			return nil
+		case 'r':
+			// Refresh log
+			logData, err := readLogFile(path)
+			if err != nil {
+				updateStatus(fmt.Sprintf("[red]Error refreshing log: %v", err))
+				return nil
+			}
+			logText := string(logData)
+			if logText == "" {
+				logText = "[gray]No log output yet[-]"
+			}
+			textView.SetText(logText)
+			textView.ScrollToEnd()
+			return nil
+		}
+		if event.Key() == tcell.KeyEscape {
+			pages.RemovePage("log")
+			return nil
+		}
+		return event
+	})
+
+	pages.AddPage("log", createModalDynamic(textView, 8, 25), true, true)
+}
+
 func showDaemonStatus() {
 	// TODO: Implement daemon status view
 	updateStatus("[yellow]Daemon status view not yet implemented")
@@ -545,6 +636,7 @@ func showHelp() {
 
 [yellow]Interaction:[-]
   p       Send prompt to session
+  l       View session log (press 'r' to refresh, 'q' to close)
   r       Refresh session list
 
 [yellow]Navigation:[-]
@@ -590,5 +682,15 @@ func createModal(p tview.Primitive, width, height int) tview.Primitive {
 			AddItem(nil, 0, 1, false).
 			AddItem(p, height, 1, true).
 			AddItem(nil, 0, 1, false), width, 1, true).
+		AddItem(nil, 0, 1, false)
+}
+
+func createModalDynamic(p tview.Primitive, widthProportion, height int) tview.Primitive {
+	return tview.NewFlex().
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(nil, 0, 1, false).
+			AddItem(p, height, 1, true).
+			AddItem(nil, 0, 1, false), 0, widthProportion, true).
 		AddItem(nil, 0, 1, false)
 }
