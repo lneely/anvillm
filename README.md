@@ -205,7 +205,7 @@ Type `Assist` in Acme and middle-click to open the `/AnviLLM/` session manager.
 
 ### Commands
 
-**Main window** (`/AnviLLM/`) tag: `Get Attach Stop Restart Kill Refresh Alias Context Daemon Sandbox`
+**Main window** (`/AnviLLM/`) tag: `Get Attach Stop Restart Kill Alias Context Daemon Sandbox`
 
 | Command | Description |
 |---------|-------------|
@@ -214,7 +214,6 @@ Type `Assist` in Acme and middle-click to open the `/AnviLLM/` session manager.
 | `Stop <id>` | Stop session (preserves tmux) |
 | `Restart <id>` | Restart stopped session |
 | `Kill <id>` | Terminate session |
-| `Refresh <id>` | Re-detect session state |
 | `Attach <id>` | Open tmux terminal |
 | `Alias <id> <name>` | Name a session |
 | `Context <id>` | Edit context (prepended to prompts) |
@@ -240,7 +239,7 @@ agent/
 └── <id>/
     ├── in          # Write prompts
     ├── out         # Read responses
-    ├── ctl         # "stop", "restart", "kill", "refresh"
+    ├── ctl         # "stop", "restart", "kill"
     ├── state       # starting, idle, running, stopped, error, exited
     ├── context     # Prepended to prompts (r/w)
     ├── alias       # Session name (r/w)

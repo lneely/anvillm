@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"9fans.net/go/acme"
@@ -93,7 +92,7 @@ func main() {
 	defer w.CloseFiles()
 
 	w.Name(windowName)
-	w.Write("tag", []byte("Get Attach Stop Restart Kill Refresh Alias Context Daemon Sandbox "))
+	w.Write("tag", []byte("Get Attach Stop Restart Kill Alias Context Daemon Sandbox "))
 	refreshList(w)
 	w.Ctl("clean")
 
@@ -206,20 +205,6 @@ func main() {
 						}
 						aw.Name(filepath.Join(sess.Cwd, fmt.Sprintf("+Prompt.%s", displayName)))
 						aw.CloseFiles()
-					}
-				}
-				refreshList(w)
-			case "Refresh":
-				if arg == "" {
-					// Refresh all sessions
-					sessions, _ := listSessions()
-					for _, sess := range sessions {
-						controlSession(sess.ID, "refresh")
-					}
-				} else {
-					if err := controlSession(arg, "refresh"); err != nil {
-						fmt.Fprintf(os.Stderr, "Failed to refresh session: %v\n", err)
-						continue
 					}
 				}
 				refreshList(w)
@@ -527,23 +512,6 @@ func refreshList(w *acme.Win) {
 	buf.WriteString(fmt.Sprintf("%-5s %-10s %-9s %-16s %s\n", "-----", "----------", "---------", "----------------", strings.Repeat("-", 40)))
 
 	for _, sess := range sessions {
-		// Check if PID is alive (server handles this via Refresh)
-		if sess.Pid != 0 {
-			if err := syscall.Kill(sess.Pid, 0); err != nil {
-				// Only refresh if process doesn't exist (ESRCH)
-				// Ignore permission errors (EPERM) - process exists but we can't signal it
-				if err == syscall.ESRCH {
-					// Process died, trigger refresh
-					fmt.Fprintf(os.Stderr, "Warning: session %s PID %d died, refreshing\n", sess.ID, sess.Pid)
-					controlSession(sess.ID, "refresh")
-					// Re-read session info
-					if updated, err := getSession(sess.ID); err == nil {
-						sess = updated
-					}
-				}
-			}
-		}
-
 		alias := sess.Alias
 		if alias == "" {
 			alias = "-"
