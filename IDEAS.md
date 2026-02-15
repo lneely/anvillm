@@ -1,65 +1,538 @@
 # IDEAS.md
 
-## Shared Context
+## Role-Based Sessions
 
-Inject context from one session into another.
+Specialized session types with enforced capabilities via context and sandbox configuration.
 
-Possible approaches:
-- Export conversation summary to a file, import into another session
-- Shared 9p file that multiple sessions can read from
-- Command to "copy context" between sessions via the orchestrator
-- Named context snippets that can be referenced by any session
+### Current Implementation
 
-## Bot-to-Bot Communication
+Already possible using existing features:
+- `context` file defines role behavior
+- Sandbox config enforces filesystem boundaries
+- Scripts create role-specific sessions (see `scripts/DevReview`, `scripts/Planning`)
 
-Two running bots talk directly via tmux send-keys.
+### Example Roles
 
-The bots already automate shell commands - they could inject prompts into each other's sessions. Use cases:
-- Specialist handoff: "ask the database bot to check the schema"
-- Parallel exploration: one bot researches while another codes
-- Adversarial review: bot A writes code, bot B critiques it
+**Developer**:
+- Context: implements features, stages changes, requests reviews
+- Sandbox: read-write in project directory
+- Can: modify code, run tests, commit to feature branches
+- Cannot: push to main, merge PRs
 
-Implementation: expose other sessions' tmux targets via 9p or a /peer command. Bot reads peer's output, sends prompts, reads response.
+**Reviewer**:
+- Context: reviews staged changes, provides feedback
+- Sandbox: read-only filesystem
+- Can: read code, run git diff, analyze changes
+- Cannot: modify files, commit, push
 
-## Pull Instead of Push
+**Planner**:
+- Context: analyzes requirements, creates task breakdowns
+- Sandbox: read-only filesystem, no git write
+- Can: read codebase, write plans to separate files
+- Cannot: modify code, commit, push
 
-Current model: bot writes output to `in` fd for a given session.
+**Tester**:
+- Context: writes and runs tests
+- Sandbox: read-write in test directories only
+- Can: create test files, run test commands
+- Cannot: modify source code outside test dirs
 
-Alternative: bot writes to `out` fd instead. Another bot (or UI) pulls from `out`. Status transitions "running" → "await" when bot writes to `out`.
+### Implementation
 
-### 9p FIFO Semantics
+**1. Role Templates**
 
-`out` is a FIFO implemented in 9p: buffers in memory until read, non-blocking writes. Next write clears and overwrites with new value. Unlike Unix FIFOs, we control the semantics - no writer blocking, no reader blocking on empty.
+Store role definitions in `~/.config/anvillm/roles/`:
 
-### Clearing `out`
+```
+roles/
+├── developer.txt
+├── reviewer.txt
+├── planner.txt
+└── tester.txt
+```
 
-Next write clears previous content. Window for lost output is small - only if consumer never reads before producer runs again. That's an orchestration bug, not a mechanism problem. Orchestrator assumes responsibility for coordination.
+Scripts load templates:
+```bash
+cat ~/.config/anvillm/roles/developer.txt | 9p write agent/$SESSION_ID/context
+```
 
-### Pull vs Push
+**2. Role-Specific Sandbox Configs**
 
-- **Pull**: read from another bot's `out`. Consumer initiates.
-- **Push**: write to another bot's `in`. Producer initiates.
+Create per-role sandbox configs in `~/.config/anvillm/sandbox-roles/`:
 
-Both are file ops over 9p. Status file signals readiness (`await` = output available).
+```yaml
+# sandbox-roles/reviewer.yaml
+filesystem:
+  ro:
+    - "{CWD}"
+    - "/usr"
+    - "/lib"
+  rw: []  # No write access
+network:
+  enabled: false
+```
 
-### Fan-in / Fan-out
+```yaml
+# sandbox-roles/developer.yaml
+filesystem:
+  ro:
+    - "/usr"
+    - "/lib"
+  rw:
+    - "{CWD}"
+    - "{TMPDIR}"
+network:
+  enabled: true
+```
 
-Works naturally:
+Session creation with role:
+```bash
+echo 'new kiro /project reviewer' | 9p write agent/ctl
+# Daemon loads sandbox-roles/reviewer.yaml for this session
+```
 
-**Fan-in**: bot reads from multiple `out` files. Example: dev bot reads reviewer1/out, reviewer2/out, ... reviewer5/out.
+**3. Role Metadata**
 
-**Fan-out via push**: bot writes to multiple `in` files.
+Add `agent/{session}/role` file to 9P filesystem:
 
-**Fan-out via pull**: bot writes to its `out`, multiple consumers read same file before next write clears it.
+```
+agent/<id>/role    # "developer" | "reviewer" | "planner" | "tester"
+```
 
-Example cycle (adversarial review):
-1. 5 reviewers write to their `out`, enter `await`
-2. Dev bot reads all 5 `out`s (fan-in), applies changes, writes diff to its `out`, enters `await`
-3. Orchestrator tells all 5 reviewers: "read from dev/out"
-4. All 5 read same `out` before dev runs again (fan-out via pull)
-5. Repeat
+Benefits:
+- UI can filter/group by role
+- Scripts can discover sessions by role
+- Easier than parsing aliases
 
-Orchestrator sequences correctly - doesn't send new work to dev until all reviewers have pulled.
+**4. Role Discovery**
+
+Find sessions by role:
+```bash
+# List all reviewer sessions
+9p read agent/list | while read id alias state pid cwd; do
+    role=$(9p read agent/$id/role)
+    [ "$role" = "reviewer" ] && echo "$id $alias"
+done
+```
+
+Or use peer-bot skill (already works):
+```
+Find the reviewer agent and send them: "Please review staged changes"
+```
+
+### Enforcement Layers
+
+**Soft enforcement** (current):
+- Context instructions tell bot what its role is
+- Bot follows instructions (usually)
+
+**Hard enforcement** (with role-specific sandboxes):
+- Filesystem boundaries prevent unauthorized writes
+- Reviewer literally cannot modify code files
+- Planner cannot commit or push
+
+### Example Workflow
+
+```bash
+# Create developer session with role
+DEV_ID=$(echo 'new kiro /project developer' | 9p write agent/ctl && ...)
+cat ~/.config/anvillm/roles/developer.txt | 9p write agent/$DEV_ID/context
+
+# Create reviewer session with role
+REV_ID=$(echo 'new kiro /project reviewer' | 9p write agent/ctl && ...)
+cat ~/.config/anvillm/roles/reviewer.txt | 9p write agent/$REV_ID/context
+
+# Developer implements feature
+echo "Implement user authentication" | 9p write agent/$DEV_ID/in
+
+# Developer requests review (via peer-bot skill)
+# Reviewer provides feedback
+# Loop until LGTM
+```
+
+### Benefits
+
+- **Separation of concerns**: Each role has clear responsibilities
+- **Safety**: Sandbox prevents accidental damage (reviewer can't modify code)
+- **Reusability**: Role templates used across projects
+- **Discoverability**: Find sessions by role, not just alias
+- **Scalability**: Spawn multiple workers of same role
+
+### Already Working
+
+See `scripts/DevReview` and `scripts/Planning` for working examples of role-based multi-agent workflows using context system.
+
+## Persistent Work Tracking (Beads)
+
+Git-backed work units that survive orchestrator/bot crashes and preserve workflow state.
+
+### Problem
+
+Current workflow: Bot A produces file, instruct Bot B to read it. Works, but if either bot dies or orchestrator crashes, there's no record of:
+- What the overall goal was
+- What's been completed
+- What still needs to be done
+- Dependencies between tasks
+
+### Beads Concept
+
+Inspired by [Gas Town's Beads system](https://gastown.dev/). Each work unit is a persistent file (TOML/JSON) storing:
+
+```toml
+[bead]
+id = "research-arch-001"
+title = "Research codebase architecture"
+description = "Analyze project structure and document key components"
+status = "completed"  # pending | in_progress | completed | failed
+assigned_to = "research-bot-a3f2b9d1"
+result_file = "/tmp/architecture-overview.md"
+created_at = 1739587200
+updated_at = 1739590800
+depends_on = []  # Array of bead IDs that must complete first
+```
+
+### 9P Integration
+
+Expose beads via filesystem:
+
+```
+agent/
+├── beads/
+│   ├── ctl              # "new <title> <role> <description>" creates bead
+│   ├── list             # All beads with status
+│   └── <bead-id>/
+│       ├── status       # pending | in_progress | completed | failed
+│       ├── title        # Human-readable name
+│       ├── description  # What needs to be done
+│       ├── role         # Which type of bot should handle this
+│       ├── assigned_to  # Session ID of bot working on it
+│       ├── result       # Output/findings (file path or inline text)
+│       ├── depends_on   # Newline-separated list of bead IDs
+│       └── ctl          # "claim <session-id>", "complete", "fail"
+```
+
+### Workflow
+
+1. **Create beads**: Orchestrator or "mayor" bot breaks down goal into beads
+2. **Bots claim beads**: Worker bots read `beads/list`, claim pending beads matching their role
+3. **Execute**: Bot works on task, writes result
+4. **Complete**: Bot marks bead as completed, writes result file path
+5. **Crash recovery**: If bot dies, bead remains `in_progress`. Orchestrator can reassign or restart
+
+### Example: Research → Development
+
+```sh
+# Create research bead
+echo 'new "Research auth system" researcher "Analyze existing auth code"' | 9p write agent/beads/ctl
+
+# Research bot claims it
+echo 'claim research-bot-123' | 9p write agent/beads/research-auth-001/ctl
+
+# Bot completes work
+echo '/tmp/auth-analysis.md' | 9p write agent/beads/research-auth-001/result
+echo 'complete' | 9p write agent/beads/research-auth-001/ctl
+
+# Create dependent dev bead
+echo 'new "Implement OAuth" developer "Add OAuth based on research" research-auth-001' | 9p write agent/beads/ctl
+
+# Dev bot waits for dependency, then claims
+9p read agent/beads/research-auth-001/status  # → "completed"
+echo 'claim dev-bot-456' | 9p write agent/beads/impl-oauth-002/ctl
+```
+
+### Benefits
+
+- **Crash resilient**: Work state persists on disk
+- **Resumable**: New orchestrator can read beads and continue
+- **Auditable**: Git-backed beads provide full history
+- **Dependency tracking**: Bots wait for prerequisites automatically
+- **Role-based**: Specialized bots pick up beads matching their role
+
+### Git Integration
+
+Commit beads after state changes:
+```sh
+git add agent/beads/
+git commit -m "Completed: Research auth system"
+```
+
+Full audit trail of what was done, when, and by whom.
+
+### Philosophy: Precision Over Throughput
+
+Unlike Gas Town's "spawn 30 workers and see what sticks" approach, beads in AnviLLM enable:
+- **Deliberate sequencing**: Dependencies ensure work happens in correct order
+- **Quality gates**: Beads can require approval before proceeding
+- **Traceability**: Every decision and result is recorded
+- **Human oversight**: Orchestrator (human or bot) reviews bead results before creating dependent beads
+
+## Approval Gates
+
+Sessions pause for human or coordinator approval before proceeding.
+
+### Use Case
+
+Bot completes a task but shouldn't continue until work is reviewed:
+1. Developer bot implements feature
+2. Bot writes summary to `out`, transitions to `await_approval`
+3. Human/reviewer reads summary, examines changes
+4. Human sends approval: `echo 'approve' | 9p write agent/{session}/ctl`
+5. Bot continues with next step
+
+### States
+
+Add new state to session lifecycle:
+- `idle` → `running` → `await_approval` → `idle` (if approved)
+- `idle` → `running` → `await_approval` → `stopped` (if rejected)
+
+### 9P Interface
+
+```
+agent/<id>/approval    # Read: current approval status
+                       # Write: "approve" or "reject <reason>"
+```
+
+### Workflow Example
+
+```sh
+# Developer bot context includes:
+# "After implementing, write summary to out and request approval"
+
+# Bot finishes work
+echo "Implemented OAuth login. Added 3 files, 200 LOC. All tests pass." | 9p write agent/dev-123/out
+echo 'request_approval' | 9p write agent/dev-123/ctl
+
+# State transitions to await_approval
+9p read agent/dev-123/state  # → "await_approval"
+
+# Human reviews
+9p read agent/dev-123/out
+git diff
+
+# Approve
+echo 'approve' | 9p write agent/dev-123/approval
+
+# Bot continues (or human sends next prompt)
+```
+
+### Integration with Beads
+
+Beads can require approval before marking complete:
+```toml
+[bead]
+requires_approval = true
+approved_by = ""  # Session ID or "human"
+```
+
+Bot completes bead but status stays `pending_approval` until approved.
+
+### Philosophy: Human in the Loop
+
+Approval gates ensure precision:
+- Critical changes reviewed before proceeding
+- Prevents cascading errors from bad decisions
+- Human maintains control over workflow direction
+- Bot can work autonomously within approved boundaries
+
+## Structured Messaging (Mailboxes)
+
+Typed message passing between sessions via `inbox`/`outbox` files.
+
+### Problem
+
+Current approach: bots write raw text to each other's `in` files. Works, but:
+- No message history (overwritten on next write)
+- No message types (can't distinguish review request from question)
+- No metadata (who sent it, when, in response to what)
+
+### Mailbox System
+
+```
+agent/<id>/inbox       # Read: pending messages (JSON array)
+agent/<id>/outbox      # Write: send message (JSON object)
+agent/<id>/mail/       # Message archive
+    ├── received/
+    │   └── <msg-id>.json
+    └── sent/
+        └── <msg-id>.json
+```
+
+### Message Format
+
+```json
+{
+  "id": "msg-a3f2b9d1",
+  "from": "dev-bot-123",
+  "to": "reviewer-bot-456",
+  "type": "REVIEW_REQUEST",
+  "timestamp": 1739587200,
+  "subject": "Please review OAuth implementation",
+  "body": "Implemented OAuth login. Changes staged. Ready for review.",
+  "metadata": {
+    "bead_id": "impl-oauth-002",
+    "files_changed": 3,
+    "lines_added": 200
+  }
+}
+```
+
+### Message Types
+
+- `REVIEW_REQUEST`: Developer asks for code review
+- `REVIEW_RESPONSE`: Reviewer provides feedback
+- `QUESTION`: Bot asks peer for information
+- `ANSWER`: Response to question
+- `APPROVAL_REQUEST`: Bot asks human for approval
+- `APPROVAL_RESPONSE`: Human approves or rejects
+- `STATUS_UPDATE`: Bot reports progress
+- `ERROR_REPORT`: Bot encountered problem
+
+### Sending Messages
+
+```sh
+# Bot writes to outbox
+cat <<EOF | 9p write agent/dev-123/outbox
+{
+  "to": "reviewer-bot-456",
+  "type": "REVIEW_REQUEST",
+  "subject": "Please review OAuth implementation",
+  "body": "Changes staged and ready for review."
+}
+EOF
+
+# Daemon delivers to recipient's inbox
+# Recipient reads inbox
+9p read agent/reviewer-bot-456/inbox
+```
+
+### Reading Messages
+
+```sh
+# Bot reads inbox (returns JSON array)
+9p read agent/reviewer-bot-456/inbox
+
+# Daemon marks messages as read, moves to mail/received/
+```
+
+### Benefits
+
+- **History**: All messages archived, not overwritten
+- **Typed**: Bots can handle different message types appropriately
+- **Metadata**: Rich context about what message relates to
+- **Traceable**: Full communication audit trail
+- **Structured**: Easier to parse than free-form text
+
+### Complement, Not Replace
+
+Mailboxes complement existing `in` file:
+- `in`: Direct prompts from human or orchestrator
+- `inbox`: Structured messages from peer bots
+- Bot checks both, handles appropriately
+
+### Philosophy: Precision Through Structure
+
+Structured messages enable:
+- **Clear intent**: Message type indicates expected response
+- **Context preservation**: Metadata links messages to beads/tasks
+- **Audit trail**: Full record of inter-bot communication
+- **Error recovery**: Can replay message sequence after crash
+
+## Convoy (Grouped Work)
+
+Collection of related beads working toward a common goal.
+
+### Concept
+
+Convoy = group of beads + shared context + coordinator
+
+```toml
+[convoy]
+id = "auth-system-001"
+title = "Implement authentication system"
+goal = "Add OAuth and session management to application"
+status = "in_progress"  # planning | in_progress | completed | failed
+coordinator = "planner-bot-789"
+created_at = 1739587200
+updated_at = 1739590800
+beads = [
+  "research-auth-001",
+  "impl-oauth-002",
+  "write-tests-003",
+  "review-security-004"
+]
+```
+
+### 9P Integration
+
+```
+agent/
+├── convoys/
+│   ├── ctl              # "new <title> <goal>" creates convoy
+│   ├── list             # All convoys with status
+│   └── <convoy-id>/
+│       ├── title
+│       ├── goal
+│       ├── status
+│       ├── coordinator  # Session ID managing this convoy
+│       ├── beads        # Newline-separated bead IDs
+│       ├── context      # Shared context for all beads in convoy
+│       └── ctl          # "add_bead <id>", "complete", "abandon"
+```
+
+### Workflow
+
+1. **Create convoy**: Planner bot or human defines high-level goal
+2. **Break down**: Coordinator creates beads for convoy
+3. **Execute**: Worker bots claim and complete beads
+4. **Coordinate**: Coordinator monitors progress, creates new beads as needed
+5. **Complete**: All beads done, convoy marked complete
+
+### Example
+
+```sh
+# Create convoy
+echo 'new "Implement auth system" "Add OAuth and session management"' | 9p write agent/convoys/ctl
+
+# Coordinator creates beads
+echo 'new "Research auth" researcher "Analyze requirements"' | 9p write agent/beads/ctl
+echo 'add_bead research-auth-001' | 9p write agent/convoys/auth-system-001/ctl
+
+echo 'new "Implement OAuth" developer "Add OAuth based on research" research-auth-001' | 9p write agent/beads/ctl
+echo 'add_bead impl-oauth-002' | 9p write agent/convoys/auth-system-001/ctl
+
+# Workers execute beads
+# Coordinator monitors, adds more beads if needed
+# Convoy completes when all beads done
+```
+
+### Shared Context
+
+All beads in convoy inherit convoy context:
+```
+When working on beads in this convoy, remember:
+- Target: web application with React frontend
+- Security: OWASP top 10 compliance required
+- Timeline: 2 weeks
+- Constraints: Must integrate with existing user database
+```
+
+### Benefits
+
+- **Cohesion**: Related work grouped together
+- **Context sharing**: All workers understand overall goal
+- **Progress tracking**: See convoy completion percentage
+- **Coordination**: Coordinator adjusts plan based on results
+- **Resumability**: Convoy persists across crashes
+
+### Philosophy: Deliberate Orchestration
+
+Convoys enable precision through:
+- **Explicit goals**: Clear definition of what success looks like
+- **Adaptive planning**: Coordinator adjusts based on results
+- **Shared understanding**: All workers have convoy context
+- **Traceable decisions**: Why each bead was created
+
+Unlike Gas Town's "spawn workers and hope", convoys are deliberate, coordinated, and traceable.
 
 ## Conductor Bot
 
@@ -125,35 +598,146 @@ Could be 50 lines of rc, Python, or Go. Workflow definitions could be:
 - Loaded from a config file
 - Defined in a `workflow` file in 9p itself (conductor reads its own instructions from the filesystem)
 
-## Supervisor
+## Ephemeral Sessions
 
-Separate from orchestration. Manages bot lifecycle, not workflow.
+Task-oriented sessions that perform a single action then stop automatically.
 
-### Responsibilities
+### Lifecycle
 
-- Spawns bot processes
-- Monitors for crashes
-- Restarts crashed bots with same session ID (continuity)
-- Possibly manages resource limits, timeouts
+`idle` → `running` → `stopped`
 
-### Session Continuity
+No persistent interaction. Bot receives prompt, executes, writes result to `out`, transitions to `stopped`.
 
-Key insight: if bot crashes, supervisor restarts CLI with same session ID. The 9p session state (status, out, conversation context) persists. Bot resumes where it left off, or at least the orchestrator/conductor can re-issue the last prompt.
+### Design Questions
 
-### Relationship to Orchestrator
+- **Restartable?** Should `stopped` ephemeral sessions support `restart`, or only `kill`? If restartable, they become regular sessions. If not, simpler lifecycle but less flexible.
+- **Non-interactive?** Could enforce no tmux attachment, or allow attachment for debugging but expect no human input.
+- **Kill vs Stop?** Maybe ephemeral sessions go straight to `exited` instead of `stopped`. Or use `stopped` but auto-cleanup after some timeout.
 
-- `Assist` is the orchestrator (human-driven coordination via acme)
-- Supervisor is a separate process that keeps bots alive
-- Conductor (if implemented) handles automated workflow sequencing
+### Use Cases
 
-Three layers, separable:
-1. **Supervisor**: process health, restarts
-2. **Orchestrator**: task assignment, human-driven or automated
-3. **Conductor**: workflow sequencing, prompt dispatch based on status
+- One-off code reviews: "review this diff" → done
+- Batch processing: spawn 10 ephemeral sessions, each processes one file
+- Fire-and-forget queries: "what's the status of X?" → answer in `out`, session dies
 
-All three interact over 9p. No special APIs - just files:
-- Supervisor writes to `ctl`, reads `status` for health checks
-- Orchestrator writes to `in`, reads `out`, monitors `status`
-- Conductor same as orchestrator, but automated
+### Implementation
 
-9p is the universal bus. Components can be swapped, layered, or run on different machines (9p is network-transparent).
+Flag in session creation: `echo 'new claude /project ephemeral' | 9p write agent/ctl`
+
+Daemon marks session as ephemeral. When backend exits cleanly (not crash), transition to `stopped` or `exited` instead of auto-restart. Optionally auto-cleanup after N seconds.
+
+## Fan-Out Workflows
+
+Send a prompt to multiple bots, collect responses, process them.
+
+### Pattern
+
+1. Sender writes to multiple `in` files (fan-out)
+2. Receivers process, write to their `out`, enter `await`
+3. Sender polls status files, waits for all to reach `await` (or `idle`?)
+4. Sender reads all `out` files (fan-in)
+5. Sender summarizes/processes responses, continues workflow
+
+### Example: Dev → {Security Auditor, Code Reviewer}
+
+```
+dev writes to security/in: "audit this change"
+dev writes to reviewer/in: "review this change"
+dev polls security/state and reviewer/state
+when both == "await":
+    dev reads security/out
+    dev reads reviewer/out
+    dev processes feedback, applies changes
+```
+
+### Coordination
+
+- **Manual**: orchestrator script polls status, issues prompts
+- **Conductor bot**: LLM-driven coordination (see Conductor Bot idea)
+- **Built-in**: daemon could support fan-out primitives (write to multiple sessions atomically, block until all respond)
+
+### FIFO Semantics
+
+`out` as FIFO: write buffers until read, next write clears previous. Orchestrator must read before next write or data is lost. That's a coordination bug, not a mechanism problem - orchestrator owns sequencing.
+
+### Status: `await` vs `idle`
+
+- **`await`**: bot has written to `out`, waiting for consumer to read
+- **`idle`**: bot is ready for next prompt
+
+If we use `await`, transition back to `idle` happens when orchestrator reads `out` (or after timeout?). If we use `idle`, orchestrator must track "has this bot written output since I last read?" separately.
+
+`await` is cleaner - explicit signal that output is ready.
+
+## Chat Log in `out`
+
+Bot writes final response or action summary to `agent/{session-id}/out` when done, just as it writes `idle` to `state`.
+
+### Benefits
+
+- No need to attach to tmux to see what bot did
+- Scriptable: read `out` to get bot's answer
+- Enables pull-based workflows (see Pull Instead of Push idea)
+- UI can display `out` content directly
+
+### What to Write
+
+- **Final response**: full text of bot's last message
+- **Action summary**: "Applied changes to 3 files, ran tests, all passed"
+- **Both**: summary + full response, delimited
+
+### Implementation
+
+Backend writes to `out` before transitioning to `idle`. Daemon doesn't need to change - backends control what they write.
+
+For Kiro/Claude, wrapper script or backend integration captures final output and writes to `out` fd.
+
+### Interaction with FIFO Semantics
+
+If `out` is a FIFO that clears on next write, chat log is ephemeral - only the most recent response is available. That's fine for pull-based workflows. If we want persistent chat history, need separate `log` file or append-only `out`.
+
+## Context Utilization State
+
+Daemon polls backend for context usage and exposes it via `agent/{session}/usage`.
+
+### Backend-Specific Queries
+
+**Kiro CLI**: Send `/context show` as prompt, parse response for token usage (e.g., "17426/200000 (8.7%)")
+
+**Claude/Others**: Write "N/A" or "-" (no context query support)
+
+### Polling Strategy
+
+Daemon or monitor process:
+- Every 1-2 minutes, check `agent/{session}/backend`
+- If Kiro: send `/context show`, parse output, write to `usage`
+- If unsupported: write "-" to `usage`
+
+Avoids interrupting user prompts. Cache last known value between polls.
+
+### 9P Filesystem
+
+Add to each session:
+```
+agent/<id>/usage    # "17426/200000 (8.7%)" or "N/A"
+```
+
+### UI Integration
+
+- **Assist**: display usage in session list, color-code by threshold
+- **anvillm/anvilweb**: add usage column
+- **Color scheme**: green (<50%), yellow (50-80%), red (>80%)
+
+### Automatic Actions
+
+When usage exceeds threshold:
+- Warn user at 80%
+- Suggest restart or conversation compaction at 90%
+- Optionally auto-restart (preserves session ID, fresh context)
+
+### Conversation Compaction
+
+High usage workflow:
+1. Summarize conversation history (via bot or separate summarizer)
+2. Restart session with summary as initial context
+3. Usage drops, session continues with same ID
