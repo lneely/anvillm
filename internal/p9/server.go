@@ -4,6 +4,7 @@ package p9
 import (
 	"anvillm/internal/backend"
 	"anvillm/internal/backend/tmux"
+	"anvillm/internal/mailbox"
 	"anvillm/internal/session"
 	"context"
 	"errors"
@@ -56,8 +57,12 @@ const (
 	qidRoot = iota
 	qidCtl
 	qidList
-	qidSessionBase = 1000
-	qidPeersBase   = 0x10000000 // peers/{id}/file
+	qidSessionBase   = 1000
+	qidPeersBase     = 0x10000000 // peers/{id}/file
+	qidInboxBase     = 0x20000000 // session/{id}/inbox
+	qidOutboxBase    = 0x30000000 // session/{id}/outbox
+	qidCompletedBase = 0x40000000 // session/{id}/completed
+	qidMessageBase   = 0x50000000 // message files
 )
 
 // File indices within a session directory
@@ -78,6 +83,9 @@ const (
 )
 
 var fileNames = []string{"ctl", "in", "out", "log", "state", "pid", "cwd", "alias", "backend", "context", "role", "tasks"}
+
+// Directory names in session
+var dirNames = []string{"inbox", "outbox", "completed"}
 
 type Server struct {
 	mgr           *session.Manager
@@ -179,6 +187,8 @@ func (s *Server) handle(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return s.walk(cs, fc)
 	case plan9.Topen:
 		return s.open(cs, fc)
+	case plan9.Tcreate:
+		return s.create(cs, fc)
 	case plan9.Tread:
 		return s.read(cs, fc)
 	case plan9.Twrite:
@@ -247,11 +257,38 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			if s.mgr.Get(sessID) == nil {
 				return errFcall(fc, "session not found")
 			}
-			idx := fileIndex(name)
-			if idx < 0 {
-				return errFcall(fc, "not found")
+			
+			// Check if it's a mailbox directory
+			if name == "inbox" {
+				qid = plan9.Qid{Type: QTDir, Path: qidInboxBase + hashID(sessID)}
+				newPath = path + "/inbox"
+			} else if name == "outbox" {
+				qid = plan9.Qid{Type: QTDir, Path: qidOutboxBase + hashID(sessID)}
+				newPath = path + "/outbox"
+			} else if name == "completed" {
+				qid = plan9.Qid{Type: QTDir, Path: qidCompletedBase + hashID(sessID)}
+				newPath = path + "/completed"
+			} else {
+				// Regular session file
+				idx := fileIndex(name)
+				if idx < 0 {
+					return errFcall(fc, "not found")
+				}
+				qid = plan9.Qid{Type: QTFile, Path: qidSessionBase + hashID(sessID)*fileCount + uint64(idx)}
+				newPath = path + "/" + name
 			}
-			qid = plan9.Qid{Type: QTFile, Path: qidSessionBase + hashID(sessID)*fileCount + uint64(idx)}
+		} else if strings.Count(path, "/") == 2 {
+			// Inside a mailbox directory (inbox/outbox/completed)
+			parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+			sessID := parts[0]
+			mailbox := parts[1]
+			
+			if s.mgr.Get(sessID) == nil {
+				return errFcall(fc, "session not found")
+			}
+			
+			// Message file (msg-*.json)
+			qid = plan9.Qid{Type: QTFile, Path: qidMessageBase + hashID(sessID+mailbox+name)}
 			newPath = path + "/" + name
 		} else {
 			return errFcall(fc, "not found")
@@ -275,6 +312,41 @@ func (s *Server) open(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	f.mode = fc.Mode
 	f.offset = 0
 	return &plan9.Fcall{Type: plan9.Ropen, Tag: fc.Tag, Qid: f.qid}
+}
+
+func (s *Server) create(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	
+	f, ok := cs.fids[fc.Fid]
+	if !ok {
+		return errFcall(fc, "bad fid")
+	}
+	
+	// Only allow creating files in outbox directory
+	parts := strings.Split(strings.TrimPrefix(f.path, "/"), "/")
+	if len(parts) != 2 || parts[1] != "outbox" {
+		return errFcall(fc, "can only create files in outbox")
+	}
+	
+	sessID := parts[0]
+	fileName := fc.Name
+	
+	// Must be a .json file
+	if !strings.HasSuffix(fileName, ".json") {
+		return errFcall(fc, "message files must end with .json")
+	}
+	
+	// Create new message file
+	newPath := f.path + "/" + fileName
+	qid := plan9.Qid{Type: QTFile, Path: qidMessageBase + hashID(sessID+"outbox"+fileName)}
+	
+	f.qid = qid
+	f.path = newPath
+	f.mode = fc.Mode
+	f.offset = 0
+	
+	return &plan9.Fcall{Type: plan9.Rcreate, Tag: fc.Tag, Qid: qid}
 }
 
 func (s *Server) read(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
@@ -317,7 +389,9 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	}
 
 	input := strings.TrimSpace(string(fc.Data))
-	parts := strings.SplitN(f.path, "/", 3)
+	parts := strings.Split(strings.TrimPrefix(f.path, "/"), "/")
+	
+	fmt.Fprintf(os.Stderr, "[DEBUG] write: path=%q parts=%v len=%d\n", f.path, parts, len(parts))
 
 	// /ctl - create new session
 	if f.path == "/ctl" {
@@ -386,8 +460,8 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	}
 
 	// /{id}/ctl - session control
-	if len(parts) == 3 && parts[2] == "ctl" {
-		sess := s.mgr.Get(parts[1])
+	if len(parts) == 2 && parts[1] == "ctl" {
+		sess := s.mgr.Get(parts[0])
 		if sess == nil {
 			return errFcall(fc, "session not found")
 		}
@@ -421,12 +495,12 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	}
 
 	// /{id}/in - send prompt (async, non-blocking)
-	if len(parts) == 3 && parts[2] == "in" {
-		sess := s.mgr.Get(parts[1])
+	if len(parts) == 2 && parts[1] == "in" {
+		sess := s.mgr.Get(parts[0])
 		if sess == nil {
 			return errFcall(fc, "session not found")
 		}
-		fmt.Fprintf(os.Stderr, "[DEBUG] /in write: session=%s input=%q state=%s\n", parts[1], input, sess.State())
+		fmt.Fprintf(os.Stderr, "[DEBUG] /in write: session=%s input=%q state=%s\n", parts[0], input, sess.State())
 		// Use async send to avoid blocking on response
 		if tmuxSess, ok := sess.(*tmux.Session); ok {
 			ctx := context.Background()
@@ -442,8 +516,8 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	}
 
 	// /{id}/alias - set session alias
-	if len(parts) == 3 && parts[2] == "alias" {
-		sess := s.mgr.Get(parts[1])
+	if len(parts) == 2 && parts[1] == "alias" {
+		sess := s.mgr.Get(parts[0])
 		if sess == nil {
 			return errFcall(fc, "session not found")
 		}
@@ -460,8 +534,8 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	}
 
 	// /{id}/context - set context prefix
-	if len(parts) == 3 && parts[2] == "context" {
-		sess := s.mgr.Get(parts[1])
+	if len(parts) == 2 && parts[1] == "context" {
+		sess := s.mgr.Get(parts[0])
 		if sess == nil {
 			return errFcall(fc, "session not found")
 		}
@@ -472,8 +546,8 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	}
 
 	// /{id}/out - bot writes final response summary here (appends to chat log)
-	if len(parts) == 3 && parts[2] == "out" {
-		sess := s.mgr.Get(parts[1])
+	if len(parts) == 2 && parts[1] == "out" {
+		sess := s.mgr.Get(parts[0])
 		if sess == nil {
 			return errFcall(fc, "session not found")
 		}
@@ -486,8 +560,8 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	}
 
 	// /{id}/state - set session state (with validation)
-	if len(parts) == 3 && parts[2] == "state" {
-		sess := s.mgr.Get(parts[1])
+	if len(parts) == 2 && parts[1] == "state" {
+		sess := s.mgr.Get(parts[0])
 		if sess == nil {
 			return errFcall(fc, "session not found")
 		}
@@ -509,6 +583,29 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		if tmuxSess, ok := sess.(*tmux.Session); ok {
 			tmuxSess.SetState(input)
 		}
+		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
+	}
+
+	// /{id}/outbox/msg-*.json - write message to outbox
+	if len(parts) == 3 && parts[1] == "outbox" && strings.HasSuffix(parts[2], ".json") {
+		sessID := parts[0]
+		
+		// Parse JSON message
+		msg, err := mailbox.FromJSON(fc.Data)
+		if err != nil {
+			return errFcall(fc, fmt.Sprintf("invalid message JSON: %v", err))
+		}
+		
+		// Add to outbox
+		mailMgr := s.mgr.GetMailManager()
+		if mailMgr == nil {
+			return errFcall(fc, "mailbox not available")
+		}
+		
+		if err := mailMgr.AddToOutbox(sessID, msg); err != nil {
+			return errFcall(fc, fmt.Sprintf("failed to add message: %v", err))
+		}
+		
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
@@ -546,12 +643,14 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 				Mode: plan9.DMDIR | 0555, Name: id, Uid: "q", Gid: "q", Muid: "q",
 			})
 		}
-	} else {
+	} else if strings.Count(path, "/") == 1 {
+		// Session directory
 		sessID := strings.TrimPrefix(path, "/")
 		sess := s.mgr.Get(sessID)
 		if sess == nil {
 			return nil
 		}
+		// Add regular files
 		for i, name := range fileNames {
 			mode := uint32(0444)
 			if name == "ctl" || name == "in" || name == "out" {
@@ -565,6 +664,56 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 				Mode:   plan9.Perm(mode),
 				Name:   name,
 				Length: uint64(len(content)),
+				Uid:    "q", Gid: "q", Muid: "q",
+			})
+		}
+		// Add mailbox directories
+		for _, dirName := range dirNames {
+			var qidBase uint64
+			var mode uint32
+			if dirName == "inbox" {
+				qidBase = qidInboxBase
+				mode = 0555 // read-only (can list and read files)
+			} else if dirName == "outbox" {
+				qidBase = qidOutboxBase
+				mode = 0755 // writable (can create files, create handler enforces write-only)
+			} else {
+				qidBase = qidCompletedBase
+				mode = 0555 // read-only (can list and read files)
+			}
+			dirs = append(dirs, plan9.Dir{
+				Qid:  plan9.Qid{Type: QTDir, Path: qidBase + hashID(sessID)},
+				Mode: plan9.DMDIR | plan9.Perm(mode), Name: dirName,
+				Uid:  "q", Gid: "q", Muid: "q",
+			})
+		}
+	} else if strings.Count(path, "/") == 2 {
+		// Mailbox directory (inbox/outbox/completed)
+		parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+		sessID := parts[0]
+		mailboxType := parts[1]
+		
+		mailMgr := s.mgr.GetMailManager()
+		if mailMgr == nil {
+			return nil
+		}
+		
+		var messages []*mailbox.Message
+		if mailboxType == "inbox" {
+			messages = mailMgr.GetInbox(sessID)
+		} else if mailboxType == "outbox" {
+			messages = mailMgr.GetOutbox(sessID)
+		} else if mailboxType == "completed" {
+			messages = mailMgr.GetCompleted(sessID)
+		}
+		
+		for _, msg := range messages {
+			data, _ := msg.ToJSON()
+			dirs = append(dirs, plan9.Dir{
+				Qid:    plan9.Qid{Type: QTFile, Path: qidMessageBase + hashID(sessID+mailboxType+msg.ID)},
+				Mode:   0644,
+				Name:   msg.ID + ".json",
+				Length: uint64(len(data)),
 				Uid:    "q", Gid: "q", Muid: "q",
 			})
 		}
@@ -632,15 +781,38 @@ func (s *Server) readFile(path string) string {
 		return strings.Join(lines, "\n") + "\n"
 	}
 
-	parts := strings.SplitN(path, "/", 3)
-	if len(parts) != 3 {
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	
+	// Message file: /sessID/mailbox/msg-*.json
+	if len(parts) == 3 && (parts[1] == "inbox" || parts[1] == "outbox" || parts[1] == "completed") {
+		sessID := parts[0]
+		_ = parts[1] // mailboxType (not used, just for validation)
+		msgFile := parts[2]
+		msgID := strings.TrimSuffix(msgFile, ".json")
+		
+		mailMgr := s.mgr.GetMailManager()
+		if mailMgr == nil {
+			return ""
+		}
+		
+		msg, err := mailMgr.GetMessage(sessID, msgID)
+		if err != nil {
+			return ""
+		}
+		
+		data, _ := msg.ToJSON()
+		return string(data)
+	}
+	
+	// Regular session file
+	if len(parts) != 2 {
 		return ""
 	}
-	sess := s.mgr.Get(parts[1])
+	sess := s.mgr.Get(parts[0])
 	if sess == nil {
 		return ""
 	}
-	return s.getSessionFile(sess, fileIndex(parts[2]))
+	return s.getSessionFile(sess, fileIndex(parts[1]))
 }
 
 func (s *Server) getSessionFile(sess backend.Session, idx int) string {
@@ -648,12 +820,8 @@ func (s *Server) getSessionFile(sess backend.Session, idx int) string {
 
 	switch idx {
 	case fileOut:
-		// Output from last command - only available for tmux sessions
-		if tmuxSess, ok := sess.(*tmux.Session); ok {
-			// We don't have a direct Output() method anymore
-			// This would need to be stored separately if needed
-			_ = tmuxSess
-		}
+		// Output from last command - not currently exposed
+		// Bots write to this via 9P, which appends to chat log
 		return ""
 	case fileLog:
 		// Full chat history (USER:/ASSISTANT: with --- separators)

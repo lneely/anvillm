@@ -28,21 +28,21 @@ AGENT="agent"
 
 echo "Creating research session..."
 before=$(9p read $AGENT/list | awk '{print $1}' | sort)
-echo "new $BACKEND $DOC_PATH role=research" | 9p write $AGENT/ctl
+echo "new $BACKEND $DOC_PATH role=research tasks=plan9" | 9p write $AGENT/ctl
 after=$(9p read $AGENT/list | awk '{print $1}' | sort)
 RESEARCH_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
 echo "  ID: $RESEARCH_ID"
 
 echo "Creating architect session..."
 before=$(9p read $AGENT/list | awk '{print $1}' | sort)
-echo "new $BACKEND $DOC_PATH role=architect tasks=git" | 9p write $AGENT/ctl
+echo "new $BACKEND $DOC_PATH role=architect tasks=git,plan9" | 9p write $AGENT/ctl
 after=$(9p read $AGENT/list | awk '{print $1}' | sort)
 ARCH_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
 echo "  ID: $ARCH_ID"
 
 echo "Creating techeditor session..."
 before=$(9p read $AGENT/list | awk '{print $1}' | sort)
-echo "new $BACKEND $DOC_PATH role=techeditor tasks=git" | 9p write $AGENT/ctl
+echo "new $BACKEND $DOC_PATH role=techeditor tasks=git,plan9" | 9p write $AGENT/ctl
 after=$(9p read $AGENT/list | awk '{print $1}' | sort)
 EDITOR_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
 echo "  ID: $EDITOR_ID"
@@ -61,9 +61,14 @@ Your job is to research system architecture and code for requested information. 
 - Prefer updating existing kb documents over creating new ones
 - Only create new KB documents if the knowledge discovered is significant and reusable
 
-When you receive a query from the architect, research and respond:
-- Use the peer-bot skill to find and communicate with the architect agent (alias contains "architect")
-- Send your answer back to the architect
+When you receive a query from the architect, research and respond using shell tool with these exact commands:
+
+cat > /tmp/msg.json <<EOF
+{"to":"ARCHITECT_ID","type":"ANSWER","subject":"Research results","body":"YOUR_ANSWER_HERE"}
+EOF
+9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
+
+Replace ARCHITECT_ID, YOUR_ID, and YOUR_ANSWER_HERE with actual values
 
 Do not actively await responses, but stop working until you receive an explicit request to conduct research.
 EOF
@@ -72,14 +77,24 @@ EOF
 cat <<EOF | 9p write $AGENT/$ARCH_ID/context
 Your job is to update design documentation in $DOC_PATH. Follow agent-kb conventions. Search the knowledge base for relevant documents.
 
-If documentation is insufficient, query the research bot:
-- Use the peer-bot skill to find and communicate with the research agent (alias contains "research")
-- Include in your query: the question, context, and request for full path to new/updated docs or a direct answer
-- Wait for the research agent to send the answer back
+If documentation is insufficient, query the research bot using shell tool with these exact commands:
 
-You will receive edit requests from the techeditor:
-- Use the peer-bot skill to find and communicate with the techeditor agent (alias contains "techeditor")
-- Apply the requested changes and send acknowledgment back
+cat > /tmp/msg.json <<EOF
+{"to":"RESEARCH_ID","type":"QUESTION","subject":"Research request","body":"YOUR_QUESTION_HERE"}
+EOF
+9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
+
+Replace RESEARCH_ID, YOUR_ID, and YOUR_QUESTION_HERE (include question, context, request for docs path or answer)
+Wait for the research agent to send the answer back
+
+You will receive edit requests from the techeditor. Apply changes and send acknowledgment using shell tool:
+
+cat > /tmp/msg.json <<EOF
+{"to":"TECHEDITOR_ID","type":"STATUS_UPDATE","subject":"Changes applied","body":"YOUR_ACKNOWLEDGMENT"}
+EOF
+9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
+
+Replace TECHEDITOR_ID, YOUR_ID, and YOUR_ACKNOWLEDGMENT with actual values
 
 Do not actively await responses, but stop working until you receive an explicit request to make a change from the techeditor.
 EOF
@@ -88,10 +103,15 @@ EOF
 cat <<EOF | 9p write $AGENT/$EDITOR_ID/context
 You are a professional technical writer. Ensure documentation in $DOC_PATH is high quality, readable, and at the right detail level for software engineers.
 
-Do not edit documents directly. Send recommended changes to the architect:
-- Use the peer-bot skill to find and communicate with the architect agent (alias contains "architect")
-- Include your recommended changes
-- Request acknowledgment from the architect
+Do not edit documents directly. Send recommended changes to the architect using shell tool with these exact commands:
+
+cat > /tmp/msg.json <<EOF
+{"to":"ARCHITECT_ID","type":"REVIEW_REQUEST","subject":"Documentation review","body":"YOUR_RECOMMENDATIONS"}
+EOF
+9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
+
+Replace ARCHITECT_ID, YOUR_ID, and YOUR_RECOMMENDATIONS with actual values
+Request acknowledgment from the architect
 
 When the architect acknowledges, proofread again. Iterate until satisfied.
 

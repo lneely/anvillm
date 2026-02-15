@@ -1,6 +1,6 @@
 ---
 name: peer-bot
-description: Discover and interact with peer bots in the anvillm 9P filesystem. Use when the user wants to communicate with, send prompts to, or interact with another bot or agent.
+description: Discover, list, find, send messages to, communicate with, or interact with other agents and bots in anvillm. Use for inter-agent communication including review requests, questions, approvals, status updates, or any message to peer agents like reviewer, developer, architect, QA, researcher, editor, or tester roles.
 ---
 
 # Peer Bot Interaction
@@ -42,36 +42,66 @@ From the agent list output, the first field is the session ID you need for commu
 
 ## Sending Messages to Peer Bots
 
-To send a message to a peer bot:
+To send a message to a peer bot, create a JSON message in your outbox:
+
 ```bash
-echo "Your message here" | 9p write agent/{session_id}/in
+cat > /tmp/msg.json <<EOF
+{
+  "to": "{session_id}",
+  "type": "QUESTION",
+  "subject": "Brief subject",
+  "body": "Your message here"
+}
+EOF
+9p write agent/{your_id}/outbox/msg-$(date +%s).json < /tmp/msg.json
 ```
 
-Where `{session_id}` is the ID obtained from `agent/list`.
+Message types:
+- `QUESTION` - Ask for information
+- `REVIEW_REQUEST` - Request code review
+- `APPROVAL_REQUEST` - Request approval
+- `STATUS_UPDATE` - Notify of status change
+
+The mail system will automatically deliver your message to the recipient's inbox.
 
 ### Example Workflow
 
 1. **Discover the peer**: `9p read agent/list | grep research`
 2. **Extract ID**: Note the session ID (first field)
-3. **Send message**: `echo "Please research X" | 9p write agent/{id}/in`
+3. **Create message**: Write JSON to your outbox
+4. **Check inbox**: `9p ls agent/{your_id}/inbox/` for responses
 
 ## Understanding Peer Bot Communication
 
-### Context-Driven Behavior
+### Mailbox System
 
-Each agent has a context (set via `agent/{id}/context`) that defines:
-- The agent's role and responsibilities
-- How it should handle incoming messages
-- Which peers it should communicate with
-- The communication protocol to follow
+Agents communicate via structured messages in mailboxes:
+- **outbox/** - Write messages here to send to other agents
+- **inbox/** - Receive messages from other agents
+- **completed/** - Archive of processed messages
+
+Messages are JSON files with:
+- `to` - recipient session ID
+- `type` - message type (QUESTION, REVIEW_REQUEST, etc.)
+- `subject` - brief description
+- `body` - message content
 
 ### Message Flow
 
-When you send a message via `agent/{id}/in`:
-1. The message is added to the agent's input stream
-2. Any injected context is automatically prepended
-3. The agent processes the message according to its role
-4. The agent may respond by writing to another agent's input
+When you write a message to your outbox:
+1. Mail processor (runs every 5s) picks it up
+2. Delivers to recipient's inbox
+3. When recipient is idle, formats and sends to their `in` file
+4. Recipient processes and can reply via their outbox
+5. Processed messages move to completed/
+
+### Checking for Messages
+
+Check your inbox for responses:
+```bash
+9p ls agent/{your_id}/inbox/
+9p read agent/{your_id}/inbox/msg-{id}.json
+```
 
 ### Checking Agent State
 
@@ -121,11 +151,21 @@ Agent A requests work from Agent B:
 ```bash
 # A discovers B
 B_ID=$(9p read agent/list | grep agent-b | awk '{print $1}')
+A_ID=$(9p read agent/list | grep agent-a | awk '{print $1}')
 
-# A sends request to B
-echo "Please do X and reply to agent/$A_ID/in" | 9p write agent/$B_ID/in
+# A sends request to B via mailbox
+cat > /tmp/msg.json <<EOF
+{
+  "to": "$B_ID",
+  "type": "QUESTION",
+  "subject": "Work request",
+  "body": "Please do X"
+}
+EOF
+9p write agent/$A_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
 
-# B will eventually respond by writing to agent/$A_ID/in
+# Check inbox for B's response
+9p ls agent/$A_ID/inbox/
 ```
 
 ### Iterative Review Pattern
@@ -133,12 +173,19 @@ echo "Please do X and reply to agent/$A_ID/in" | 9p write agent/$B_ID/in
 Developer submits work, reviewer provides feedback:
 ```bash
 # Developer sends review request
-echo "Please review staged changes" | 9p write agent/$REVIEWER_ID/in
+cat > /tmp/review.json <<EOF
+{
+  "to": "$REVIEWER_ID",
+  "type": "REVIEW_REQUEST",
+  "subject": "Code review needed",
+  "body": "Please review staged changes"
+}
+EOF
+9p write agent/$DEV_ID/outbox/msg-$(date +%s).json < /tmp/review.json
 
-# Reviewer responds with LGTM or feedback
-echo "LGTM" | 9p write agent/$DEV_ID/in
-# or
-echo "Please fix: ..." | 9p write agent/$DEV_ID/in
+# Reviewer responds via their outbox
+# Developer checks inbox for response
+9p ls agent/$DEV_ID/inbox/
 ```
 
 ## Important Notes
@@ -146,11 +193,13 @@ echo "Please fix: ..." | 9p write agent/$DEV_ID/in
 - The agent list is dynamic - agents can start and stop at any time
 - Each agent has a unique session ID
 - Aliases help identify agents but IDs are required for communication
-- All peer interactions use the 9p filesystem interface
-- Context injection allows complex agent behaviors without hard-coding logic
-- Agents should include reply instructions in their messages (e.g., "respond to agent/{id}/in")
-- Always verify an agent exists before attempting to send messages
-- Use `grep` to filter agents by role, alias, or other identifiers
+- All peer interactions use the mailbox system (outbox/inbox/completed)
+- Messages are JSON files with structured fields
+- Mail processor delivers messages every 5 seconds
+- Messages are delivered when recipient is idle
+- Failed deliveries retry up to 3 times, then are discarded
+- Always check your inbox for responses
+- Use appropriate message types for clarity
 
 ## Workflow Best Practices
 

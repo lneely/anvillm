@@ -437,10 +437,10 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 
 	// Prepend idle signaling instruction at the top of the prompt
 	// This instruction tells the agent to signal when it's done processing
-	idleSignal := fmt.Sprintf("IMPORTANT: When you have completed processing this request and are ready for the next prompt, you MUST signal idle by running:\necho idle | 9p write agent/%s/state\n", s.id)
+	idleSignal := fmt.Sprintf("IMPORTANT: After completing ALL work including writing summary to out, signal idle by running:\necho idle | 9p write agent/%s/state\n", s.id)
 
 	// Instruction to write final response summary to 'out' file
-	outInstruction := fmt.Sprintf("IMPORTANT: After completing your work, you MUST write a comprehensive summary by running:\necho 'your summary here' | 9p write agent/%s/out\n\nThe summary MUST include:\n- Your ACTUAL complete response text (the full message sent to the user)\n- All tool usages (bash commands, file operations, etc.)\n- All files read and written\n- Key diffs or changes made\n\nDo NOT just write a meta-description - include the actual response content!\n", s.id)
+	outInstruction := fmt.Sprintf("IMPORTANT: Before signaling idle, you MUST write a comprehensive summary by running:\necho 'your summary here' | 9p write agent/%s/out\n\nThe summary MUST include:\n- Your ACTUAL complete response text (the full message sent to the user)\n- All tool usages (bash commands, file operations, etc.)\n- All files read and written\n- Key diffs or changes made\n\nDo NOT just write a meta-description - include the actual response content! Only signal idle AFTER writing this summary.\n", s.id)
 
 	// Prepend context if set (skip for slash commands)
 	if s.context != "" && !strings.HasPrefix(prompt, "/") {
@@ -585,10 +585,10 @@ func (s *Session) SendAsync(ctx context.Context, prompt string) error {
 
 	// Prepend idle signaling instruction at the top of the prompt
 	// This instruction tells the agent to signal when it's done processing
-	idleSignal := fmt.Sprintf("IMPORTANT: When you have completed processing this request and are ready for the next prompt, you MUST signal idle by running:\necho idle | 9p write agent/%s/state\n", s.id)
+	idleSignal := fmt.Sprintf("IMPORTANT: After completing ALL work including writing summary to out, signal idle by running:\necho idle | 9p write agent/%s/state\n", s.id)
 
 	// Instruction to write final response summary to 'out' file
-	outInstruction := fmt.Sprintf("IMPORTANT: After completing your work, you MUST write a comprehensive summary by running:\necho 'your summary here' | 9p write agent/%s/out\n\nThe summary MUST include:\n- Your ACTUAL complete response text (the full message sent to the user)\n- All tool usages (bash commands, file operations, etc.)\n- All files read and written\n- Key diffs or changes made\n\nDo NOT just write a meta-description - include the actual response content!\n", s.id)
+	outInstruction := fmt.Sprintf("IMPORTANT: Before signaling idle, you MUST write a comprehensive summary by running:\necho 'your summary here' | 9p write agent/%s/out\n\nThe summary MUST include:\n- Your ACTUAL complete response text (the full message sent to the user)\n- All tool usages (bash commands, file operations, etc.)\n- All files read and written\n- Key diffs or changes made\n\nDo NOT just write a meta-description - include the actual response content! Only signal idle AFTER writing this summary.\n", s.id)
 
 	// Prepend context if set (skip for slash commands)
 	if s.context != "" && !strings.HasPrefix(prompt, "/") {
