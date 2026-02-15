@@ -669,33 +669,6 @@ If we use `await`, transition back to `idle` happens when orchestrator reads `ou
 
 `await` is cleaner - explicit signal that output is ready.
 
-## Chat Log in `out`
-
-Bot writes final response or action summary to `agent/{session-id}/out` when done, just as it writes `idle` to `state`.
-
-### Benefits
-
-- No need to attach to tmux to see what bot did
-- Scriptable: read `out` to get bot's answer
-- Enables pull-based workflows (see Pull Instead of Push idea)
-- UI can display `out` content directly
-
-### What to Write
-
-- **Final response**: full text of bot's last message
-- **Action summary**: "Applied changes to 3 files, ran tests, all passed"
-- **Both**: summary + full response, delimited
-
-### Implementation
-
-Backend writes to `out` before transitioning to `idle`. Daemon doesn't need to change - backends control what they write.
-
-For Kiro/Claude, wrapper script or backend integration captures final output and writes to `out` fd.
-
-### Interaction with FIFO Semantics
-
-If `out` is a FIFO that clears on next write, chat log is ephemeral - only the most recent response is available. That's fine for pull-based workflows. If we want persistent chat history, need separate `log` file or append-only `out`.
-
 ## Context Utilization State
 
 Daemon polls backend for context usage and exposes it via `agent/{session}/usage`.
