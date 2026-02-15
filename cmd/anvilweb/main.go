@@ -48,6 +48,7 @@ func main() {
 	http.Handle("/", http.FileServer(http.FS(staticFS)))
 	http.HandleFunc("/api/sessions", handleSessions)
 	http.HandleFunc("/api/session/", handleSession)
+	http.HandleFunc("/api/log/", handleLogStream)
 
 	log.Printf("Starting web server on %s", *addr)
 	log.Printf("Using namespace: %s", *namespace)
@@ -399,4 +400,70 @@ func updateSessionFile(w http.ResponseWriter, r *http.Request, id, file string) 
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+
+func handleLogStream(w http.ResponseWriter, r *http.Request) {
+	// Extract session ID from path
+	id := strings.TrimPrefix(r.URL.Path, "/api/log/")
+	if id == "" {
+		http.Error(w, "Invalid session ID", http.StatusBadRequest)
+		return
+	}
+
+	// Set headers for SSE
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	fs, err := connect()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer fs.Close()
+
+	// Open log file for streaming
+	fid, err := fs.Open(filepath.Join(id, "log"), plan9.OREAD)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer fid.Close()
+
+	// Flush immediately to establish connection
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
+	// Stream log data
+	buf := make([]byte, 4096)
+	for {
+		n, err := fid.Read(buf)
+		if n > 0 {
+			// Escape data for SSE format - each line must be prefixed with "data: "
+			data := string(buf[:n])
+			lines := strings.Split(data, "\n")
+			for _, line := range lines {
+				if line != "" || len(lines) > 1 {
+					fmt.Fprintf(w, "data: %s\n", line)
+				}
+			}
+			fmt.Fprintf(w, "\n")
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+		}
+		if err != nil {
+			// Connection closed or error
+			break
+		}
+		
+		// Check if client disconnected
+		select {
+		case <-r.Context().Done():
+			return
+		default:
+		}
+	}
 }

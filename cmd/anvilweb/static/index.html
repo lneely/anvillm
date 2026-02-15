@@ -40,6 +40,40 @@
         
         #prompt-area { min-height: 100px; }
         .hidden { display: none; }
+        
+        #log-pane {
+            margin-top: 2rem;
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+        #log-header {
+            background: var(--pico-card-background-color);
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--pico-muted-border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #log-header h3 {
+            margin: 0;
+            font-size: 1rem;
+        }
+        #log-content {
+            background: #000;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+            padding: 1rem;
+            height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        #log-content:empty::before {
+            content: 'No log data yet...';
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -58,6 +92,14 @@
             </div>
             <input type="search" id="search-box" placeholder="Search sessions..." style="margin-top: 1rem;">
             <div id="sessions-container"></div>
+        </section>
+
+        <section id="log-pane" class="hidden">
+            <div id="log-header">
+                <h3 id="log-title">Log</h3>
+                <button onclick="closeLogPane()" class="secondary" style="margin: 0;">Close</button>
+            </div>
+            <div id="log-content"></div>
         </section>
 
         <dialog id="new-session-dialog">
@@ -147,6 +189,7 @@
     <script>
         let currentSessionId = null;
         let allSessions = [];
+        let logEventSource = null;
 
         function escapeHtml(text) {
             const div = document.createElement('div');
@@ -214,6 +257,7 @@
                                     <td><small>${cwd}</small></td>
                                     <td><small>${pid}</small></td>
                                     <td class="actions-cell">
+                                        <button data-session-id="${id}" data-action="log">Log</button>
                                         <button data-session-id="${id}" data-action="prompt" ${s.state !== 'idle' ? 'disabled' : ''}>Prompt</button>
                                         <button data-session-id="${id}" data-action="context" class="secondary">Context</button>
                                         <button data-session-id="${id}" data-action="alias" class="secondary">Alias</button>
@@ -423,6 +467,7 @@
             const action = btn.dataset.action;
             
             switch (action) {
+                case 'log': openLogPane(id); break;
                 case 'prompt': openPromptDialog(id); break;
                 case 'context': openContextDialog(id); break;
                 case 'alias': openAliasDialog(id); break;
@@ -431,6 +476,52 @@
                 case 'kill': controlSession(id, 'kill'); break;
             }
         });
+
+        // Log streaming functions
+        function openLogPane(id) {
+            // Close existing stream if any
+            closeLogPane();
+            
+            // Find session info for title
+            const session = allSessions.find(s => s.id === id);
+            const displayName = session ? (session.alias || session.id.substring(0, 8)) : id.substring(0, 8);
+            
+            // Update UI
+            document.getElementById('log-title').textContent = `Log: ${displayName}`;
+            document.getElementById('log-content').textContent = '';
+            document.getElementById('log-pane').classList.remove('hidden');
+            
+            // Start streaming
+            logEventSource = new EventSource(`/api/log/${id}`);
+            
+            logEventSource.onmessage = (event) => {
+                const logContent = document.getElementById('log-content');
+                // Each event.data is one line from the log
+                logContent.textContent += event.data + '\n';
+                // Auto-scroll to bottom
+                logContent.scrollTop = logContent.scrollHeight;
+            };
+            
+            logEventSource.onerror = (error) => {
+                console.error('Log stream error:', error);
+                if (logEventSource) {
+                    logEventSource.close();
+                    logEventSource = null;
+                }
+            };
+        }
+
+        function closeLogPane() {
+            // Close event source
+            if (logEventSource) {
+                logEventSource.close();
+                logEventSource = null;
+            }
+            
+            // Hide pane
+            document.getElementById('log-pane').classList.add('hidden');
+            document.getElementById('log-content').textContent = '';
+        }
     </script>
 </body>
 </html>
