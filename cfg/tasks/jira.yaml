@@ -1,0 +1,9 @@
+# Jira CLI configuration
+filesystem:
+  ro:
+    - "{HOME}/.jira.d"
+    - "{XDG_CONFIG_HOME}/jira-cli"
+network:
+  enabled: true
+  connect_tcp:
+    - "443"  # Jira API

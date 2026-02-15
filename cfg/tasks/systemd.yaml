@@ -1,0 +1,10 @@
+# systemd tools (systemctl, journalctl, etc.)
+filesystem:
+  ro:
+    - "/run/systemd"
+    - "/var/log/journal"
+    - "/etc/systemd"
+network:
+  enabled: true
+  connect_tcp:
+    - "9001"  # systemd socket activation (if needed)

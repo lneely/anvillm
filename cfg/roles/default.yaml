@@ -1,0 +1,10 @@
+# Default role: permissive settings for ad-hoc usage
+# Equivalent to current global sandbox.yaml behavior
+filesystem:
+  rw:
+    - "{CWD}"
+network:
+  unrestricted: true
+env:
+  - ANTHROPIC_API_KEY
+  - KIRO_API_KEY

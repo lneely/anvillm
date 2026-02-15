@@ -1,0 +1,8 @@
+# Technical editor role: documentation with code access
+filesystem:
+  ro:
+    - "{HOME}/src"
+  rw:
+    - "{CWD}"
+    - "{XDG_DOCUMENTS_DIR}"
+    - "{HOME}/doc"

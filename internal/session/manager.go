@@ -24,7 +24,7 @@ func NewManager(backends map[string]backend.Backend) *Manager {
 }
 
 // New creates a new session in the given working directory using the specified backend
-func (m *Manager) New(backendName, cwd string) (backend.Session, error) {
+func (m *Manager) New(opts backend.SessionOptions, backendName string) (backend.Session, error) {
 	m.mu.RLock()
 	b, ok := m.backends[backendName]
 	m.mu.RUnlock()
@@ -33,7 +33,7 @@ func (m *Manager) New(backendName, cwd string) (backend.Session, error) {
 		return nil, backend.ErrBackendNotFound
 	}
 
-	sess, err := b.CreateSession(context.Background(), cwd)
+	sess, err := b.CreateSession(context.Background(), opts)
 	if err != nil {
 		return nil, err
 	}

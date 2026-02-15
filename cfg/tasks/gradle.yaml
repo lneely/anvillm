@@ -1,0 +1,8 @@
+# Gradle (Java/Kotlin build tool) configuration
+filesystem:
+  rw:
+    - "{HOME}/.gradle"
+network:
+  enabled: true
+  connect_tcp:
+    - "443"  # services.gradle.org, Maven Central, other repos

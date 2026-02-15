@@ -1,0 +1,12 @@
+# Admin role: system administration tasks
+filesystem:
+  ro:
+    - "{CWD}"
+    - "/var/log"
+  rw:
+    - "/etc"
+    - "/usr/local/etc"
+    - "{HOME}"
+network:
+  enabled: true
+  unrestricted: true

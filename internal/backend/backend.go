@@ -13,14 +13,20 @@ var (
 	ErrBackendNotFound = errors.New("backend not found")
 )
 
+// SessionOptions contains options for creating a session
+type SessionOptions struct {
+	CWD   string
+	Role  string
+	Tasks []string
+}
+
 // Backend represents any chat backend (CLI tool via PTY, or direct API)
 type Backend interface {
 	// Name returns the backend name
 	Name() string
 
 	// CreateSession creates a new session instance
-	// cwd is the working directory (may be ignored by API backends)
-	CreateSession(ctx context.Context, cwd string) (Session, error)
+	CreateSession(ctx context.Context, opts SessionOptions) (Session, error)
 }
 
 // Session represents an active conversation session
@@ -66,6 +72,12 @@ type Session interface {
 
 	// SetAlias sets a user-friendly alias for the session
 	SetAlias(alias string)
+	
+	// Role returns the session role (empty if not specified)
+	Role() string
+	
+	// Tasks returns the session tasks (empty if not specified)
+	Tasks() []string
 }
 
 // SessionMetadata provides information about a session
@@ -75,6 +87,7 @@ type SessionMetadata struct {
 	Alias     string            // User-assigned alias
 	Backend   string            // Backend name (e.g., "kiro-cli", "claude")
 	CreatedAt time.Time         // Session creation time
+	WinID     int               // Acme window ID (0 if not applicable)
 	Extra     map[string]string // Backend-specific metadata
 }
 

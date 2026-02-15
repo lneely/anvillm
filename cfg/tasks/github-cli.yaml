@@ -1,0 +1,10 @@
+# GitHub CLI (gh) tool configuration
+filesystem:
+  ro:
+    - "{XDG_CONFIG_HOME}/gh"
+    - "{XDG_DATA_HOME}/gh/extensions"
+network:
+  enabled: true
+  connect_tcp:
+    - "443"  # HTTPS API
+    - "22"   # SSH (optional)

@@ -1,0 +1,12 @@
+# SSH tool configuration
+filesystem:
+  ro:
+    - "{HOME}/.ssh/config"
+    - "{HOME}/.ssh/id_*"
+    - "{HOME}/.ssh/id_*.pub"
+  rw:
+    - "{HOME}/.ssh/known_hosts"
+network:
+  enabled: true
+  connect_tcp:
+    - "22"

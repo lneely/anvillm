@@ -1,0 +1,8 @@
+# Maven (Java build tool) configuration
+filesystem:
+  rw:
+    - "{HOME}/.m2"
+network:
+  enabled: true
+  connect_tcp:
+    - "443"  # repo.maven.apache.org, Maven Central

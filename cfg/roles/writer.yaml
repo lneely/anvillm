@@ -1,0 +1,8 @@
+# Writer role: documentation and content creation
+filesystem:
+  ro:
+    - "{CWD}"
+    - "{HOME}/src"
+  rw:
+    - "{XDG_DOCUMENTS_DIR}"
+    - "{HOME}/doc"

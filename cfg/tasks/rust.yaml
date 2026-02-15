@@ -1,0 +1,9 @@
+# Rust toolchain (cargo, rustc, rustup) configuration
+filesystem:
+  rw:
+    - "{HOME}/.cargo"
+    - "{HOME}/.rustup"
+network:
+  enabled: true
+  connect_tcp:
+    - "443"  # crates.io, static.rust-lang.org

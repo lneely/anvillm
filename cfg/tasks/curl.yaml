@@ -1,0 +1,4 @@
+# curl/wget network tools
+network:
+  enabled: true
+  unrestricted: true

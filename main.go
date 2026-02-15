@@ -77,7 +77,7 @@ func main() {
 	defer srv.Close()
 
 	// Rename prompt window when alias changes
-	srv.OnAliasChange = func(sess Session) {
+	srv.OnAliasChange = func(sess backend.Session) {
 		meta := sess.Metadata()
 		if meta.WinID > 0 {
 			w, err := acme.Open(meta.WinID, nil)
@@ -153,7 +153,8 @@ func main() {
 					fmt.Fprintf(os.Stderr, "Error: Kiro requires a path argument\n")
 					continue
 				}
-				_, err := mgr.New("kiro-cli", arg)
+				opts := backend.SessionOptions{CWD: arg}
+				_, err := mgr.New(opts, "kiro-cli")
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 					continue
@@ -165,7 +166,8 @@ func main() {
 					fmt.Fprintf(os.Stderr, "Error: Claude requires a path argument\n")
 					continue
 				}
-				_, err := mgr.New("claude", arg)
+				opts := backend.SessionOptions{CWD: arg}
+				_, err := mgr.New(opts, "claude")
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 					continue

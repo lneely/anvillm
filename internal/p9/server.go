@@ -72,16 +72,19 @@ const (
 	fileAlias
 	fileBackend
 	fileContext
+	fileRole
+	fileTasks
 	fileCount
 )
 
-var fileNames = []string{"ctl", "in", "out", "log", "state", "pid", "cwd", "alias", "backend", "context"}
+var fileNames = []string{"ctl", "in", "out", "log", "state", "pid", "cwd", "alias", "backend", "context", "role", "tasks"}
 
 type Server struct {
-	mgr        *session.Manager
-	listener   net.Listener
-	socketPath string
-	mu         sync.RWMutex
+	mgr           *session.Manager
+	listener      net.Listener
+	socketPath    string
+	OnAliasChange func(backend.Session) // Called when session alias changes
+	mu            sync.RWMutex
 }
 
 type connState struct {
@@ -322,12 +325,32 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		fmt.Fprintf(os.Stderr, "[DEBUG] ctl write: input=%q args=%v len=%d fc.Count=%d len(fc.Data)=%d\n",
 			input, args, len(args), fc.Count, len(fc.Data))
 		if len(args) < 2 || args[0] != "new" {
-			return errFcall(fc, "usage: new <backend> <cwd>")
+			return errFcall(fc, "usage: new <backend> <cwd> [role=<role>] [tasks=<task1,task2>]")
 		}
+		
 		backendName := args[1]
 		cwd, _ := os.Getwd()
-		if len(args) > 2 {
-			cwd = strings.Trim(args[2], `"`)
+		var role string
+		var tasks []string
+		
+		// Parse remaining arguments: first non-key=value is cwd, rest are options
+		cwdSet := false
+		for i := 2; i < len(args); i++ {
+			arg := args[i]
+			if strings.HasPrefix(arg, "role=") {
+				role = strings.TrimPrefix(arg, "role=")
+			} else if strings.HasPrefix(arg, "tasks=") {
+				taskStr := strings.TrimPrefix(arg, "tasks=")
+				if taskStr != "" {
+					tasks = strings.Split(taskStr, ",")
+				}
+			} else if !cwdSet {
+				// First positional argument is cwd
+				cwd = strings.Trim(arg, `"`)
+				cwdSet = true
+			} else {
+				return errFcall(fc, fmt.Sprintf("unexpected argument: %s", arg))
+			}
 		}
 
 		// Validate and clean the path
@@ -349,7 +372,12 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			return errFcall(fc, fmt.Sprintf("path is not a directory: %s", cleanPath))
 		}
 
-		_, err := s.mgr.New(backendName, cleanPath)
+		opts := backend.SessionOptions{
+			CWD:   cleanPath,
+			Role:  role,
+			Tasks: tasks,
+		}
+		_, err := s.mgr.New(opts, backendName)
 		if err != nil {
 			return errFcall(fc, err.Error())
 		}
@@ -425,6 +453,9 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			return errFcall(fc, "invalid alias: must match [A-Za-z0-9_-]+")
 		}
 		sess.SetAlias(input)
+		if s.OnAliasChange != nil {
+			s.OnAliasChange(sess)
+		}
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
@@ -651,6 +682,10 @@ func (s *Server) getSessionFile(sess backend.Session, idx int) string {
 			return tmuxSess.GetContext()
 		}
 		return ""
+	case fileRole:
+		return sess.Role()
+	case fileTasks:
+		return strings.Join(sess.Tasks(), ",")
 	}
 	return ""
 }

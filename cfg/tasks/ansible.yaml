@@ -1,0 +1,16 @@
+# Ansible configuration management tool
+filesystem:
+  ro:
+    - "{HOME}/.ansible"
+    - "{HOME}/.ansible.cfg"
+    - "{HOME}/.ssh/config"
+    - "{HOME}/.ssh/id_*"
+    - "{HOME}/.ssh/id_*.pub"
+  rw:
+    - "{HOME}/.ssh/known_hosts"
+    - "{HOME}/.ansible/tmp"
+network:
+  enabled: true
+  connect_tcp:
+    - "22"   # SSH
+    - "443"  # Galaxy, collections

@@ -1,0 +1,8 @@
+# Developer role configuration
+filesystem:
+  rw:
+    - "{CWD}"
+  rwx:
+    - "{HOME}/bin"
+    - "{HOME}/.local/bin"
+    - "{HOME}/src"

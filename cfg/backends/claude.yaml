@@ -1,0 +1,10 @@
+# Claude backend requirements
+filesystem:
+  rw:
+    - "{HOME}/.claude"
+    - "{HOME}/.claude.json"
+    - "{HOME}/.config/anvillm"
+network:
+  unrestricted: true
+env:
+  - ANTHROPIC_API_KEY

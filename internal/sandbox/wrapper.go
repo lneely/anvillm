@@ -25,12 +25,6 @@ func WrapCommand(cfg *Config, originalCmd []string, cwd string) []string {
 		return originalCmd
 	}
 
-	home, _ := os.UserHomeDir()
-	tmpdir := os.Getenv("TMPDIR")
-	if tmpdir == "" {
-		tmpdir = "/tmp"
-	}
-
 	args := []string{"landrun"}
 
 	// Log level
@@ -54,25 +48,25 @@ func WrapCommand(cfg *Config, originalCmd []string, cwd string) []string {
 	// Collect all filesystem paths
 	var entries []pathEntry
 	for _, path := range cfg.Filesystem.RO {
-		expanded := expandPath(path, cwd, home, tmpdir)
+		expanded := expandPath(path, cwd)
 		if pathExists(expanded) {
 			entries = append(entries, pathEntry{expanded, "--ro"})
 		}
 	}
 	for _, path := range cfg.Filesystem.ROX {
-		expanded := expandPath(path, cwd, home, tmpdir)
+		expanded := expandPath(path, cwd)
 		if pathExists(expanded) {
 			entries = append(entries, pathEntry{expanded, "--rox"})
 		}
 	}
 	for _, path := range cfg.Filesystem.RW {
-		expanded := expandPath(path, cwd, home, tmpdir)
+		expanded := expandPath(path, cwd)
 		if pathExists(expanded) {
 			entries = append(entries, pathEntry{expanded, "--rw"})
 		}
 	}
 	for _, path := range cfg.Filesystem.RWX {
-		expanded := expandPath(path, cwd, home, tmpdir)
+		expanded := expandPath(path, cwd)
 		if pathExists(expanded) {
 			entries = append(entries, pathEntry{expanded, "--rwx"})
 		}

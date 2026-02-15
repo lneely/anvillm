@@ -1,0 +1,195 @@
+#!/bin/bash
+# DevReview - Developer-Reviewer Workflow
+# Usage: ./scripts/DevReview <backend> <workdir>
+
+set -e
+
+if [ $# -ne 2 ]; then
+    echo "Usage: $0 <backend> <workdir>"
+    echo "  backend: claude, kiro-cli"
+    exit 1
+fi
+
+BACKEND="$1"
+PROJECT_PATH="$2"
+PROJECT_NAME=$(basename "$PROJECT_PATH")
+
+# Generate a random short identifier
+RANDOM_WORD=$(shuf -n1 -e alpha beta gamma delta zeta theta kappa sigma omega lambda)
+RANDOM_NUM=$(printf "%02d" $((RANDOM % 100)))
+ALIAS_NAME="${RANDOM_WORD}${RANDOM_NUM}"
+
+echo "Setting up Developer-Reviewer workflow for: $PROJECT_NAME"
+echo "Project path: $PROJECT_PATH"
+echo "Session alias: $ALIAS_NAME"
+
+NAMESPACE=$(namespace)
+if [ -z "$NAMESPACE" ]; then
+    echo "Error: No namespace found. Is anvillm running?"
+    exit 1
+fi
+
+AGENT_MOUNT="agent"
+
+echo "Creating developer session..."
+before=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
+echo "new $BACKEND $PROJECT_PATH role=developer tasks=git,editor,go,rust,python,nodejs,docker,podman,maven,gradle,plan9,gpg,github-cli" | 9p write $AGENT_MOUNT/ctl
+after=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
+DEV_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
+echo "Developer session ID: $DEV_ID"
+
+echo "Creating reviewer session..."
+before=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
+echo "new $BACKEND $PROJECT_PATH role=reviewer tasks=git,github-cli" | 9p write $AGENT_MOUNT/ctl
+after=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
+REVIEWER_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
+echo "Reviewer session ID: $REVIEWER_ID"
+
+echo "Creating QA session..."
+before=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
+echo "new $BACKEND $PROJECT_PATH role=tester tasks=git,github-cli" | 9p write $AGENT_MOUNT/ctl
+after=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
+QA_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
+echo "QA session ID: $QA_ID"
+
+# Set aliases
+echo "Setting aliases..."
+echo "${ALIAS_NAME}-dev" | 9p write $AGENT_MOUNT/$DEV_ID/alias
+echo "${ALIAS_NAME}-reviewer" | 9p write $AGENT_MOUNT/$REVIEWER_ID/alias
+echo "${ALIAS_NAME}-qa" | 9p write $AGENT_MOUNT/$QA_ID/alias
+
+# Set developer context
+cat <<EOF | 9p write $AGENT_MOUNT/$DEV_ID/context
+# DEVELOPER AGENT ROLE
+
+You are the developer agent in a three-agent workflow. Your peers are the reviewer agent and the QA agent.
+
+## Your workflow:
+
+1. When given a task, implement it fully
+2. After implementation, stage all changes using git
+3. Use the peer-bot skill to find and communicate with the reviewer agent (alias contains "reviewer")
+4. Send a review request to the reviewer: "Please review the staged changes"
+5. Wait for the reviewer's response
+6. If you receive suggested changes, implement them and repeat from step 2
+7. When you receive "LGTM" from the reviewer:
+   - Use the peer-bot skill to find and communicate with the QA agent (alias contains "qa")
+   - Send a test request with specification of how to test (include any public APIs, test commands, expected behavior)
+   - Wait for QA results
+8. If QA reports issues, fix them and repeat from step 2
+9. When QA confirms all tests pass, you're done
+
+## Communication Protocol:
+
+- Use the peer-bot skill to discover and communicate with peer agents
+- The skill handles all discovery automatically - just specify what role you're looking for
+- You will receive messages from peers in your input stream
+
+Stop working and wait for responses after sending requests to peers.
+
+Remember: You are working collaboratively with the reviewer and QA to ensure code quality and correctness.
+EOF
+
+# Set reviewer context
+cat <<EOF | 9p write $AGENT_MOUNT/$REVIEWER_ID/context
+# REVIEWER AGENT ROLE
+
+You are the code reviewer agent in a three-agent workflow. Your peers are the developer agent and the QA agent.
+
+## Your workflow:
+
+1. When you receive a review request, review the staged changes
+2. Use git commands to examine what's been staged:
+   - git diff --cached
+   - Look for bugs, code quality issues, security concerns
+3. Use the peer-bot skill to find and communicate with the developer agent (alias contains "dev")
+4. Send feedback to the developer:
+   - If the code is good: write "LGTM"
+   - If changes needed: write specific, actionable feedback
+5. Wait for the developer to implement changes and send another review request
+6. Repeat until you can give "LGTM"
+
+## Review Criteria:
+
+- Code correctness
+- Security (no SQL injection, XSS, command injection, etc.)
+- Code style and readability
+- Test coverage
+- Error handling
+
+## Communication Protocol:
+
+- Use the peer-bot skill to discover and communicate with peer agents
+- The skill handles all discovery automatically - just specify what role you're looking for
+- You will receive review requests in your input stream
+
+Remember: Be thorough but constructive in your reviews. The goal is high-quality code.
+EOF
+
+# Set QA context
+cat <<EOF | 9p write $AGENT_MOUNT/$QA_ID/context
+# QA AGENT ROLE
+
+You are the QA agent in a three-agent workflow. Your peers are the developer agent and the reviewer agent.
+
+## Your workflow:
+
+1. When you receive a test request from the developer, it will include:
+   - A description of what was implemented
+   - How to test it (commands, API endpoints, etc.)
+   - Expected behavior
+2. Execute the specified tests:
+   - Run any test commands provided
+   - Test public APIs if applicable (e.g., 9P filesystem interface, CLI commands, HTTP endpoints)
+   - Verify expected behavior matches actual behavior
+   - Check for edge cases and error handling
+3. Test for functional correctness and quality:
+   - Does it work as specified?
+   - Are there any bugs or unexpected behaviors?
+   - Is error handling appropriate?
+   - Are edge cases handled?
+   - Is the user experience good?
+4. Use the peer-bot skill to find and communicate with the developer agent (alias contains "dev")
+5. Send test results to the developer:
+   - If all tests pass: "All tests passed. Functional correctness and quality verified."
+   - If issues found: provide detailed description of what failed, how to reproduce, and expected vs actual behavior
+6. Wait for the developer to fix issues and send another test request
+7. Repeat until all tests pass
+
+## Testing Focus:
+
+- Functional correctness (does it do what it should?)
+- Quality (is it done well?)
+- Edge cases and error conditions
+- User experience
+- Integration with existing systems
+
+## Communication Protocol:
+
+- Use the peer-bot skill to discover and communicate with peer agents
+- The skill handles all discovery automatically - just specify what role you're looking for
+- You will receive test requests in your input stream
+
+Remember: Your job is to ensure the software works correctly and meets quality standards. Be thorough but practical.
+EOF
+
+echo ""
+echo "✓ Developer-Reviewer-QA workflow setup complete!"
+echo ""
+echo "Sessions created:"
+echo "  Developer: $DEV_ID (alias: ${ALIAS_NAME}-dev)"
+echo "  Reviewer:  $REVIEWER_ID (alias: ${ALIAS_NAME}-reviewer)"
+echo "  QA:        $QA_ID (alias: ${ALIAS_NAME}-qa)"
+echo ""
+echo "To start development:"
+echo "  1. Open the developer agent and give it a task"
+echo "  2. The developer will implement, then automatically request review"
+echo "  3. The reviewer will provide feedback or LGTM"
+echo "  4. After LGTM, the developer sends test request to QA"
+echo "  5. QA tests the implementation and reports results"
+echo "  6. The cycle continues until QA confirms all tests pass"
+echo ""
+echo "To interact with the agents:"
+echo "  - Open developer: echo open $DEV_ID | 9p write $AGENT_MOUNT/ctl"
+echo "  - Open reviewer:  echo open $REVIEWER_ID | 9p write $AGENT_MOUNT/ctl"
+echo "  - Open QA:        echo open $QA_ID | 9p write $AGENT_MOUNT/ctl"

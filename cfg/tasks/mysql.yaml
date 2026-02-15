@@ -1,0 +1,9 @@
+# MySQL client configuration
+filesystem:
+  ro:
+    - "{HOME}/.my.cnf"
+    - "{HOME}/.mylogin.cnf"
+network:
+  enabled: true
+  connect_tcp:
+    - "3306"  # MySQL default port

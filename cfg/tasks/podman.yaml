@@ -1,0 +1,10 @@
+# Podman container tool configuration
+filesystem:
+  rw:
+    - "{XDG_RUNTIME_DIR}/podman"
+    - "{XDG_DATA_HOME}/containers"
+    - "{XDG_CONFIG_HOME}/containers"
+network:
+  enabled: true
+  connect_tcp:
+    - "443"  # Container registries

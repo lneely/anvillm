@@ -1,0 +1,7 @@
+# AWS CLI configuration
+filesystem:
+  ro:
+    - "{HOME}/.aws"
+network:
+  enabled: true
+  unrestricted: true

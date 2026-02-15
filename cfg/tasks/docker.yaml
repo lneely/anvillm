@@ -1,0 +1,9 @@
+# Docker container tool configuration
+filesystem:
+  rw:
+    - "/var/run/docker.sock"
+    - "{HOME}/.docker"
+network:
+  enabled: true
+  connect_tcp:
+    - "443"  # Docker Hub, registries

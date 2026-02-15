@@ -109,19 +109,63 @@ func (b *Backend) Name() string {
 	return b.cfg.Name
 }
 
-func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Session, error) {
+func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions) (backend.Session, error) {
 	id := generateID()
 	windowName := id // Use session ID as window name
 
-	debug.Log("[session %s] creating window in tmux session %s", id, b.tmuxSession)
+	debug.Log("[session %s] creating window in tmux session %s (role=%s, tasks=%v)", id, b.tmuxSession, opts.Role, opts.Tasks)
 
-	// Load sandbox configuration fresh for each session
-	sandboxCfg, err := sandbox.Load()
+	// Build layered sandbox configuration
+	// Start with global.yaml as base
+	baseCfg, err := sandbox.Load()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading sandbox config: %v (using defaults)\n", err)
-		debug.Log("[session %s] failed to load sandbox config: %v, using defaults", id, err)
-		sandboxCfg = sandbox.DefaultConfig()
+		return nil, fmt.Errorf("failed to load global config: %w", err)
 	}
+	
+	// Convert base config to layered format
+	baseLayer := sandbox.LayeredConfig{
+		Filesystem: baseCfg.Filesystem,
+		Network:    baseCfg.Network,
+		Env:        baseCfg.Env,
+	}
+	layers := []sandbox.LayeredConfig{baseLayer}
+	
+	backendLayer, err := sandbox.LoadBackend(b.cfg.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load backend config %q: %w", b.cfg.Name, err)
+	}
+	layers = append(layers, backendLayer)
+	
+	// Add role layer if specified, otherwise use "default" role
+	role := opts.Role
+	if role == "" {
+		role = sandbox.DefaultRole
+	}
+	roleLayer, err := sandbox.LoadRole(role)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load role %q: %w", role, err)
+	}
+	layers = append(layers, roleLayer)
+	
+	// Add task layers
+	for _, taskName := range opts.Tasks {
+		taskLayer, err := sandbox.LoadTask(taskName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load task %q: %w", taskName, err)
+		}
+		layers = append(layers, taskLayer)
+	}
+	
+	// Merge layers into final config
+	general := sandbox.GeneralConfig{
+		BestEffort: false,
+		LogLevel:   "error",
+	}
+	advanced := sandbox.AdvancedConfig{
+		LDD:     false,
+		AddExec: true,
+	}
+	sandboxCfg := sandbox.Merge(general, advanced, layers...)
 
 	// 1. Ensure persistent tmux session exists
 	if err := b.ensureTmuxSession(); err != nil {
@@ -187,11 +231,11 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 			killWindow(b.tmuxSession, windowName)
 			fmt.Fprintf(os.Stderr, "ERROR: landrun not available and sandboxing is required\n")
 			fmt.Fprintf(os.Stderr, "Install landrun: go install github.com/landlock-lsm/landrun@latest\n")
-			fmt.Fprintf(os.Stderr, "Or enable best_effort mode in ~/.config/anvillm/sandbox.yaml (NOT RECOMMENDED)\n")
+			fmt.Fprintf(os.Stderr, "Or enable best_effort mode in ~/.config/anvillm/global.yaml (NOT RECOMMENDED)\n")
 			return nil, fmt.Errorf("landrun not available")
 		}
 	}
-	command = sandbox.WrapCommand(sandboxCfg, command, cwd)
+	command = sandbox.WrapCommand(sandboxCfg, command, opts.CWD)
 	debug.Log("[session %s] sandboxed command: %v", id, command)
 
 	// 8. Build command string for tmux
@@ -209,7 +253,7 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 	}
 
 	// Change to working directory first
-	if err := sendKeys(target, fmt.Sprintf("cd \"%s\"", cwd), "C-m"); err != nil {
+	if err := sendKeys(target, fmt.Sprintf("cd \"%s\"", opts.CWD), "C-m"); err != nil {
 		os.Remove(fifoPath)
 		killWindow(b.tmuxSession, windowName)
 		return nil, fmt.Errorf("failed to change directory: %w", err)
@@ -247,7 +291,7 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 	// Find the actual backend process (child of bash shell)
 	pid := 0
 	if panePID != 0 {
-		time.Sleep(200 * time.Millisecond) // Brief delay for backend to start
+		time.Sleep(500 * time.Millisecond) // Brief delay for backend to start
 		pid = FindBackendPID(panePID)
 		if pid == 0 {
 			debug.Log("[session %s] warning: backend process not found for pane PID %d", id, panePID)
@@ -261,7 +305,9 @@ func (b *Backend) CreateSession(ctx context.Context, cwd string) (backend.Sessio
 		backendName:    b.cfg.Name,
 		tmuxSession:    b.tmuxSession,
 		windowName:     windowName,
-		cwd:            cwd,
+		cwd:            opts.CWD,
+		role:           role,
+		tasks:          opts.Tasks,
 		pid:            pid,
 		state:          "starting",
 		createdAt:      time.Now(),

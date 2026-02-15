@@ -1,0 +1,8 @@
+# GPG encryption tool
+filesystem:
+  ro:
+    - "{HOME}/.gnupg"
+  rw:
+    - "{HOME}/.gnupg/trustdb.gpg"
+    - "{HOME}/.gnupg/pubring.kbx"
+    - "{HOME}/.gnupg/random_seed"

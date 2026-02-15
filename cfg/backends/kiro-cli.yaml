@@ -1,0 +1,10 @@
+# Kiro backend requirements
+filesystem:
+  rw:
+    - "{HOME}/.kiro"
+    - "{XDG_DATA_HOME}/kiro-cli"
+    - "{CWD}/.kiro"
+network:
+  unrestricted: true
+env:
+  - KIRO_API_KEY

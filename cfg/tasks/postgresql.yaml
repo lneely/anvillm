@@ -1,0 +1,9 @@
+# PostgreSQL client configuration
+filesystem:
+  ro:
+    - "{HOME}/.psqlrc"
+    - "{HOME}/.pgpass"
+network:
+  enabled: true
+  connect_tcp:
+    - "5432"  # PostgreSQL default port

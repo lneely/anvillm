@@ -1,0 +1,109 @@
+#!/bin/bash
+# Planning - Research/Architect/Techeditor workflow
+# Usage: ./scripts/Planning <backend> <workdir>
+
+set -e
+
+if [ $# -ne 2 ]; then
+    echo "Usage: $0 <backend> <workdir>"
+    echo "  backend: claude, kiro-cli"
+    exit 1
+fi
+
+BACKEND="$1"
+DOC_PATH="$2"
+
+# Generate random alias prefix
+RANDOM_WORD=$(shuf -n1 -e alpha beta gamma delta zeta theta kappa sigma omega lambda)
+RANDOM_NUM=$(printf "%02d" $((RANDOM % 100)))
+ALIAS_PREFIX="${RANDOM_WORD}${RANDOM_NUM}"
+
+NAMESPACE=$(namespace)
+if [ -z "$NAMESPACE" ]; then
+    echo "Error: No namespace found. Is anvillm running?"
+    exit 1
+fi
+
+AGENT="agent"
+
+echo "Creating research session..."
+before=$(9p read $AGENT/list | awk '{print $1}' | sort)
+echo "new $BACKEND $DOC_PATH role=research" | 9p write $AGENT/ctl
+after=$(9p read $AGENT/list | awk '{print $1}' | sort)
+RESEARCH_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
+echo "  ID: $RESEARCH_ID"
+
+echo "Creating architect session..."
+before=$(9p read $AGENT/list | awk '{print $1}' | sort)
+echo "new $BACKEND $DOC_PATH role=architect tasks=git" | 9p write $AGENT/ctl
+after=$(9p read $AGENT/list | awk '{print $1}' | sort)
+ARCH_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
+echo "  ID: $ARCH_ID"
+
+echo "Creating techeditor session..."
+before=$(9p read $AGENT/list | awk '{print $1}' | sort)
+echo "new $BACKEND $DOC_PATH role=techeditor tasks=git" | 9p write $AGENT/ctl
+after=$(9p read $AGENT/list | awk '{print $1}' | sort)
+EDITOR_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
+echo "  ID: $EDITOR_ID"
+
+# Set aliases
+echo "${ALIAS_PREFIX}-research" | 9p write $AGENT/$RESEARCH_ID/alias
+echo "${ALIAS_PREFIX}-architect" | 9p write $AGENT/$ARCH_ID/alias
+echo "${ALIAS_PREFIX}-techeditor" | 9p write $AGENT/$EDITOR_ID/alias
+
+# Research context
+cat <<EOF | 9p write $AGENT/$RESEARCH_ID/context
+Your job is to research system architecture and code for requested information. Use the agent-kb skill.
+
+- Input: knowledge base (agent-kb) and relevant code
+- Output: concrete human- and LLM-readable knowledge about the system
+- Prefer updating existing kb documents over creating new ones
+- Only create new KB documents if the knowledge discovered is significant and reusable
+
+When you receive a query from the architect, research and respond:
+- Use the peer-bot skill to find and communicate with the architect agent (alias contains "architect")
+- Send your answer back to the architect
+
+Do not actively await responses, but stop working until you receive an explicit request to conduct research.
+EOF
+
+# Architect context
+cat <<EOF | 9p write $AGENT/$ARCH_ID/context
+Your job is to update design documentation in $DOC_PATH. Follow agent-kb conventions. Search the knowledge base for relevant documents.
+
+If documentation is insufficient, query the research bot:
+- Use the peer-bot skill to find and communicate with the research agent (alias contains "research")
+- Include in your query: the question, context, and request for full path to new/updated docs or a direct answer
+- Wait for the research agent to send the answer back
+
+You will receive edit requests from the techeditor:
+- Use the peer-bot skill to find and communicate with the techeditor agent (alias contains "techeditor")
+- Apply the requested changes and send acknowledgment back
+
+Do not actively await responses, but stop working until you receive an explicit request to make a change from the techeditor.
+EOF
+
+# Tech-editor context
+cat <<EOF | 9p write $AGENT/$EDITOR_ID/context
+You are a professional technical writer. Ensure documentation in $DOC_PATH is high quality, readable, and at the right detail level for software engineers.
+
+Do not edit documents directly. Send recommended changes to the architect:
+- Use the peer-bot skill to find and communicate with the architect agent (alias contains "architect")
+- Include your recommended changes
+- Request acknowledgment from the architect
+
+When the architect acknowledges, proofread again. Iterate until satisfied.
+
+Do not actively await responses, but stop working until you receive an explicit request to perform work.
+EOF
+
+echo ""
+echo "✓ Planning workflow ready ($ALIAS_PREFIX)"
+echo ""
+echo "Sessions:"
+echo "  ${ALIAS_PREFIX}-research:   $RESEARCH_ID"
+echo "  ${ALIAS_PREFIX}-architect:  $ARCH_ID"
+echo "  ${ALIAS_PREFIX}-techeditor: $EDITOR_ID"
+echo ""
+echo "Start by giving the architect a task, or techeditor a document to review."

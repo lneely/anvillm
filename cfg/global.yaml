@@ -1,0 +1,63 @@
+# AnviLLM Sandbox Configuration
+# This file controls landrun sandboxing for all backend sessions
+# Documentation: https://github.com/landlock-lsm/landrun
+#
+# Path templates:
+#   {CWD}     - Session working directory
+#   {HOME}    - User home directory
+#   {TMPDIR}  - Temporary directory (/tmp or $TMPDIR)
+#
+# WARNING: CLI tools need network access to function!
+#   - Claude requires connect_tcp for claude.com
+#   - Kiro requires connect_tcp for kiro.ai
+#
+# Changes apply to NEW sessions only. Existing sessions are not affected.
+
+general:
+    enabled: true
+    best_effort: true
+    log_level: error
+filesystem:
+    ro:
+        - /etc/passwd
+        - /etc/group
+        - /etc/localtime
+        - /etc/nsswitch.conf
+        - /etc/hosts
+        - /etc/resolv.conf
+        - /etc/services
+        - /etc/ssl/certs
+        - /proc
+        - '{XDG_CONFIG_HOME}/anvillm'
+        - '{HOME}/env'
+    rox:
+        - /usr
+        - /lib
+        - /lib64
+        - /bin
+        - /sbin
+    rw:
+        - '{TMPDIR}'
+        - '{XDG_CACHE_HOME}'
+        - /dev/null
+        - /dev/zero
+        - /dev/urandom
+        - /dev/random
+    rwx: []
+network:
+    enabled: false
+    unrestricted: false
+    bind_tcp: []
+    connect_tcp: []
+env:
+    - HOME
+    - USER
+    - PATH
+    - LANG
+    - TERM
+    - NAMESPACE
+    - DISPLAY
+    - WAYLAND_DISPLAY
+advanced:
+    ldd: false
+    add_exec: true

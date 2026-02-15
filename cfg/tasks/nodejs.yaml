@@ -1,0 +1,13 @@
+# Node.js package managers (npm, yarn, pnpm) configuration
+filesystem:
+  rw:
+    - "{HOME}/.npm"
+    - "{HOME}/.yarn"
+    - "{HOME}/.pnpm-store"
+    - "{XDG_CONFIG_HOME}/yarn"
+    - "{HOME}/.yarnrc.yml"
+    - "{HOME}/.npmrc"
+network:
+  enabled: true
+  connect_tcp:
+    - "443"  # registry.npmjs.org, registry.yarnpkg.com

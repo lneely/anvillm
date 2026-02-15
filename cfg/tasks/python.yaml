@@ -1,0 +1,9 @@
+# Python pip package manager configuration
+filesystem:
+  rw:
+    - "{XDG_CONFIG_HOME}/pip"
+    - "{HOME}/.pip"
+network:
+  enabled: true
+  connect_tcp:
+    - "443"  # pypi.org, files.pythonhosted.org

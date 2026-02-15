@@ -1,0 +1,10 @@
+# Research role: access to documentation and knowledge base
+filesystem:
+  ro:
+    - "{CWD}"
+    - "{HOME}/src"
+    - "{XDG_DOCUMENTS_DIR}"
+    - "{HOME}/doc"
+  rw:
+    - "{XDG_DOCUMENTS_DIR}/agent-kb"
+    - "{HOME}/doc/agent-kb"

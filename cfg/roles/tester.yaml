@@ -1,0 +1,9 @@
+# Tester role: execute binaries and read source, no write access
+filesystem:
+  ro:
+    - "{CWD}"
+    - "{HOME}/src"
+  rox:
+    - "{CWD}"
+    - "{HOME}/bin"
+    - "{HOME}/.local/bin"

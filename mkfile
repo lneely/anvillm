@@ -10,12 +10,14 @@ build:V:
 	cp scripts/Alog $INSTALL_PATH/Alog
 	chmod 0755 $INSTALL_PATH/Alog
 	mkdir -p $INSTALL_PATH/Workflows
-	cp scripts/DevReview $INSTALL_PATH/Workflows/DevReview
+	cp workflows/DevReview $INSTALL_PATH/Workflows/DevReview
 	chmod 0755 $INSTALL_PATH/Workflows/DevReview
-	cp scripts/DevReviewQA $INSTALL_PATH/Workflows/DevReviewQA
+	cp workflows/DevReviewQA $INSTALL_PATH/Workflows/DevReviewQA
 	chmod 0755 $INSTALL_PATH/Workflows/DevReviewQA
-	cp scripts/Planning $INSTALL_PATH/Workflows/Planning
+	cp workflows/Planning $INSTALL_PATH/Workflows/Planning
 	chmod 0755 $INSTALL_PATH/Workflows/Planning
+	mkdir -p $HOME/.config/anvillm
+	cp -rf cfg/* $HOME/.config/anvillm/
 
 install:V: build
 

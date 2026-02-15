@@ -1,0 +1,8 @@
+# Go toolchain configuration
+filesystem:
+  rw:
+    - "{HOME}/go"
+network:
+  enabled: true
+  connect_tcp:
+    - "443"  # pkg.go.dev, proxy.golang.org

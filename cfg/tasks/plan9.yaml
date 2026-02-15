@@ -1,0 +1,10 @@
+# Plan 9 from User Space toolchain configuration
+filesystem:
+  rwx:
+    - "{PLAN9}"
+network:
+  enabled: true
+  connect_tcp:
+    - "564"  # 9P protocol
+env:
+  - PLAN9

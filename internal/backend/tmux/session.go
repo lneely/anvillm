@@ -22,6 +22,9 @@ type Session struct {
 	windowName  string // window name within tmux session (same as id)
 	cwd         string
 	alias       string
+	role        string   // session role (e.g., "developer", "reviewer")
+	tasks       []string // session tasks (e.g., ["git", "docker"])
+	winID       int      // Acme window ID (0 if not applicable)
 	pid         int
 	state       string
 	context     string // prepended to every prompt
@@ -182,6 +185,7 @@ func (s *Session) Metadata() backend.SessionMetadata {
 		Alias:     s.alias,
 		Backend:   s.backendName,
 		CreatedAt: s.createdAt,
+		WinID:     s.winID,
 		Extra: map[string]string{
 			"tmux_session": s.tmuxSession,
 			"tmux_window":  s.windowName,
@@ -191,6 +195,20 @@ func (s *Session) Metadata() backend.SessionMetadata {
 
 func (s *Session) Commands() backend.CommandHandler {
 	return s.commands
+}
+
+// Role returns the session role
+func (s *Session) Role() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.role
+}
+
+// Tasks returns the session tasks
+func (s *Session) Tasks() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.tasks
 }
 
 // GetPid gets the process ID
@@ -212,6 +230,13 @@ func (s *Session) GetContext() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.context
+}
+
+// SetWinID sets the Acme window ID
+func (s *Session) SetWinID(winID int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.winID = winID
 }
 
 // reader continuously reads from FIFO and sends to dataCh

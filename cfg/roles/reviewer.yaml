@@ -1,0 +1,8 @@
+# Reviewer role: read-only access to project and dev directories
+filesystem:
+  ro:
+    - "{CWD}"
+    - "{HOME}/src"
+  rox:
+    - "{HOME}/bin"
+    - "{HOME}/.local/bin"

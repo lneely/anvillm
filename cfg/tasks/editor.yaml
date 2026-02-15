@@ -1,0 +1,11 @@
+# Text editor configuration (vim, emacs, nano, etc.)
+filesystem:
+  rw:
+    - "{XDG_CONFIG_HOME}/nvim"
+    - "{XDG_CONFIG_HOME}/vim"
+    - "{XDG_DATA_HOME}/nvim"
+    - "{XDG_STATE_HOME}/nvim"
+    - "{HOME}/.vimrc"
+    - "{HOME}/.vim"
+    - "{HOME}/.emacs.d"
+    - "{HOME}/.config/emacs"
