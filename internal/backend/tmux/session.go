@@ -33,6 +33,10 @@ type Session struct {
 	stopCh   chan struct{}
 	output   bytes.Buffer
 
+	// Chat log: persistent conversation history (USER/ASSISTANT)
+	chatLog     bytes.Buffer
+	chatLogSize int64 // tracks size to enforce 2MB limit
+
 	commands       backend.CommandHandler
 	startupHandler StartupHandler
 	stateInspector StateInspector
@@ -76,6 +80,67 @@ func (s *Session) SetAlias(alias string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.alias = alias
+}
+
+// appendToChatLogLocked appends a message to the chat log with role prefix and separator.
+// Enforces 2MB size limit by truncating oldest messages if needed.
+// Caller must hold s.mu.
+func (s *Session) appendToChatLogLocked(role, content string) {
+	const maxLogSize = 2 * 1024 * 1024 // 2MB
+
+	// Format: ROLE:\ncontent\n---\n
+	msg := fmt.Sprintf("%s:\n%s\n---\n", role, content)
+	msgSize := int64(len(msg))
+
+	// If adding this message would exceed limit, truncate from beginning
+	if s.chatLogSize+msgSize > maxLogSize {
+		// Calculate how much to truncate
+		excessSize := (s.chatLogSize + msgSize) - maxLogSize
+
+		// Get current log content
+		logBytes := s.chatLog.Bytes()
+
+		// Find a good truncation point (after a separator to keep messages intact)
+		truncateAt := int64(0)
+		separatorSize := int64(len("\n---\n"))
+
+		// Search for separator after excess size
+		for i := excessSize; i < int64(len(logBytes))-separatorSize; i++ {
+			if string(logBytes[i:i+separatorSize]) == "\n---\n" {
+				truncateAt = i + separatorSize
+				break
+			}
+		}
+
+		// If no separator found, truncate at excess size (edge case)
+		if truncateAt == 0 {
+			truncateAt = excessSize
+		}
+
+		// Reset buffer with truncated content
+		s.chatLog.Reset()
+		s.chatLog.Write(logBytes[truncateAt:])
+		s.chatLogSize = int64(s.chatLog.Len())
+	}
+
+	// Append new message
+	s.chatLog.WriteString(msg)
+	s.chatLogSize += msgSize
+}
+
+// AppendToChatLog appends a message to the chat log with role prefix and separator.
+// Enforces 2MB size limit by truncating oldest messages if needed.
+func (s *Session) AppendToChatLog(role, content string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.appendToChatLogLocked(role, content)
+}
+
+// GetChatLog returns the full chat log contents
+func (s *Session) GetChatLog() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.chatLog.String()
 }
 
 func (s *Session) Metadata() backend.SessionMetadata {
@@ -313,16 +378,25 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 		}
 	}
 
+	// Save original prompt for chat log (before modification)
+	originalPrompt := prompt
+
 	// Prepend idle signaling instruction at the top of the prompt
 	// This instruction tells the agent to signal when it's done processing
 	idleSignal := fmt.Sprintf("IMPORTANT: When you have completed processing this request and are ready for the next prompt, you MUST signal idle by running:\necho idle | 9p write agent/%s/state\n", s.id)
 
+	// Instruction to write final response summary to 'out' file
+	outInstruction := fmt.Sprintf("IMPORTANT: After completing your work, you MUST write a comprehensive summary by running:\necho 'your summary here' | 9p write agent/%s/out\n\nThe summary MUST include:\n- Your ACTUAL complete response text (the full message sent to the user)\n- All tool usages (bash commands, file operations, etc.)\n- All files read and written\n- Key diffs or changes made\n\nDo NOT just write a meta-description - include the actual response content!\n", s.id)
+
 	// Prepend context if set (skip for slash commands)
 	if s.context != "" && !strings.HasPrefix(prompt, "/") {
-		prompt = idleSignal + "\n" + s.context + "\n\n" + prompt
+		prompt = idleSignal + "\n" + outInstruction + "\n" + s.context + "\n\n" + prompt
 	} else if !strings.HasPrefix(prompt, "/") {
-		prompt = idleSignal + "\n" + prompt
+		prompt = idleSignal + "\n" + outInstruction + "\n" + prompt
 	}
+
+	// Log user prompt to chat log (already holding lock)
+	s.appendToChatLogLocked("USER", originalPrompt)
 
 	// Reset stopCh for this request
 	select {
@@ -452,16 +526,25 @@ func (s *Session) SendAsync(ctx context.Context, prompt string) error {
 		}
 	}
 
+	// Save original prompt for chat log (before modification)
+	originalPrompt := prompt
+
 	// Prepend idle signaling instruction at the top of the prompt
 	// This instruction tells the agent to signal when it's done processing
 	idleSignal := fmt.Sprintf("IMPORTANT: When you have completed processing this request and are ready for the next prompt, you MUST signal idle by running:\necho idle | 9p write agent/%s/state\n", s.id)
 
+	// Instruction to write final response summary to 'out' file
+	outInstruction := fmt.Sprintf("IMPORTANT: After completing your work, you MUST write a comprehensive summary by running:\necho 'your summary here' | 9p write agent/%s/out\n\nThe summary MUST include:\n- Your ACTUAL complete response text (the full message sent to the user)\n- All tool usages (bash commands, file operations, etc.)\n- All files read and written\n- Key diffs or changes made\n\nDo NOT just write a meta-description - include the actual response content!\n", s.id)
+
 	// Prepend context if set (skip for slash commands)
 	if s.context != "" && !strings.HasPrefix(prompt, "/") {
-		prompt = idleSignal + "\n" + s.context + "\n\n" + prompt
+		prompt = idleSignal + "\n" + outInstruction + "\n" + s.context + "\n\n" + prompt
 	} else if !strings.HasPrefix(prompt, "/") {
-		prompt = idleSignal + "\n" + prompt
+		prompt = idleSignal + "\n" + outInstruction + "\n" + prompt
 	}
+
+	// Log user prompt to chat log (already holding lock)
+	s.appendToChatLogLocked("USER", originalPrompt)
 
 	// Set state to running before sending
 	s.state = "running"

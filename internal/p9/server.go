@@ -30,7 +30,8 @@ agent/
     {session-id}/
         ctl             (write) "stop", "restart", "kill", "refresh"
         in              (write) send prompt (non-blocking, validates and returns immediately)
-        out             (read)  response from last prompt
+        out             (write) bot writes final response summary here
+        log             (read)  full chat history (USER:/ASSISTANT: with --- separators)
         state           (read)  "starting", "idle", "running", "stopped", "error", "exited"
         pid             (read)  process id
         cwd             (read)  working directory
@@ -64,6 +65,7 @@ const (
 	fileCtl = iota
 	fileIn
 	fileOut
+	fileLog
 	fileState
 	filePid
 	fileCwd
@@ -73,7 +75,7 @@ const (
 	fileCount
 )
 
-var fileNames = []string{"ctl", "in", "out", "state", "pid", "cwd", "alias", "backend", "context"}
+var fileNames = []string{"ctl", "in", "out", "log", "state", "pid", "cwd", "alias", "backend", "context"}
 
 type Server struct {
 	mgr        *session.Manager
@@ -430,6 +432,20 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
+	// /{id}/out - bot writes final response summary here (appends to chat log)
+	if len(parts) == 3 && parts[2] == "out" {
+		sess := s.mgr.Get(parts[1])
+		if sess == nil {
+			return errFcall(fc, "session not found")
+		}
+
+		if tmuxSess, ok := sess.(*tmux.Session); ok {
+			// Append assistant response to chat log
+			tmuxSess.AppendToChatLog("ASSISTANT", input)
+		}
+		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
+	}
+
 	// /{id}/state - set session state (with validation)
 	if len(parts) == 3 && parts[2] == "state" {
 		sess := s.mgr.Get(parts[1])
@@ -499,7 +515,7 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 		}
 		for i, name := range fileNames {
 			mode := uint32(0444)
-			if name == "ctl" || name == "in" {
+			if name == "ctl" || name == "in" || name == "out" {
 				mode = 0222
 			} else if name == "alias" || name == "context" || name == "state" {
 				mode = 0644
@@ -565,6 +581,12 @@ func (s *Server) getSessionFile(sess backend.Session, idx int) string {
 			// We don't have a direct Output() method anymore
 			// This would need to be stored separately if needed
 			_ = tmuxSess
+		}
+		return ""
+	case fileLog:
+		// Full chat history (USER:/ASSISTANT: with --- separators)
+		if tmuxSess, ok := sess.(*tmux.Session); ok {
+			return tmuxSess.GetChatLog()
 		}
 		return ""
 	case fileState:
