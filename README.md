@@ -205,7 +205,7 @@ Type `Assist` in Acme and middle-click to open the `/AnviLLM/` session manager.
 
 ### Commands
 
-**Main window** (`/AnviLLM/`) tag: `Get Attach Stop Restart Kill Alias Context Daemon Sandbox`
+**Main window** (`/AnviLLM/`) tag: `Get Attach Stop Restart Kill Alias Context Log Daemon Sandbox`
 
 | Command | Description |
 |---------|-------------|
@@ -217,6 +217,7 @@ Type `Assist` in Acme and middle-click to open the `/AnviLLM/` session manager.
 | `Attach <id>` | Open tmux terminal |
 | `Alias <id> <name>` | Name a session |
 | `Context <id>` | Edit context (prepended to prompts) |
+| `Log <id>` | View session log |
 | `Daemon` | Manage anvilsrv daemon (start/stop/status) |
 | `Sandbox` | Configure sandbox settings |
 

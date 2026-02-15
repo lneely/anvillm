@@ -92,7 +92,7 @@ func main() {
 	defer w.CloseFiles()
 
 	w.Name(windowName)
-	w.Write("tag", []byte("Get Attach Stop Restart Kill Alias Context Daemon Sandbox "))
+	w.Write("tag", []byte("Get Attach Stop Restart Kill Alias Context Log Daemon Sandbox "))
 	refreshList(w)
 	w.Ctl("clean")
 
@@ -220,6 +220,19 @@ func main() {
 				}
 				if err := openContextWindow(sess); err != nil {
 					fmt.Fprintf(os.Stderr, "Error opening context window: %v\n", err)
+				}
+			case "Log":
+				if arg == "" {
+					fmt.Fprintf(os.Stderr, "Usage: Log <session-id>\n")
+					continue
+				}
+				sess, err := getSession(arg)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Session not found: %s\n", arg)
+					continue
+				}
+				if err := openLogWindow(sess); err != nil {
+					fmt.Fprintf(os.Stderr, "Error opening log window: %v\n", err)
 				}
 			case "Sandbox":
 				if err := openSandboxWindow(); err != nil {
@@ -589,6 +602,57 @@ func openContextWindow(sess *SessionInfo) error {
 	w.Ctl("clean")
 
 	go handleContextWindow(w, sess)
+	return nil
+}
+
+func openLogWindow(sess *SessionInfo) error {
+	go func() {
+		displayName := sess.Alias
+		if displayName == "" {
+			displayName = sess.ID
+		}
+
+		w, err := acme.New()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating log window: %v\n", err)
+			return
+		}
+		defer w.CloseFiles()
+		
+		w.Name(fmt.Sprintf("/AnviLLM/Log.%s", displayName))
+		w.Ctl("clean")
+
+		// Stream log using external command
+		logPath := fmt.Sprintf("agent/%s/log", sess.ID)
+		cmd := exec.Command("9p", "read", logPath)
+		
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating pipe: %v\n", err)
+			return
+		}
+		
+		if err := cmd.Start(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error starting 9p read: %v\n", err)
+			return
+		}
+		
+		// Stream output to window
+		buf := make([]byte, 8192)
+		for {
+			n, err := stdout.Read(buf)
+			if n > 0 {
+				w.Addr("$")
+				w.Write("data", buf[:n])
+				w.Ctl("clean")
+			}
+			if err != nil {
+				break
+			}
+		}
+		
+		cmd.Wait()
+	}()
 	return nil
 }
 
