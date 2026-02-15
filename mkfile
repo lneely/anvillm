@@ -7,6 +7,8 @@ build:V:
 	go build -o $INSTALL_PATH/Assist ./cmd/Assist
 	go build -o $INSTALL_PATH/anvillm ./cmd/anvillm
 	go build -o $INSTALL_PATH/anvilweb ./cmd/anvilweb
+	cp scripts/Alog $INSTALL_PATH/Alog
+	chmod 0755 $INSTALL_PATH/Alog
 	mkdir -p $INSTALL_PATH/Workflows
 	cp scripts/DevReview $INSTALL_PATH/Workflows/DevReview
 	chmod 0755 $INSTALL_PATH/Workflows/DevReview

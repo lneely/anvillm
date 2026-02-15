@@ -1,0 +1,28 @@
+#!/usr/bin/env rc
+
+# Alog - Stream AnviLLM session log to Acme window
+
+if(~ $#* 1) {
+	sess=$1
+
+	# Get alias for display name
+	alias=`{9p read agent/$sess/alias >[2]/dev/null}
+	if(~ $alias '') {
+		name=$sess
+	}
+	if not {
+		name=$alias
+	}
+
+	# Create window and get its ID
+	winid=`{9p read acme/new/ctl | awk '{print $1}'}
+	echo name /AnviLLM/Log.$name | 9p write acme/$winid/ctl
+	echo clean | 9p write acme/$winid/ctl
+
+	# Stream log to window
+	9p read agent/$sess/log | 9p write acme/$winid/data
+}
+if not {
+	echo 'Usage: Alog <session-id>' >[1=2]
+	exit 1
+}
