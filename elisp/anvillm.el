@@ -63,6 +63,33 @@
           (buffer-string)
         (error "Failed to read %s: %s" path (buffer-string))))))
 
+(defun anvillm--9p-read-nonblocking (path callback)
+  "Read from 9P filesystem PATH asynchronously, calling CALLBACK with data.
+The process is killed after the first read to prevent blocking on streaming files."
+  (let* ((buffer (generate-new-buffer " *9p-read*"))
+         (proc (start-process "9p-read" buffer anvillm-9p-command "read" path)))
+    (set-process-filter
+     proc
+     (lambda (process output)
+       (when (buffer-live-p (process-buffer process))
+         (with-current-buffer (process-buffer process)
+           (goto-char (point-max))
+           (insert output)))
+       ;; Kill process after receiving data to prevent blocking
+       (delete-process process)
+       (when (buffer-live-p buffer)
+         (with-current-buffer buffer
+           (funcall callback (buffer-string)))
+         (kill-buffer buffer))))
+    (set-process-sentinel
+     proc
+     (lambda (process event)
+       (when (buffer-live-p (process-buffer process))
+         (let ((buffer (process-buffer process)))
+           (with-current-buffer buffer
+             (funcall callback (buffer-string)))
+           (kill-buffer buffer)))))))
+
 (defun anvillm--9p-write (path data)
   "Write DATA to 9P filesystem PATH using the 9p command."
   (with-temp-buffer
@@ -243,6 +270,7 @@ Format: id alias state pid cwd (whitespace-separated; often tabs)."
 Keybindings:
 s - Start new session (select backend)
 p - Compose prompt in buffer (C-c C-c to send, C-c C-k to abort)
+l - View session log (press 'r' to refresh, 'q' to close)
 t - Stop selected session
 R - Restart selected session
 K - Kill selected session
@@ -285,6 +313,7 @@ Backends:
     (define-key map (kbd "A") #'anvillm-set-alias)
     (define-key map (kbd "a") #'anvillm-attach-session)
     (define-key map (kbd "p") #'anvillm-compose-prompt)
+    (define-key map (kbd "l") #'anvillm-view-log)
     (define-key map (kbd "r") #'anvillm-refresh)
     (define-key map (kbd "g") #'anvillm-refresh)
     (define-key map (kbd "d") #'anvillm-daemon-status)
@@ -361,6 +390,107 @@ Backends:
          (message "Failed to attach to session: %s" (error-message-string err))))
     (message "No session selected")))
 
+(defvar-local anvillm--log-session-id nil
+  "Session ID for the current log buffer.")
+
+(defvar-local anvillm--log-process nil
+  "Process streaming log data for the current buffer.")
+
+(defvar anvillm-log-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "r") #'anvillm-log-refresh)
+    (define-key map (kbd "g") #'anvillm-log-refresh)
+    (define-key map (kbd "q") #'quit-window)
+    map)
+  "Keymap for AnviLLM log mode.")
+
+(define-derived-mode anvillm-log-mode special-mode "AnviLLM-Log"
+  "Major mode for viewing AnviLLM session logs.
+
+\\{anvillm-log-mode-map}"
+  (setq buffer-read-only t)
+  (setq header-line-format
+        (substitute-command-keys
+         "AnviLLM Log (streaming). Refresh: \\[anvillm-log-refresh] | Quit: \\[quit-window]"))
+  ;; Kill the streaming process when buffer is killed
+  (add-hook 'kill-buffer-hook
+            (lambda ()
+              (when (and anvillm--log-process
+                        (process-live-p anvillm--log-process))
+                (delete-process anvillm--log-process)))
+            nil t))
+
+(defun anvillm-view-log ()
+  "View the log for the selected session."
+  (interactive)
+  (if-let ((session-id (anvillm--get-selected-session)))
+      (let* ((session-info (anvillm--get-session-info session-id))
+             (display-name (or (plist-get session-info :alias)
+                              (substring session-id 0 (min 8 (length session-id)))))
+             (buffer-name (format "*AnviLLM Log: %s*" display-name))
+             (buffer (get-buffer-create buffer-name)))
+        (with-current-buffer buffer
+          (anvillm-log-mode)
+          (setq anvillm--log-session-id session-id)
+          (anvillm--refresh-log-buffer))
+        (pop-to-buffer buffer))
+    (message "No session selected")))
+
+(defun anvillm--refresh-log-buffer ()
+  "Refresh the log content in the current buffer by starting a streaming read."
+  (unless anvillm--log-session-id
+    (error "No session ID associated with this buffer"))
+  
+  ;; Kill existing process if any
+  (when (and anvillm--log-process
+            (process-live-p anvillm--log-process))
+    (delete-process anvillm--log-process))
+  
+  (let ((inhibit-read-only t)
+        (log-buffer (current-buffer)))
+    (erase-buffer)
+    (insert "Loading log...\n")
+    
+    ;; Start streaming process
+    (let* ((path (concat anvillm-agent-path "/" anvillm--log-session-id "/log"))
+           (proc (start-process "9p-log-stream" log-buffer anvillm-9p-command "read" path)))
+      
+      (setq anvillm--log-process proc)
+      
+      (set-process-filter
+       proc
+       (lambda (process output)
+         (when (buffer-live-p log-buffer)
+           (with-current-buffer log-buffer
+             (let ((inhibit-read-only t)
+                   (at-end (= (point) (point-max))))
+               ;; Clear "Loading log..." on first output
+               (when (save-excursion
+                       (goto-char (point-min))
+                       (looking-at "Loading log..."))
+                 (erase-buffer))
+               ;; Insert new output
+               (goto-char (point-max))
+               (insert output)
+               ;; Auto-scroll if we were at the end
+               (when at-end
+                 (goto-char (point-max))))))))
+      
+      (set-process-sentinel
+       proc
+       (lambda (process event)
+         (when (buffer-live-p log-buffer)
+           (with-current-buffer log-buffer
+             (let ((inhibit-read-only t))
+               (when (and (= (point-min) (point-max))
+                         (not (string-match-p "^run" event)))
+                 (insert "No log output yet.\n"))))))))))
+
+(defun anvillm-log-refresh ()
+  "Refresh the log content."
+  (interactive)
+  (anvillm--refresh-log-buffer)
+  (message "Log refreshed"))
 
 (defvar-local anvillm--prompt-session-id nil
   "Session ID for the current prompt buffer.")
@@ -397,7 +527,7 @@ Backends:
           (insert (format ";; Backend: %s\n" (plist-get session-info :backend)))
           (insert (format ";; State: %s\n\n" (plist-get session-info :state)))
           (insert ";; Type your prompt below (comments will be stripped).\n")
-          (insert ";; Press C-c C-c to send, C-c C-k to abort.\n\n")
+          (insert ";; Press C-c C-c to send, C-c C-k to abort.\n\n"))
         (pop-to-buffer buffer)
         (goto-char (point-max)))
     (message "No session selected")))
