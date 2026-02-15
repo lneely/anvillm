@@ -361,49 +361,6 @@ Flag in session creation: `echo 'new claude /project ephemeral' | 9p write agent
 
 Daemon marks session as ephemeral. When backend exits cleanly (not crash), transition to `stopped` or `exited` instead of auto-restart. Optionally auto-cleanup after N seconds.
 
-## Fan-Out Workflows
-
-Send a prompt to multiple bots, collect responses, process them.
-
-### Pattern
-
-1. Sender writes to multiple `in` files (fan-out)
-2. Receivers process, write to their `out`, enter `await`
-3. Sender polls status files, waits for all to reach `await` (or `idle`?)
-4. Sender reads all `out` files (fan-in)
-5. Sender summarizes/processes responses, continues workflow
-
-### Example: Dev → {Security Auditor, Code Reviewer}
-
-```
-dev writes to security/in: "audit this change"
-dev writes to reviewer/in: "review this change"
-dev polls security/state and reviewer/state
-when both == "await":
-    dev reads security/out
-    dev reads reviewer/out
-    dev processes feedback, applies changes
-```
-
-### Coordination
-
-- **Manual**: orchestrator script polls status, issues prompts
-- **Conductor bot**: LLM-driven coordination (see Conductor Bot idea)
-- **Built-in**: daemon could support fan-out primitives (write to multiple sessions atomically, block until all respond)
-
-### FIFO Semantics
-
-`out` as FIFO: write buffers until read, next write clears previous. Orchestrator must read before next write or data is lost. That's a coordination bug, not a mechanism problem - orchestrator owns sequencing.
-
-### Status: `await` vs `idle`
-
-- **`await`**: bot has written to `out`, waiting for consumer to read
-- **`idle`**: bot is ready for next prompt
-
-If we use `await`, transition back to `idle` happens when orchestrator reads `out` (or after timeout?). If we use `idle`, orchestrator must track "has this bot written output since I last read?" separately.
-
-`await` is cleaner - explicit signal that output is ready.
-
 ## Context Utilization State
 
 Daemon polls backend for context usage and exposes it via `agent/{session}/usage`.
