@@ -36,6 +36,7 @@ type Session struct {
 	// Chat log: persistent conversation history (USER/ASSISTANT)
 	chatLog     bytes.Buffer
 	chatLogSize int64 // tracks size to enforce 2MB limit
+	logWaiters  []chan struct{} // notify when new log data arrives
 
 	commands       backend.CommandHandler
 	startupHandler StartupHandler
@@ -126,6 +127,12 @@ func (s *Session) appendToChatLogLocked(role, content string) {
 	// Append new message
 	s.chatLog.WriteString(msg)
 	s.chatLogSize += msgSize
+
+	// Notify all waiting readers
+	for _, ch := range s.logWaiters {
+		close(ch)
+	}
+	s.logWaiters = nil
 }
 
 // AppendToChatLog appends a message to the chat log with role prefix and separator.
@@ -141,6 +148,28 @@ func (s *Session) GetChatLog() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.chatLog.String()
+}
+
+// GetChatLogFrom returns chat log data starting from offset.
+// Returns (data, hasMore) where hasMore indicates if there's more data available.
+func (s *Session) GetChatLogFrom(offset int64) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	logData := s.chatLog.String()
+	if offset >= int64(len(logData)) {
+		return "", false
+	}
+	return logData[offset:], true
+}
+
+// WaitForLogData returns a channel that will be closed when new log data arrives.
+// The caller should check the current log size before waiting.
+func (s *Session) WaitForLogData() <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ch := make(chan struct{})
+	s.logWaiters = append(s.logWaiters, ch)
+	return ch
 }
 
 func (s *Session) Metadata() backend.SessionMetadata {

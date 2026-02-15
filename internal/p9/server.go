@@ -30,8 +30,8 @@ agent/
     {session-id}/
         ctl             (write) "stop", "restart", "kill", "refresh"
         in              (write) send prompt (non-blocking, validates and returns immediately)
-        out             (write) bot writes final response summary here
-        log             (read)  full chat history (USER:/ASSISTANT: with --- separators)
+        out             (write) bot writes response summary (includes actual response + tool usage summary)
+        log             (read)  streaming chat history (USER:/ASSISTANT: with --- separators, blocks like tail -f)
         state           (read)  "starting", "idle", "running", "stopped", "error", "exited"
         pid             (read)  process id
         cwd             (read)  working directory
@@ -287,10 +287,18 @@ func (s *Server) read(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	if f.qid.Type&QTDir != 0 {
 		data = s.readDir(f.path, fc.Offset, fc.Count)
 	} else {
-		content := s.readFile(f.path)
-		if fc.Offset < uint64(len(content)) {
-			end := min(int(fc.Offset)+int(fc.Count), len(content))
-			data = []byte(content[fc.Offset:end])
+		// Check if this is a log file for streaming behavior
+		parts := strings.SplitN(f.path, "/", 3)
+		isLogFile := len(parts) == 3 && parts[2] == "log"
+		
+		if isLogFile {
+			data = s.readLogFile(parts[1], fc.Offset, fc.Count)
+		} else {
+			content := s.readFile(f.path)
+			if fc.Offset < uint64(len(content)) {
+				end := min(int(fc.Offset)+int(fc.Count), len(content))
+				data = []byte(content[fc.Offset:end])
+			}
 		}
 	}
 
@@ -541,6 +549,39 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 	}
 	end := min(int(offset)+int(count), len(data))
 	return data[offset:end]
+}
+
+func (s *Server) readLogFile(sessionID string, offset uint64, count uint32) []byte {
+	sess := s.mgr.Get(sessionID)
+	if sess == nil {
+		return nil
+	}
+
+	tmuxSess, ok := sess.(*tmux.Session)
+	if !ok {
+		return nil
+	}
+
+	// Try to read from current offset
+	logData, hasMore := tmuxSess.GetChatLogFrom(int64(offset))
+	if hasMore && len(logData) > 0 {
+		// Return available data
+		end := min(int(count), len(logData))
+		return []byte(logData[:end])
+	}
+
+	// No data available at this offset, wait for new data
+	waitCh := tmuxSess.WaitForLogData()
+	<-waitCh
+	
+	// Check again after new data arrived
+	logData, hasMore = tmuxSess.GetChatLogFrom(int64(offset))
+	if hasMore && len(logData) > 0 {
+		end := min(int(count), len(logData))
+		return []byte(logData[:end])
+	}
+	
+	return nil
 }
 
 func (s *Server) readFile(path string) string {
