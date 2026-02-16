@@ -127,12 +127,13 @@ func (m *Manager) processMailboxes() {
 	}
 	m.mu.RUnlock()
 	
-	// 1. Deliver outbound messages
-	for _, sess := range sessions {
-		if m.mailManager.HasOutbox(sess.ID()) {
-			msg, err := m.mailManager.ReadOutbox(sess.ID())
+	// 1. Deliver outbound messages (from sessions and user)
+	allSenders := append([]string{"user"}, m.List()...)
+	for _, senderID := range allSenders {
+		if m.mailManager.HasOutbox(senderID) {
+			msg, err := m.mailManager.ReadOutbox(senderID)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error reading outbox for %s: %v\n", sess.ID(), err)
+				fmt.Fprintf(os.Stderr, "Error reading outbox for %s: %v\n", senderID, err)
 				continue
 			}
 			
@@ -143,7 +144,23 @@ func (m *Manager) processMailboxes() {
 		}
 	}
 	
-	// 2. Process inbound messages for idle sessions
+	// 2. Process user inbox - write to sender's log
+	userMessages, _ := m.mailManager.GetPendingMessages("user")
+	for _, msg := range userMessages {
+		// Move to completed
+		if err := m.mailManager.CompleteMessage("user", msg.ID); err != nil {
+			continue
+		}
+		
+		// Write human-readable output to sender's log
+		if senderSess := m.Get(msg.From); senderSess != nil {
+			if tmuxSess, ok := senderSess.(*tmux.Session); ok {
+				tmuxSess.AppendToChatLog("ASSISTANT", msg.Body)
+			}
+		}
+	}
+	
+	// 3. Process inbound messages for idle sessions
 	for _, sess := range sessions {
 		if sess.State() == "idle" {
 			messages, err := m.mailManager.GetPendingMessages(sess.ID())
@@ -174,7 +191,7 @@ func (m *Manager) processMailboxes() {
 							message.ID, message.From, s.ID(), message.Subject, message.Body)
 						
 						// Notify sender via their chat log (visible to human)
-						if message.From != "" {
+						if message.From != "" && message.From != "user" {
 							if senderSess := m.Get(message.From); senderSess != nil {
 								if tmuxSess, ok := senderSess.(*tmux.Session); ok {
 									notification := fmt.Sprintf("\n[DELIVERY FAILURE]\nFailed to deliver message to %s after 3 attempts.\nSubject: %s\nBody: %s\n\n", 

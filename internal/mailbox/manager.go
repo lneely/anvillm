@@ -17,11 +17,16 @@ type Manager struct {
 
 // NewManager creates a new mailbox manager
 func NewManager() *Manager {
-	return &Manager{
+	m := &Manager{
 		inboxes:   make(map[string][]*Message),
 		outboxes:  make(map[string][]*Message),
 		completed: make(map[string][]*Message),
 	}
+	// Initialize user mailbox
+	m.inboxes["user"] = []*Message{}
+	m.outboxes["user"] = []*Message{}
+	m.completed["user"] = []*Message{}
+	return m
 }
 
 // EnsureMailbox initializes mailbox for a session (no-op for in-memory)

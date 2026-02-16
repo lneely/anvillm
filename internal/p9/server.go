@@ -28,6 +28,10 @@ Filesystem layout:
 agent/
     ctl                 (write) "new <backend> <cwd>" creates session, returns id
     list                (read)  list sessions: "id alias state pid cwd"
+    user/               (dir)   special user mailbox (singleton)
+        inbox/          (dir)   messages FROM bots TO user
+        outbox/         (dir)   messages FROM user TO bots
+        completed/      (dir)   processed messages
     {session-id}/
         ctl             (write) "stop", "restart", "kill", "refresh"
         in              (write) send prompt (non-blocking, validates and returns immediately)
@@ -40,11 +44,12 @@ agent/
         backend         (read)  backend name (e.g., "kiro-cli", "claude")
         context         (r/w)   text prepended to every prompt
 
-Bot-to-bot communication:
-    Any bot can discover peers via agent/list (shows id, alias, state).
-    To talk to a peer: write prompt to agent/{peer-id}/in, read agent/{peer-id}/out.
-    Use aliases (e.g., "reviewer", "dev") so bots can find each other by role.
-    Set context to inject peer awareness: echo "You are dev. Peer reviewer is at agent/abc123" > agent/{id}/context
+Communication:
+    All communication goes through mailboxes (outbox -> inbox).
+    "user" is a special participant (not a session).
+    bot -> user: bot writes to its outbox with to="user"
+    user -> bot: user writes to user/outbox with to="{session-id}"
+    When processing user inbox, message body is written to sender's log file.
 */
 
 const (
@@ -57,6 +62,10 @@ const (
 	qidRoot = iota
 	qidCtl
 	qidList
+	qidUser                      // user directory
+	qidUserInbox                 // user/inbox
+	qidUserOutbox                // user/outbox
+	qidUserCompleted             // user/completed
 	qidSessionBase   = 1000
 	qidPeersBase     = 0x10000000 // peers/{id}/file
 	qidInboxBase     = 0x20000000 // session/{id}/inbox
@@ -242,6 +251,9 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			case "list":
 				qid = plan9.Qid{Type: QTFile, Path: qidList}
 				newPath = "/list"
+			case "user":
+				qid = plan9.Qid{Type: QTDir, Path: qidUser}
+				newPath = "/user"
 			default:
 				// Check if it's a session ID
 				if sess := s.mgr.Get(name); sess != nil {
@@ -251,6 +263,25 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 					return errFcall(fc, "not found")
 				}
 			}
+		} else if path == "/user" {
+			// Inside user directory - only mailbox subdirs
+			switch name {
+			case "inbox":
+				qid = plan9.Qid{Type: QTDir, Path: qidUserInbox}
+				newPath = "/user/inbox"
+			case "outbox":
+				qid = plan9.Qid{Type: QTDir, Path: qidUserOutbox}
+				newPath = "/user/outbox"
+			case "completed":
+				qid = plan9.Qid{Type: QTDir, Path: qidUserCompleted}
+				newPath = "/user/completed"
+			default:
+				return errFcall(fc, "not found")
+			}
+		} else if strings.HasPrefix(path, "/user/") && strings.Count(path, "/") == 2 {
+			// Inside user mailbox directory - message files
+			qid = plan9.Qid{Type: QTFile, Path: qidMessageBase + hashID("user"+path[6:]+name)}
+			newPath = path + "/" + name
 		} else if strings.Count(path, "/") == 1 && path != "/" {
 			// Inside a session directory
 			sessID := strings.TrimPrefix(path, "/")
@@ -323,13 +354,15 @@ func (s *Server) create(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return errFcall(fc, "bad fid")
 	}
 	
-	// Only allow creating files in outbox directory
+	// Allow creating files in outbox directories (session or user)
 	parts := strings.Split(strings.TrimPrefix(f.path, "/"), "/")
-	if len(parts) != 2 || parts[1] != "outbox" {
+	isUserOutbox := f.path == "/user/outbox"
+	isSessionOutbox := len(parts) == 2 && parts[1] == "outbox"
+	
+	if !isUserOutbox && !isSessionOutbox {
 		return errFcall(fc, "can only create files in outbox")
 	}
 	
-	sessID := parts[0]
 	fileName := fc.Name
 	
 	// Must be a .json file
@@ -339,7 +372,13 @@ func (s *Server) create(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	
 	// Create new message file
 	newPath := f.path + "/" + fileName
-	qid := plan9.Qid{Type: QTFile, Path: qidMessageBase + hashID(sessID+"outbox"+fileName)}
+	var hashKey string
+	if isUserOutbox {
+		hashKey = "user" + "outbox" + fileName
+	} else {
+		hashKey = parts[0] + "outbox" + fileName
+	}
+	qid := plan9.Qid{Type: QTFile, Path: qidMessageBase + hashID(hashKey)}
 	
 	f.qid = qid
 	f.path = newPath
@@ -609,6 +648,30 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
+	// /user/outbox/msg-*.json - write message from user to bot
+	if len(parts) == 3 && parts[0] == "user" && parts[1] == "outbox" && strings.HasSuffix(parts[2], ".json") {
+		// Parse JSON message
+		msg, err := mailbox.FromJSON(fc.Data)
+		if err != nil {
+			return errFcall(fc, fmt.Sprintf("invalid message JSON: %v", err))
+		}
+		
+		// Set from field to "user"
+		msg.From = "user"
+		
+		// Add to user's outbox
+		mailMgr := s.mgr.GetMailManager()
+		if mailMgr == nil {
+			return errFcall(fc, "mailbox not available")
+		}
+		
+		if err := mailMgr.AddToOutbox("user", msg); err != nil {
+			return errFcall(fc, fmt.Sprintf("failed to add message: %v", err))
+		}
+		
+		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
+	}
+
 	return errFcall(fc, "read-only")
 }
 
@@ -637,11 +700,55 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 			Qid: plan9.Qid{Type: QTFile, Path: qidList}, Mode: 0444, Name: "list",
 			Uid: "q", Gid: "q", Muid: "q",
 		})
+		dirs = append(dirs, plan9.Dir{
+			Qid:  plan9.Qid{Type: QTDir, Path: qidUser},
+			Mode: plan9.DMDIR | 0555, Name: "user", Uid: "q", Gid: "q", Muid: "q",
+		})
 		for _, id := range s.mgr.List() {
 			dirs = append(dirs, plan9.Dir{
 				Qid:  plan9.Qid{Type: QTDir, Path: qidSessionBase + hashID(id)},
 				Mode: plan9.DMDIR | 0555, Name: id, Uid: "q", Gid: "q", Muid: "q",
 			})
+		}
+	} else if path == "/user" {
+		// User directory - only mailbox subdirs
+		dirs = append(dirs, plan9.Dir{
+			Qid:  plan9.Qid{Type: QTDir, Path: qidUserInbox},
+			Mode: plan9.DMDIR | 0555, Name: "inbox", Uid: "q", Gid: "q", Muid: "q",
+		})
+		dirs = append(dirs, plan9.Dir{
+			Qid:  plan9.Qid{Type: QTDir, Path: qidUserOutbox},
+			Mode: plan9.DMDIR | 0755, Name: "outbox", Uid: "q", Gid: "q", Muid: "q",
+		})
+		dirs = append(dirs, plan9.Dir{
+			Qid:  plan9.Qid{Type: QTDir, Path: qidUserCompleted},
+			Mode: plan9.DMDIR | 0555, Name: "completed", Uid: "q", Gid: "q", Muid: "q",
+		})
+	} else if strings.HasPrefix(path, "/user/") && strings.Count(path, "/") == 2 {
+		// User mailbox directory (inbox/outbox/completed)
+		mailboxType := strings.TrimPrefix(path, "/user/")
+		
+		mailMgr := s.mgr.GetMailManager()
+		if mailMgr != nil {
+			var messages []*mailbox.Message
+			if mailboxType == "inbox" {
+				messages = mailMgr.GetInbox("user")
+			} else if mailboxType == "outbox" {
+				messages = mailMgr.GetOutbox("user")
+			} else if mailboxType == "completed" {
+				messages = mailMgr.GetCompleted("user")
+			}
+			
+			for _, msg := range messages {
+				data, _ := msg.ToJSON()
+				dirs = append(dirs, plan9.Dir{
+					Qid:    plan9.Qid{Type: QTFile, Path: qidMessageBase + hashID("user"+mailboxType+msg.ID)},
+					Mode:   0644,
+					Name:   msg.ID + ".json",
+					Length: uint64(len(data)),
+					Uid:    "q", Gid: "q", Muid: "q",
+				})
+			}
 		}
 	} else if strings.Count(path, "/") == 1 {
 		// Session directory
@@ -782,6 +889,25 @@ func (s *Server) readFile(path string) string {
 	}
 
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	
+	// User message file: /user/mailbox/msg-*.json
+	if len(parts) == 3 && parts[0] == "user" && (parts[1] == "inbox" || parts[1] == "outbox" || parts[1] == "completed") {
+		msgFile := parts[2]
+		msgID := strings.TrimSuffix(msgFile, ".json")
+		
+		mailMgr := s.mgr.GetMailManager()
+		if mailMgr == nil {
+			return ""
+		}
+		
+		msg, err := mailMgr.GetMessage("user", msgID)
+		if err != nil {
+			return ""
+		}
+		
+		data, _ := msg.ToJSON()
+		return string(data)
+	}
 	
 	// Message file: /sessID/mailbox/msg-*.json
 	if len(parts) == 3 && (parts[1] == "inbox" || parts[1] == "outbox" || parts[1] == "completed") {
