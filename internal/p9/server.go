@@ -646,13 +646,11 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			return errFcall(fc, fmt.Sprintf("failed to add message: %v", err))
 		}
 		
-		// Transition sender to idle when sending to a peer agent (not user)
-		// This allows the sender to receive responses without explicit STATUS_UPDATE
-		if msg.To != "user" {
-			if sess := s.mgr.Get(sessID); sess != nil {
-				if tmuxSess, ok := sess.(*tmux.Session); ok {
-					tmuxSess.SetState("idle")
-				}
+		// Transition sender to idle after sending any outbox message
+		// This allows the sender to receive responses and prevents getting stuck in "running"
+		if sess := s.mgr.Get(sessID); sess != nil {
+			if tmuxSess, ok := sess.(*tmux.Session); ok {
+				tmuxSess.SetState("idle")
 			}
 		}
 		
