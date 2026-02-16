@@ -183,25 +183,24 @@ EOF
 9p ls agent/$DEV_ID/inbox/
 ```
 
-### MANDATORY: Signaling Completion to User
+### Signaling to User (MANDATORY)
 
-**IMPORTANT: You MUST ALWAYS send a STATUS_UPDATE to user when your task is complete.** This is required for every task - the user needs to know what you did.
-
-When done with a task, send a STATUS_UPDATE to user (this also sets you to idle):
+**You MUST send a STATUS_UPDATE to user at the end of EVERY interaction**, not just when the overall task is complete. This keeps the user informed of progress at each step.
 
 ```bash
 cat > /tmp/msg.json <<'EOF'
-{"to":"user","type":"STATUS_UPDATE","subject":"Done","body":"Completed the requested task. Key changes: ..."}
+{"to":"user","type":"STATUS_UPDATE","subject":"Response","body":"Summary of what was done in THIS interaction"}
 EOF
 9p write agent/{your_id}/outbox/msg-$(date +%s).json < /tmp/msg.json
 ```
 
-The body MUST include:
-- A summary of what was accomplished
-- Key actions taken or changes made
-- Any relevant details the user needs to know
+Examples of when to send STATUS_UPDATE to user:
+- After implementing changes and sending a review request (before waiting for reviewer)
+- After receiving reviewer feedback and making requested changes
+- After completing the final step of a task
+- After answering a question or providing information
 
-**Never finish a task without sending this status update to the user.**
+The body should summarize the key actions taken in that specific interaction.
 
 ## Important Notes
 
@@ -222,7 +221,7 @@ The body MUST include:
 3. **Clear Instructions**: Include reply address in your message
 4. **Error Handling**: Check that grep finds exactly one agent when expecting a specific peer
 5. **Aliases**: Use meaningful aliases to identify agents by role
-6. **MANDATORY - Signal Completion**: You MUST send a STATUS_UPDATE to user when your task is complete. This is NOT optional - every task must end with a user notification.
+6. **Status Updates**: Send STATUS_UPDATE to user at the end of EVERY interaction (not just task completion)
 
 ## Troubleshooting
 
