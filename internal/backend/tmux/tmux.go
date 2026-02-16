@@ -9,9 +9,14 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	"9fans.net/go/plan9/client"
 )
 
 // TmuxSize defines terminal dimensions
@@ -292,12 +297,30 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 	// Find the actual backend process (child of bash shell)
 	pid := 0
 	if panePID != 0 {
-		time.Sleep(500 * time.Millisecond) // Brief delay for backend to start
-		pid = FindBackendPID(panePID)
+		// For kiro-cli, the pane process IS kiro-cli (no bash in between)
+		// Check if pane is kiro-cli directly
+		cmd := exec.Command("ps", "-p", fmt.Sprintf("%d", panePID), "-o", "comm=")
+		if out, err := cmd.Output(); err == nil {
+			comm := strings.TrimSpace(string(out))
+			if comm == "kiro-cli" {
+				pid = panePID
+				debug.Log("[session %s] pane IS kiro-cli (PID: %d)", id, pid)
+			}
+		}
+		
+		// Otherwise, try to find backend as child of bash
+		if pid == 0 {
+			for i := 0; i < 10; i++ {
+				time.Sleep(200 * time.Millisecond)
+				pid = FindBackendPID(panePID)
+				if pid != 0 {
+					debug.Log("[session %s] found backend PID %d (pane PID: %d)", id, pid, panePID)
+					break
+				}
+			}
+		}
 		if pid == 0 {
 			debug.Log("[session %s] warning: backend process not found for pane PID %d", id, panePID)
-		} else {
-			debug.Log("[session %s] found backend PID %d (pane PID: %d)", id, pid, panePID)
 		}
 	}
 
@@ -325,6 +348,14 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 		originalCommandStr: cmdStr,
 	}
 	sess.idleCond = sync.NewCond(&sess.mu)
+
+	// Write session ID to file for hook access (if kiro-cli backend)
+	if b.cfg.Name == "kiro-cli" && pid != 0 {
+		ns := client.Namespace()
+		sessionIDFile := filepath.Join(ns, fmt.Sprintf("anvillm-session-id-%d", pid))
+		os.WriteFile(sessionIDFile, []byte(id), 0644)
+		debug.Log("[session %s] wrote session ID file: %s", id, sessionIDFile)
+	}
 
 	// 10. Start reader goroutine
 	go sess.reader()

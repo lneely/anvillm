@@ -34,7 +34,7 @@ RESEARCH_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
 echo "$ALIAS_NAME" | 9p write $AGENT_MOUNT/$RESEARCH_ID/alias
 
 cat <<EOF | 9p write $AGENT_MOUNT/$RESEARCH_ID/context
-Your job is to research system architecture and code. Use the agent-kb skill to query and update the knowledge base.
+Your job is to provide answers to questions by researching existing knowledge base documents, the web, and the code base.
 
 You are a research agent in a single-agent AnviLLM workflow.
 

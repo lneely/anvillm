@@ -540,14 +540,9 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		if sess == nil {
 			return errFcall(fc, "session not found")
 		}
-		// Use async send to avoid blocking on response
-		if tmuxSess, ok := sess.(*tmux.Session); ok {
-			ctx := context.Background()
-			if err := tmuxSess.SendAsync(ctx, input); err != nil {
-				return errFcall(fc, err.Error())
-			}
-		} else {
-			return errFcall(fc, "async send not supported for this backend")
+		ctx := context.Background()
+		if _, err := sess.Send(ctx, input); err != nil {
+			return errFcall(fc, err.Error())
 		}
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}

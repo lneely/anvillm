@@ -54,7 +54,7 @@ echo "${ALIAS_PREFIX}-techeditor" | 9p write $AGENT_MOUNT/$EDITOR_ID/alias
 
 # Research context
 cat <<EOF | 9p write $AGENT_MOUNT/$RESEARCH_ID/context
-Your job is to research system architecture and code for requested information. Use the agent-kb skill.
+Your job is to provide answers to questions by researching existing knowledge base documents, the web, and the code base.
 
 You are a research agent in a three-agent AnviLLM workflow. Your peers are the architect and techeditor.
 

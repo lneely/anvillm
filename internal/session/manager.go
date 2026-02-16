@@ -164,13 +164,6 @@ func (m *Manager) processMailboxes() {
 			continue
 		}
 		
-		// Check if reserved (prevents race with SendAsync)
-		if tmuxSess, ok := sess.(*tmux.Session); ok {
-			if tmuxSess.IsReserved() {
-				continue
-			}
-		}
-		
 		messages, err := m.mailManager.GetPendingMessages(sess.ID())
 		if err != nil || len(messages) == 0 {
 			continue
@@ -183,7 +176,7 @@ func (m *Manager) processMailboxes() {
 		prompt := fmt.Sprintf("[Message from %s]\nType: %s\nSubject: %s\n\n%s",
 			msg.From, msg.Type, msg.Subject, msg.Body)
 		
-		// Send synchronously - only move to completed after success
+		// Send asynchronously - only move to completed after success
 		_, err = sess.Send(context.Background(), prompt)
 		if err != nil {
 			msg.Retries++

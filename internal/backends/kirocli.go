@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"9fans.net/go/plan9/client"
 )
 
 // NewKiroCLI creates a kiro-cli backend
@@ -19,11 +21,12 @@ import (
 func NewKiroCLI(nsSuffix string) backend.Backend {
 	return tmux.New(tmux.Config{
 		Name:    "kiro-cli",
-		Command: []string{"kiro-cli", "chat", "--trust-all-tools"},
+		Command: []string{"kiro-cli", "chat", "--agent", "anvillm-agent", "--trust-all-tools"},
 		Environment: map[string]string{
-			"TERM":     "xterm-256color",
-			"NO_COLOR": "1",
-			"COLUMNS":  "999",
+			"TERM":      "xterm-256color",
+			"NO_COLOR":  "1",
+			"COLUMNS":   "999",
+			"NAMESPACE": client.Namespace(),
 		},
 		TmuxSize: tmux.TmuxSize{
 			Rows: 40,
@@ -45,6 +48,14 @@ func (i *kiroStateInspector) IsBusy(panePID int) bool {
 	if chatPID == 0 {
 		return false
 	}
+	
+	// Check for done marker from Kiro's stop hook
+	doneMarker := fmt.Sprintf("/tmp/anvillm-kiro-done-%d", chatPID)
+	if _, err := os.Stat(doneMarker); err == nil {
+		// Done marker exists - agent is truly idle
+		return false
+	}
+	
 	// Check if kiro-cli-chat has any children (tool executions)
 	cmd := exec.Command("pgrep", "-P", fmt.Sprintf("%d", chatPID))
 	if cmd.Run() == nil {

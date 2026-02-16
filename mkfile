@@ -16,6 +16,8 @@ build:V:
 	chmod 0755 $INSTALL_PATH/Workflows/*
 	mkdir -p $HOME/.config/anvillm
 	cp -rf cfg/* $HOME/.config/anvillm/
+	mkdir -p $HOME/.kiro/agents
+	cp agents/* $HOME/.kiro/agents/
 
 install:V: build
 

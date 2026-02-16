@@ -3,6 +3,7 @@ package tmux
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -149,6 +150,16 @@ func FindKiroChatPID(panePID int) int {
 		return 0
 	}
 	return FindChildByName(kiroPID, "kiro-cli-chat")
+}
+
+// ClearKiroDoneMarker removes the done marker file for a kiro-cli session
+func ClearKiroDoneMarker(panePID int) {
+	chatPID := FindKiroChatPID(panePID)
+	if chatPID == 0 {
+		return
+	}
+	doneMarker := fmt.Sprintf("/tmp/anvillm-kiro-done-%d", chatPID)
+	os.Remove(doneMarker) // ignore errors - file may not exist
 }
 
 // FindChildByName finds a child process with the given name
