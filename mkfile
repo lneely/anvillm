@@ -9,6 +9,8 @@ build:V:
 	go build -o $INSTALL_PATH/anvilweb ./cmd/anvilweb
 	cp scripts/Alog $INSTALL_PATH/Alog
 	chmod 0755 $INSTALL_PATH/Alog
+	cp scripts/anvillm-skills $INSTALL_PATH/anvillm-skills
+	chmod 0755 $INSTALL_PATH/anvillm-skills
 	mkdir -p $INSTALL_PATH/Workflows
 	cp workflows/* $INSTALL_PATH/Workflows
 	chmod 0755 $INSTALL_PATH/Workflows/*

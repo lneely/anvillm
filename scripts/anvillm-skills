@@ -1,0 +1,42 @@
+#!/bin/sh
+
+SKILLS_DIR="${SKILLS_DIR:-$HOME/doc/agent-skills}"
+
+list() {
+    old_ifs="$IFS"
+    IFS=:
+    for dir in $SKILLS_DIR; do
+        IFS="$old_ifs"
+        for skill_dir in "$dir"/*/; do
+            [ -d "$skill_dir" ] || continue
+            skill="$skill_dir/SKILL.md"
+            [ -f "$skill" ] || continue
+            name=$(basename "$skill_dir")
+            desc=$(sed -n 's/^description: //p' "$skill" | head -1)
+            echo "$name: ${desc:-No description}"
+        done
+        IFS=:
+    done
+    IFS="$old_ifs"
+}
+
+load() {
+    [ -z "$1" ] && { echo "Usage: skills load <skill-name>" >&2; exit 1; }
+    old_ifs="$IFS"
+    IFS=:
+    for dir in $SKILLS_DIR; do
+        IFS="$old_ifs"
+        skill="$dir/$1/SKILL.md"
+        [ -f "$skill" ] && { cat "$skill"; exit 0; }
+        IFS=:
+    done
+    IFS="$old_ifs"
+    echo "Skill not found: $1" >&2
+    exit 1
+}
+
+case "$1" in
+    list) list ;;
+    load) load "$2" ;;
+    *) echo "Usage: skills {list|load <skill-name>}" >&2; exit 1 ;;
+esac
