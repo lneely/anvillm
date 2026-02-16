@@ -74,6 +74,11 @@
             content: 'No log data yet...';
             color: #666;
         }
+        th.sortable { cursor: pointer; user-select: none; }
+        th.sortable:hover { background: var(--pico-secondary-background); }
+        th.sortable::after { content: ' ⇅'; opacity: 0.3; }
+        th.sortable.asc::after { content: ' ↑'; opacity: 1; }
+        th.sortable.desc::after { content: ' ↓'; opacity: 1; }
     </style>
 </head>
 <body>
@@ -190,6 +195,8 @@
         let currentSessionId = null;
         let allSessions = [];
         let logEventSource = null;
+        let sortColumn = 'alias';
+        let sortAsc = true;
 
         function escapeHtml(text) {
             const div = document.createElement('div');
@@ -221,21 +228,31 @@
             }
 
             sessions.sort((a, b) => {
-                const nameA = (a.alias || a.id).toLowerCase();
-                const nameB = (b.alias || b.id).toLowerCase();
-                return nameA.localeCompare(nameB);
+                let valA, valB;
+                switch (sortColumn) {
+                    case 'alias': valA = (a.alias || a.id).toLowerCase(); valB = (b.alias || b.id).toLowerCase(); break;
+                    case 'id': valA = a.id; valB = b.id; break;
+                    case 'state': valA = a.state; valB = b.state; break;
+                    case 'backend': valA = a.backend || ''; valB = b.backend || ''; break;
+                    case 'cwd': valA = a.cwd; valB = b.cwd; break;
+                    case 'pid': valA = parseInt(a.pid) || 0; valB = parseInt(b.pid) || 0; break;
+                    default: valA = ''; valB = '';
+                }
+                const cmp = typeof valA === 'number' ? valA - valB : String(valA).localeCompare(String(valB));
+                return sortAsc ? cmp : -cmp;
             });
 
+            const sortClass = col => `sortable${sortColumn === col ? (sortAsc ? ' asc' : ' desc') : ''}`;
             const table = `
                 <table>
                     <thead>
                         <tr>
-                            <th>Alias</th>
-                            <th>ID</th>
-                            <th>State</th>
-                            <th>Backend</th>
-                            <th>Working Directory</th>
-                            <th>PID</th>
+                            <th class="${sortClass('alias')}" data-sort="alias">Alias</th>
+                            <th class="${sortClass('id')}" data-sort="id">ID</th>
+                            <th class="${sortClass('state')}" data-sort="state">State</th>
+                            <th class="${sortClass('backend')}" data-sort="backend">Backend</th>
+                            <th class="${sortClass('cwd')}" data-sort="cwd">Working Directory</th>
+                            <th class="${sortClass('pid')}" data-sort="pid">PID</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -457,6 +474,17 @@
 
         // Search box filtering
         document.getElementById('search-box').addEventListener('input', filterSessions);
+
+        // Column sorting
+        document.addEventListener('click', (e) => {
+            const th = e.target.closest('th[data-sort]');
+            if (th) {
+                const col = th.dataset.sort;
+                if (sortColumn === col) sortAsc = !sortAsc;
+                else { sortColumn = col; sortAsc = true; }
+                filterSessions();
+            }
+        });
 
         // Event delegation for session actions
         document.addEventListener('click', (e) => {
