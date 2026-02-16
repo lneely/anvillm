@@ -377,11 +377,14 @@ cat <<EOF | 9p write agent/$ID/context
 You are a code reviewer. When you receive code...
 EOF
 
-# Agents communicate via each other's in files
-echo "Please review staged changes" | 9p write agent/$PEER_ID/in
+# Agents communicate via mailboxes
+cat > /tmp/msg.json <<'EOF'
+{"to":"$PEER_ID","type":"REVIEW_REQUEST","subject":"Review","body":"Please review staged changes"}
+EOF
+9p write agent/$ID/outbox/msg-$(date +%s).json < /tmp/msg.json
 ```
 
-See `scripts/DevReview` and `scripts/Planning` for complete examples.
+See `workflows/DevReview` and `workflows/Planning` for complete examples.
 
 ## Troubleshooting
 

@@ -33,14 +33,14 @@ AGENT_MOUNT="agent"
 
 echo "Creating developer session..."
 before=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
-echo "new $BACKEND $PROJECT_PATH role=developer tasks=git,editor,go,rust,python,nodejs,docker,podman,maven,gradle,plan9,gpg,github-cli" | 9p write $AGENT_MOUNT/ctl
+echo "new $BACKEND $PROJECT_PATH role=developer tasks=git,editor,go,rust,python,nodejs,docker,podman,maven,gradle,plan9,gpg,github-cli,agent-q" | 9p write $AGENT_MOUNT/ctl
 after=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
 DEV_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
 echo "Developer session ID: $DEV_ID"
 
 echo "Creating reviewer session..."
 before=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
-echo "new $BACKEND $PROJECT_PATH role=reviewer tasks=git,github-cli,plan9" | 9p write $AGENT_MOUNT/ctl
+echo "new $BACKEND $PROJECT_PATH role=reviewer tasks=git,github-cli,plan9,agent-q" | 9p write $AGENT_MOUNT/ctl
 after=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
 REVIEWER_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
 echo "Reviewer session ID: $REVIEWER_ID"
@@ -54,13 +54,13 @@ echo "${ALIAS_NAME}-reviewer" | 9p write $AGENT_MOUNT/$REVIEWER_ID/alias
 cat <<EOF | 9p write $AGENT_MOUNT/$DEV_ID/context
 # DEVELOPER AGENT ROLE
 
-You are the developer agent in a two-agent workflow. Your peer is the reviewer agent.
+You are the developer agent in a two-agent AnviLLM workflow. Your peer is the reviewer agent.
 
 ## Your workflow:
 
 1. When given a task, implement it fully
 2. After implementation, stage all changes using git
-3. Use the peer-bot skill to find the reviewer agent (alias contains "reviewer")
+3. Use the anvillm-communication skill to find the reviewer agent (alias contains "reviewer")
 4. Send review request using shell tool with this exact pattern:
    - Create /tmp/msg.json with: {"to":"REVIEWER_ID","type":"REVIEW_REQUEST","subject":"Code review","body":"Please review the staged changes"}
    - Run: 9p write agent/YOUR_ID/outbox/msg-TIMESTAMP.json < /tmp/msg.json
@@ -75,9 +75,9 @@ You are the developer agent in a two-agent workflow. Your peer is the reviewer a
 
 ## Communication Protocol:
 
-- Use the peer-bot skill to discover peer agents AND to send messages
-- Follow the peer-bot skill instructions for sending messages via the mailbox system (outbox/inbox)
-- DO NOT write directly to agent/{id}/in - use the mailbox system as documented in peer-bot skill
+- Use the anvillm-communication skill to discover peer agents AND to send messages
+- Follow the anvillm-communication skill instructions for sending messages via the mailbox system (outbox/inbox)
+- DO NOT write directly to agent/{id}/in - use the mailbox system as documented in anvillm-communication skill
 - You will receive messages from the reviewer in your input stream
 
 Stop working and wait for the reviewer's response after sending the review request.
@@ -89,7 +89,7 @@ EOF
 cat <<EOF | 9p write $AGENT_MOUNT/$REVIEWER_ID/context
 # REVIEWER AGENT ROLE
 
-You are the code reviewer agent in a two-agent workflow. Your peer is the developer agent.
+You are the code reviewer agent in a two-agent AnviLLM workflow. Your peer is the developer agent.
 
 ## Your workflow:
 
@@ -97,22 +97,22 @@ You are the code reviewer agent in a two-agent workflow. Your peer is the develo
 2. Use git commands to examine what's been staged:
    - git diff --cached
    - Look for bugs, code quality issues, security concerns
-3. Use the peer-bot skill to find the developer agent (alias contains "dev")
+3. Use the anvillm-communication skill to find the developer agent (alias contains "dev")
 4. Send feedback using shell tool with these exact commands:
    - If code is good:
-   
+
    cat > /tmp/msg.json <<EOF
    {"to":"DEVELOPER_ID","type":"REVIEW_RESPONSE","subject":"Review complete","body":"LGTM"}
    EOF
    9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
-   
+
    - If changes needed:
-   
+
    cat > /tmp/msg.json <<EOF
    {"to":"DEVELOPER_ID","type":"REVIEW_RESPONSE","subject":"Changes requested","body":"YOUR_FEEDBACK_HERE"}
    EOF
    9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
-   
+
    Replace DEVELOPER_ID, YOUR_ID, and YOUR_FEEDBACK_HERE with actual values
 5. Wait for the developer to implement changes and send another review request
 6. Repeat until you can give "LGTM"
@@ -127,9 +127,9 @@ You are the code reviewer agent in a two-agent workflow. Your peer is the develo
 
 ## Communication Protocol:
 
-- Use the peer-bot skill to discover peer agents AND to send messages
-- Follow the peer-bot skill instructions for sending messages via the mailbox system (outbox/inbox)
-- DO NOT write directly to agent/{id}/in - use the mailbox system as documented in peer-bot skill
+- Use the anvillm-communication skill to discover peer agents AND to send messages
+- Follow the anvillm-communication skill instructions for sending messages via the mailbox system (outbox/inbox)
+- DO NOT write directly to agent/{id}/in - use the mailbox system as documented in anvillm-communication skill
 - You will receive review requests in your input stream
 
 Remember: Be thorough but constructive in your reviews. The goal is high-quality code.

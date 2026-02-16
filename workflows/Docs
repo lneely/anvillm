@@ -27,13 +27,13 @@ AGENT_MOUNT="agent"
 
 echo "Creating writer session..."
 before=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
-echo "new $BACKEND $DOC_PATH role=writer tasks=git,plan9" | 9p write $AGENT_MOUNT/ctl
+echo "new $BACKEND $DOC_PATH role=writer tasks=git,plan9,agent-q" | 9p write $AGENT_MOUNT/ctl
 after=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
 WRITER_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
 
 echo "Creating techeditor session..."
 before=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
-echo "new $BACKEND $DOC_PATH role=techeditor tasks=git,plan9" | 9p write $AGENT_MOUNT/ctl
+echo "new $BACKEND $DOC_PATH role=techeditor tasks=git,plan9,agent-q" | 9p write $AGENT_MOUNT/ctl
 after=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
 EDITOR_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
 
@@ -42,6 +42,8 @@ echo "${ALIAS_PREFIX}-techeditor" | 9p write $AGENT_MOUNT/$EDITOR_ID/alias
 
 cat <<EOF | 9p write $AGENT_MOUNT/$WRITER_ID/context
 Your job is to write and update documentation in $DOC_PATH.
+
+You are a writer agent in a two-agent AnviLLM workflow. Your peer is the techeditor.
 
 You will receive review feedback from the techeditor. Apply changes and send acknowledgment using shell tool:
 
@@ -56,7 +58,7 @@ Do not actively await responses, but stop working until you receive an explicit 
 EOF
 
 cat <<EOF | 9p write $AGENT_MOUNT/$EDITOR_ID/context
-You are a professional technical editor. Ensure documentation in $DOC_PATH is high quality, readable, and at the right detail level.
+You are a professional technical editor in a two-agent AnviLLM workflow. Your peer is the writer. Ensure documentation in $DOC_PATH is high quality, readable, and at the right detail level.
 
 Do not edit documents directly. Send recommended changes to the writer using shell tool:
 

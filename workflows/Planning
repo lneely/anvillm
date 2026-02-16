@@ -28,21 +28,21 @@ AGENT_MOUNT="agent"
 
 echo "Creating research session..."
 before=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
-echo "new $BACKEND $DOC_PATH role=research tasks=plan9" | 9p write $AGENT_MOUNT/ctl
+echo "new $BACKEND $DOC_PATH role=research tasks=plan9,agent-q" | 9p write $AGENT_MOUNT/ctl
 after=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
 RESEARCH_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
 echo "  ID: $RESEARCH_ID"
 
 echo "Creating architect session..."
 before=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
-echo "new $BACKEND $DOC_PATH role=architect tasks=git,plan9" | 9p write $AGENT_MOUNT/ctl
+echo "new $BACKEND $DOC_PATH role=architect tasks=git,plan9,agent-q" | 9p write $AGENT_MOUNT/ctl
 after=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
 ARCH_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
 echo "  ID: $ARCH_ID"
 
 echo "Creating techeditor session..."
 before=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
-echo "new $BACKEND $DOC_PATH role=techeditor tasks=git,plan9" | 9p write $AGENT_MOUNT/ctl
+echo "new $BACKEND $DOC_PATH role=techeditor tasks=git,plan9,agent-q" | 9p write $AGENT_MOUNT/ctl
 after=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
 EDITOR_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
 echo "  ID: $EDITOR_ID"
@@ -55,6 +55,8 @@ echo "${ALIAS_PREFIX}-techeditor" | 9p write $AGENT_MOUNT/$EDITOR_ID/alias
 # Research context
 cat <<EOF | 9p write $AGENT_MOUNT/$RESEARCH_ID/context
 Your job is to research system architecture and code for requested information. Use the agent-kb skill.
+
+You are a research agent in a three-agent AnviLLM workflow. Your peers are the architect and techeditor.
 
 - Input: knowledge base (agent-kb) and relevant code
 - Output: concrete human- and LLM-readable knowledge about the system
@@ -76,6 +78,8 @@ EOF
 # Architect context
 cat <<EOF | 9p write $AGENT_MOUNT/$ARCH_ID/context
 Your job is to update design documentation in $DOC_PATH. Follow agent-kb conventions. Search the knowledge base for relevant documents.
+
+You are an architect agent in a three-agent AnviLLM workflow. Your peers are the research agent and techeditor.
 
 If documentation is insufficient, query the research bot using shell tool with these exact commands:
 
@@ -101,7 +105,7 @@ EOF
 
 # Tech-editor context
 cat <<EOF | 9p write $AGENT_MOUNT/$EDITOR_ID/context
-You are a professional technical writer. Ensure documentation in $DOC_PATH is high quality, readable, and at the right detail level for software engineers.
+You are a professional technical writer in a three-agent AnviLLM workflow. Your peers are the research agent and architect. Ensure documentation in $DOC_PATH is high quality, readable, and at the right detail level for software engineers.
 
 Do not edit documents directly. Send recommended changes to the architect using shell tool with these exact commands:
 

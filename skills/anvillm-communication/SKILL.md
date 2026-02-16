@@ -1,17 +1,17 @@
 ---
-name: peer-bot
-description: Discover, list, find, send messages to, communicate with, or interact with other agents and bots in anvillm. Use for inter-agent communication including review requests, questions, approvals, status updates, or any message to peer agents like reviewer, developer, architect, QA, researcher, editor, or tester roles.
+name: anvillm-communication
+description: Communicate within anvillm via the 9P mailbox system. Use for agent-to-agent messaging (review requests, questions, approvals), agent-to-user responses, discovering peer agents, and any inter-agent coordination.
 ---
 
-# Peer Bot Interaction
+# Anvillm Communication
 
-This skill enables you to discover and interact with peer bots running in the anvillm 9P filesystem. Peer bots are defined as any bot working in the same working directory as your own (Cwd column in the agents list).
+This skill covers all communication in anvillm: discovering agents, sending messages between agents, and communicating with the user.
 
 ## Currently Available Agents
 
 `9p read agent/list`
 
-## Discovering Peer Bots
+## Discovering Agents
 
 ### List All Agents
 
@@ -40,29 +40,36 @@ This finds agents with both "reviewer" and "alpha01" in their information.
 
 From the agent list output, the first field is the session ID you need for communication.
 
-## Sending Messages to Peer Bots
+## Sending Messages
 
-To send a message to a peer bot, create a JSON message in your outbox:
+All communication uses the mailbox system. Write JSON messages to your outbox.
+
+### To Another Agent
 
 ```bash
-cat > /tmp/msg.json <<EOF
-{
-  "to": "{session_id}",
-  "type": "QUESTION",
-  "subject": "Brief subject",
-  "body": "Your message here"
-}
+cat > /tmp/msg.json <<'EOF'
+{"to":"{session_id}","type":"QUESTION","subject":"Brief subject","body":"Your message here"}
 EOF
 9p write agent/{your_id}/outbox/msg-$(date +%s).json < /tmp/msg.json
 ```
 
-Message types:
+### To User
+
+The special recipient `"user"` sends messages to the human operator. Writing to user also transitions your agent to idle state automatically.
+
+```bash
+cat > /tmp/msg.json <<'EOF'
+{"to":"user","type":"STATUS_UPDATE","subject":"Task complete","body":"Summary of what was done"}
+EOF
+9p write agent/{your_id}/outbox/msg-$(date +%s).json < /tmp/msg.json
+```
+
+### Message Types
+
 - `QUESTION` - Ask for information
 - `REVIEW_REQUEST` - Request code review
 - `APPROVAL_REQUEST` - Request approval
 - `STATUS_UPDATE` - Notify of status change
-
-The mail system will automatically deliver your message to the recipient's inbox.
 
 ### Example Workflow
 
@@ -71,33 +78,41 @@ The mail system will automatically deliver your message to the recipient's inbox
 3. **Create message**: Write JSON to your outbox
 4. **Check inbox**: `9p ls agent/{your_id}/inbox/` for responses
 
-## Understanding Peer Bot Communication
+## Mailbox System
 
-### Mailbox System
+### Structure
 
-Agents communicate via structured messages in mailboxes:
-- **outbox/** - Write messages here to send to other agents
-- **inbox/** - Receive messages from other agents
+Each agent has:
+- **outbox/** - Write messages here to send
+- **inbox/** - Receive messages from others
 - **completed/** - Archive of processed messages
 
+The special `user` participant also has mailboxes at `agent/user/inbox`, `agent/user/outbox`, `agent/user/completed`.
+
+### Message Format
+
 Messages are JSON files with:
-- `to` - recipient session ID
-- `type` - message type (QUESTION, REVIEW_REQUEST, etc.)
+- `to` - recipient (session ID or `"user"`)
+- `type` - message type
 - `subject` - brief description
 - `body` - message content
 
 ### Message Flow
 
-When you write a message to your outbox:
-1. Mail processor (runs every 5s) picks it up
-2. Delivers to recipient's inbox
-3. When recipient is idle, formats and sends to their `in` file
-4. Recipient processes and can reply via their outbox
-5. Processed messages move to completed/
+1. Write message JSON to your outbox
+2. Mail processor (runs every 5s) picks it up
+3. Delivers to recipient's inbox
+4. For agents: when idle, message is formatted and sent to their `in` file
+5. For user: message body is written to sender's chat log
+6. Processed messages move to completed/
+
+### User Communication
+
+- **bot → user**: Bot writes to its outbox with `to="user"`. Message body appears in bot's chat log. Sender transitions to idle.
+- **user → bot**: User writes to `agent/user/outbox` with `to="{session_id}"`. Delivered to bot's inbox.
 
 ### Checking for Messages
 
-Check your inbox for responses:
 ```bash
 9p ls agent/{your_id}/inbox/
 9p read agent/{your_id}/inbox/msg-{id}.json
@@ -105,7 +120,6 @@ Check your inbox for responses:
 
 ### Checking Agent State
 
-Before sending a message, you can check if an agent is idle:
 ```bash
 9p read agent/{session_id}/state
 ```
@@ -137,30 +151,18 @@ See the `scripts/` directory in the anvillm project for complete workflow exampl
 - **scripts/DevReview**: Developer-reviewer collaboration workflow
 - **scripts/Planning**: Research, engineering, and tech-editor workflow
 
-These scripts demonstrate:
-- Creating multi-agent workflows
-- Setting up agent contexts with peer communication instructions
-- Discovering peers using grep patterns
-- Implementing request-response communication patterns
-
 ## Communication Patterns
 
 ### Request-Response Pattern
 
-Agent A requests work from Agent B:
 ```bash
 # A discovers B
 B_ID=$(9p read agent/list | grep agent-b | awk '{print $1}')
 A_ID=$(9p read agent/list | grep agent-a | awk '{print $1}')
 
-# A sends request to B via mailbox
-cat > /tmp/msg.json <<EOF
-{
-  "to": "$B_ID",
-  "type": "QUESTION",
-  "subject": "Work request",
-  "body": "Please do X"
-}
+# A sends request to B
+cat > /tmp/msg.json <<'EOF'
+{"to":"$B_ID","type":"QUESTION","subject":"Work request","body":"Please do X"}
 EOF
 9p write agent/$A_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
 
@@ -170,36 +172,39 @@ EOF
 
 ### Iterative Review Pattern
 
-Developer submits work, reviewer provides feedback:
 ```bash
 # Developer sends review request
-cat > /tmp/review.json <<EOF
-{
-  "to": "$REVIEWER_ID",
-  "type": "REVIEW_REQUEST",
-  "subject": "Code review needed",
-  "body": "Please review staged changes"
-}
+cat > /tmp/msg.json <<'EOF'
+{"to":"$REVIEWER_ID","type":"REVIEW_REQUEST","subject":"Code review","body":"Please review staged changes"}
 EOF
-9p write agent/$DEV_ID/outbox/msg-$(date +%s).json < /tmp/review.json
+9p write agent/$DEV_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
 
-# Reviewer responds via their outbox
 # Developer checks inbox for response
 9p ls agent/$DEV_ID/inbox/
+```
+
+### Signaling Completion to User
+
+When done with a task, send a STATUS_UPDATE to user (this also sets you to idle):
+
+```bash
+cat > /tmp/msg.json <<'EOF'
+{"to":"user","type":"STATUS_UPDATE","subject":"Done","body":"Completed the requested task. Key changes: ..."}
+EOF
+9p write agent/{your_id}/outbox/msg-$(date +%s).json < /tmp/msg.json
 ```
 
 ## Important Notes
 
 - The agent list is dynamic - agents can start and stop at any time
 - Each agent has a unique session ID
+- `"user"` is a special recipient for human communication
+- Writing to user automatically transitions sender to idle
 - Aliases help identify agents but IDs are required for communication
-- All peer interactions use the mailbox system (outbox/inbox/completed)
-- Messages are JSON files with structured fields
+- All interactions use the mailbox system (outbox/inbox/completed)
 - Mail processor delivers messages every 5 seconds
-- Messages are delivered when recipient is idle
+- Messages to agents are delivered when recipient is idle
 - Failed deliveries retry up to 3 times, then are discarded
-- Always check your inbox for responses
-- Use appropriate message types for clarity
 
 ## Workflow Best Practices
 
@@ -207,7 +212,8 @@ EOF
 2. **Check State**: Verify agent is idle before sending work requests (when appropriate)
 3. **Clear Instructions**: Include reply address in your message
 4. **Error Handling**: Check that grep finds exactly one agent when expecting a specific peer
-5. **Aliases**: Use meaningful aliases to identify agents by role (e.g., "alpha01-dev", "alpha01-reviewer")
+5. **Aliases**: Use meaningful aliases to identify agents by role
+6. **Signal Completion**: Send STATUS_UPDATE to user when done with tasks
 
 ## Troubleshooting
 
@@ -220,7 +226,6 @@ EOF
 - Check peer's state: `9p read agent/{id}/state`
 - Verify you sent to the correct session ID
 - Check that your message included clear instructions
-- Review the peer's context to ensure it's configured to respond
 
 **Multiple agents match**:
 - Use more specific grep patterns

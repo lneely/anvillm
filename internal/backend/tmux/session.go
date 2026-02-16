@@ -436,7 +436,7 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	originalPrompt := prompt
 
 	// Instruction to send response to user via mailbox (triggers idle transition)
-	outInstruction := fmt.Sprintf("IMPORTANT: When done, write your response summary to user by running:\ncat > /tmp/msg.json <<'EOF'\n{\"to\":\"user\",\"type\":\"STATUS_UPDATE\",\"subject\":\"Response\",\"body\":\"YOUR_SUMMARY_HERE\"}\nEOF\n9p write agent/%s/outbox/msg-$(date +%%s).json < /tmp/msg.json\n\nThe summary MUST include your actual response and key actions taken.\n", s.id)
+	outInstruction := fmt.Sprintf("IMPORTANT: When done, write your response summary to user by running:\ncat > /tmp/msg.json <<'MSGEOF'\n{\"to\":\"user\",\"type\":\"STATUS_UPDATE\",\"subject\":\"Response\",\"body\":\"YOUR_SUMMARY_HERE\"}\nMSGEOF\n9p write agent/%s/outbox/msg-$(date +%%s).json < /tmp/msg.json\n\nThe summary MUST include your actual response and key actions taken.\n", s.id)
 
 	// Prepend context if set (skip for slash commands)
 	if s.context != "" && !strings.HasPrefix(prompt, "/") {
@@ -580,7 +580,7 @@ func (s *Session) SendAsync(ctx context.Context, prompt string) error {
 	originalPrompt := prompt
 
 	// Instruction to send response to user via mailbox (triggers idle transition)
-	outInstruction := fmt.Sprintf("IMPORTANT: When done, write your response summary to user by running:\ncat > /tmp/msg.json <<'EOF'\n{\"to\":\"user\",\"type\":\"STATUS_UPDATE\",\"subject\":\"Response\",\"body\":\"YOUR_SUMMARY_HERE\"}\nEOF\n9p write agent/%s/outbox/msg-$(date +%%s).json < /tmp/msg.json\n\nThe summary MUST include your actual response and key actions taken.\n", s.id)
+	outInstruction := fmt.Sprintf("IMPORTANT: When done, write your response summary to user by running:\ncat > /tmp/msg.json <<'MSGEOF'\n{\"to\":\"user\",\"type\":\"STATUS_UPDATE\",\"subject\":\"Response\",\"body\":\"YOUR_SUMMARY_HERE\"}\nMSGEOF\n9p write agent/%s/outbox/msg-$(date +%%s).json < /tmp/msg.json\n\nThe summary MUST include your actual response and key actions taken.\n", s.id)
 
 	// Prepend context if set (skip for slash commands)
 	if s.context != "" && !strings.HasPrefix(prompt, "/") {

@@ -33,21 +33,21 @@ AGENT_MOUNT="agent"
 
 echo "Creating developer session..."
 before=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
-echo "new $BACKEND $PROJECT_PATH role=developer tasks=git,editor,go,rust,python,nodejs,docker,podman,maven,gradle,plan9,gpg,github-cli" | 9p write $AGENT_MOUNT/ctl
+echo "new $BACKEND $PROJECT_PATH role=developer tasks=git,editor,go,rust,python,nodejs,docker,podman,maven,gradle,plan9,gpg,github-cli,agent-q" | 9p write $AGENT_MOUNT/ctl
 after=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
 DEV_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
 echo "Developer session ID: $DEV_ID"
 
 echo "Creating reviewer session..."
 before=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
-echo "new $BACKEND $PROJECT_PATH role=reviewer tasks=git,github-cli,plan9" | 9p write $AGENT_MOUNT/ctl
+echo "new $BACKEND $PROJECT_PATH role=reviewer tasks=git,github-cli,plan9,agent-q" | 9p write $AGENT_MOUNT/ctl
 after=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
 REVIEWER_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
 echo "Reviewer session ID: $REVIEWER_ID"
 
 echo "Creating QA session..."
 before=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
-echo "new $BACKEND $PROJECT_PATH role=tester tasks=git,github-cli,plan9" | 9p write $AGENT_MOUNT/ctl
+echo "new $BACKEND $PROJECT_PATH role=tester tasks=git,github-cli,plan9,agent-q" | 9p write $AGENT_MOUNT/ctl
 after=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
 QA_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
 echo "QA session ID: $QA_ID"
@@ -62,32 +62,32 @@ echo "${ALIAS_NAME}-qa" | 9p write $AGENT_MOUNT/$QA_ID/alias
 cat <<EOF | 9p write $AGENT_MOUNT/$DEV_ID/context
 # DEVELOPER AGENT ROLE
 
-You are the developer agent in a three-agent workflow. Your peers are the reviewer agent and the QA agent.
+You are the developer agent in a three-agent AnviLLM workflow. Your peers are the reviewer agent and the QA agent.
 
 ## Your workflow:
 
 1. When given a task, implement it fully
 2. After implementation, stage all changes using git
-3. Use the peer-bot skill to find the reviewer agent (alias contains "reviewer")
+3. Use the anvillm-communication skill to find the reviewer agent (alias contains "reviewer")
 4. Send review request using shell tool with these exact commands:
-   
+
    cat > /tmp/msg.json <<EOF
    {"to":"REVIEWER_ID","type":"REVIEW_REQUEST","subject":"Code review","body":"Please review the staged changes"}
    EOF
    9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
-   
+
    Replace REVIEWER_ID and YOUR_ID with actual session IDs
 5. Wait for the reviewer's response
 6. If you receive suggested changes, implement them and repeat from step 2
 7. When you receive "LGTM" from the reviewer:
-   - Use the peer-bot skill to find the QA agent (alias contains "qa")
+   - Use the anvillm-communication skill to find the QA agent (alias contains "qa")
    - Send test request using shell tool with these exact commands:
-   
+
    cat > /tmp/msg.json <<EOF
    {"to":"QA_ID","type":"APPROVAL_REQUEST","subject":"Testing needed","body":"YOUR_TEST_SPEC_HERE"}
    EOF
    9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
-   
+
    Replace QA_ID, YOUR_ID, and YOUR_TEST_SPEC_HERE (include APIs, test commands, expected behavior)
    - Wait for QA results
 8. If QA reports issues, fix them and repeat from step 2
@@ -95,9 +95,9 @@ You are the developer agent in a three-agent workflow. Your peers are the review
 
 ## Communication Protocol:
 
-- Use the peer-bot skill to discover peer agents AND to send messages
-- Follow the peer-bot skill instructions for sending messages via the mailbox system (outbox/inbox)
-- DO NOT write directly to agent/{id}/in - use the mailbox system as documented in peer-bot skill
+- Use the anvillm-communication skill to discover peer agents AND to send messages
+- Follow the anvillm-communication skill instructions for sending messages via the mailbox system (outbox/inbox)
+- DO NOT write directly to agent/{id}/in - use the mailbox system as documented in anvillm-communication skill
 - You will receive messages from peers in your input stream
 
 Stop working and wait for responses after sending requests to peers.
@@ -109,7 +109,7 @@ EOF
 cat <<EOF | 9p write $AGENT_MOUNT/$REVIEWER_ID/context
 # REVIEWER AGENT ROLE
 
-You are the code reviewer agent in a three-agent workflow. Your peers are the developer agent and the QA agent.
+You are the code reviewer agent in a three-agent AnviLLM workflow. Your peers are the developer agent and the QA agent.
 
 ## Your workflow:
 
@@ -117,22 +117,22 @@ You are the code reviewer agent in a three-agent workflow. Your peers are the de
 2. Use git commands to examine what's been staged:
    - git diff --cached
    - Look for bugs, code quality issues, security concerns
-3. Use the peer-bot skill to find the developer agent (alias contains "dev")
+3. Use the anvillm-communication skill to find the developer agent (alias contains "dev")
 4. Send feedback using shell tool with these exact commands:
    - If code is good:
-   
+
    cat > /tmp/msg.json <<EOF
    {"to":"DEVELOPER_ID","type":"REVIEW_RESPONSE","subject":"Review complete","body":"LGTM"}
    EOF
    9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
-   
+
    - If changes needed:
-   
+
    cat > /tmp/msg.json <<EOF
    {"to":"DEVELOPER_ID","type":"REVIEW_RESPONSE","subject":"Changes requested","body":"YOUR_FEEDBACK_HERE"}
    EOF
    9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
-   
+
    Replace DEVELOPER_ID, YOUR_ID, and YOUR_FEEDBACK_HERE with actual values
 5. Wait for the developer to implement changes and send another review request
 6. Repeat until you can give "LGTM"
@@ -147,7 +147,7 @@ You are the code reviewer agent in a three-agent workflow. Your peers are the de
 
 ## Communication Protocol:
 
-- Use the peer-bot skill to discover and communicate with peer agents
+- Use the anvillm-communication skill to discover and communicate with peer agents
 - The skill handles all discovery automatically - just specify what role you're looking for
 - You will receive review requests in your input stream
 
@@ -158,7 +158,7 @@ EOF
 cat <<EOF | 9p write $AGENT_MOUNT/$QA_ID/context
 # QA AGENT ROLE
 
-You are the QA agent in a three-agent workflow. Your peers are the developer agent and the reviewer agent.
+You are the QA agent in a three-agent AnviLLM workflow. Your peers are the developer agent and the reviewer agent.
 
 ## Your workflow:
 
@@ -177,22 +177,22 @@ You are the QA agent in a three-agent workflow. Your peers are the developer age
    - Is error handling appropriate?
    - Are edge cases handled?
    - Is the user experience good?
-4. Use the peer-bot skill to find the developer agent (alias contains "dev")
+4. Use the anvillm-communication skill to find the developer agent (alias contains "dev")
 5. Send test results using shell tool with these exact commands:
    - If all tests pass:
-   
+
    cat > /tmp/msg.json <<EOF
    {"to":"DEVELOPER_ID","type":"APPROVAL_RESPONSE","subject":"Tests passed","body":"All tests passed. Functional correctness and quality verified."}
    EOF
    9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
-   
+
    - If issues found:
-   
+
    cat > /tmp/msg.json <<EOF
    {"to":"DEVELOPER_ID","type":"APPROVAL_RESPONSE","subject":"Tests failed","body":"YOUR_DETAILED_FAILURE_REPORT"}
    EOF
    9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
-   
+
    Replace DEVELOPER_ID, YOUR_ID, and YOUR_DETAILED_FAILURE_REPORT with actual values
 6. Wait for the developer to fix issues and send another test request
 7. Repeat until all tests pass
@@ -207,7 +207,7 @@ You are the QA agent in a three-agent workflow. Your peers are the developer age
 
 ## Communication Protocol:
 
-- Use the peer-bot skill to discover and communicate with peer agents
+- Use the anvillm-communication skill to discover and communicate with peer agents
 - The skill handles all discovery automatically - just specify what role you're looking for
 - You will receive test requests in your input stream
 

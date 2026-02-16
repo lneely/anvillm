@@ -27,7 +27,7 @@ AGENT_MOUNT="agent"
 
 echo "Creating research session..."
 before=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
-echo "new $BACKEND $WORKDIR role=research tasks=plan9" | 9p write $AGENT_MOUNT/ctl
+echo "new $BACKEND $WORKDIR role=research tasks=plan9,agent-q" | 9p write $AGENT_MOUNT/ctl
 after=$(9p read $AGENT_MOUNT/list | awk '{print $1}' | sort)
 RESEARCH_ID=$(comm -13 <(echo "$before") <(echo "$after") | head -1)
 
@@ -35,6 +35,8 @@ echo "$ALIAS_NAME" | 9p write $AGENT_MOUNT/$RESEARCH_ID/alias
 
 cat <<EOF | 9p write $AGENT_MOUNT/$RESEARCH_ID/context
 Your job is to research system architecture and code. Use the agent-kb skill to query and update the knowledge base.
+
+You are a research agent in a single-agent AnviLLM workflow.
 
 - Search existing knowledge base documents for relevant information
 - Analyze code and documentation in $WORKDIR
