@@ -54,6 +54,10 @@ type Session struct {
 	readerGeneration int  // Incremented on each restart to prevent old readers from updating state
 	intentionallyStopped bool // True if user explicitly stopped the session (prevents auto-restart)
 	lastRestartAttempt time.Time // Last time auto-restart was attempted (prevents spam)
+	
+	// State machine
+	reserved bool        // True when work is queued (prevents double-booking)
+	idleCond *sync.Cond  // Signals when state transitions to idle
 
 	mu sync.Mutex
 }
@@ -73,13 +77,90 @@ func (s *Session) State() string {
 	return s.state
 }
 
-// SetState sets the session state (used for explicit signaling)
-func (s *Session) SetState(state string) {
+// IsReserved returns true if the session has work queued
+func (s *Session) IsReserved() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.state = state
+	return s.reserved
 }
 
+// TryReserve attempts to reserve the session for work.
+// Returns true if successful (session was idle and not reserved).
+// Caller must call ReleaseReservation() when done.
+func (s *Session) TryReserve() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.tryReserveLocked()
+}
+
+func (s *Session) tryReserveLocked() bool {
+	if s.state != "idle" || s.reserved {
+		return false
+	}
+	
+	s.reserved = true
+	return true
+}
+
+// ReleaseReservation releases the session reservation and signals waiters.
+// Must be called after TryReserve() returns true.
+func (s *Session) ReleaseReservation() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.releaseReservationLocked()
+}
+
+func (s *Session) releaseReservationLocked() {
+	s.reserved = false
+	s.idleCond.Broadcast()
+}
+
+// TransitionTo attempts to transition to a new state.
+// Returns error if transition is invalid.
+func (s *Session) TransitionTo(newState string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.transitionToLocked(newState)
+}
+
+func (s *Session) transitionToLocked(newState string) error {
+	// Validate transition
+	switch {
+	case s.state == "starting" && newState == "idle":
+		s.state = newState
+		s.idleCond.Broadcast()
+		return nil
+	case s.state == "starting" && newState == "error":
+		s.state = newState
+		return nil
+	case s.state == "idle" && newState == "running":
+		if s.reserved {
+			s.state = newState
+			return nil
+		}
+		return fmt.Errorf("cannot transition to running: session not reserved")
+	case s.state == "running" && newState == "idle":
+		s.state = newState
+		s.reserved = false
+		s.idleCond.Broadcast()
+		return nil
+	case s.state == "running" && newState == "error":
+		s.state = newState
+		s.reserved = false
+		s.idleCond.Broadcast()
+		return nil
+	case newState == "stopped" || newState == "exited":
+		// Allow transition to stopped/exited from any state
+		s.state = newState
+		s.reserved = false
+		s.idleCond.Broadcast()
+		return nil
+	default:
+		return fmt.Errorf("invalid state transition: %s → %s", s.state, newState)
+	}
+}
+
+// SetState sets the session state (used for explicit signaling)
 func (s *Session) SetAlias(alias string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -264,7 +345,7 @@ func (s *Session) reader() {
 			// Only update state if we're still the current reader
 			if !superseded && !exited {
 				// Only set to stopped if not explicitly closed
-				s.state = "stopped"
+				s.transitionToLocked("stopped")
 				s.pid = 0
 			}
 			s.mu.Unlock()
@@ -418,7 +499,13 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 		return "", fmt.Errorf("session stopped (use Restart to restart)")
 	}
 
-	if s.state == "running" {
+	if s.state == "running" || s.reserved {
+		s.mu.Unlock()
+		return "", fmt.Errorf("session busy")
+	}
+	
+	// Reserve session
+	if !s.tryReserveLocked() {
 		s.mu.Unlock()
 		return "", fmt.Errorf("session busy")
 	}
@@ -427,6 +514,7 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	if strings.HasPrefix(prompt, "/") && s.commands != nil {
 		if !s.commands.IsSupported(prompt) {
 			cmd := strings.Fields(prompt)[0]
+			s.releaseReservationLocked()
 			s.mu.Unlock()
 			return "", fmt.Errorf("slash command not supported by %s backend: %s\nTo use manually, middle-click Attach", s.backendName, cmd)
 		}
@@ -455,7 +543,11 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	default:
 	}
 
-	s.state = "running"
+	if err := s.transitionToLocked("running"); err != nil {
+		s.releaseReservationLocked()
+		s.mu.Unlock()
+		return "", err
+	}
 	s.output.Reset()
 
 	// Release lock during long-running operations so state can be read
@@ -465,9 +557,7 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 
 	// Send prompt using literal mode to avoid special character interpretation
 	if err := sendLiteral(s.target(), prompt); err != nil {
-		s.mu.Lock()
-		s.state = "idle"
-		s.mu.Unlock()
+		s.TransitionTo("idle")
 		return "", fmt.Errorf("send literal failed: %w", err)
 	}
 
@@ -476,17 +566,13 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 
 	// Send Enter (C-m) to submit the prompt
 	if err := sendKeys(s.target(), "C-m"); err != nil {
-		s.mu.Lock()
-		s.state = "idle"
-		s.mu.Unlock()
+		s.TransitionTo("idle")
 		return "", fmt.Errorf("send enter failed: %w", err)
 	}
 
 	// Wait for completion (without holding lock so state can be read)
 	if err := s.waitForComplete(ctx, prompt); err != nil {
-		s.mu.Lock()
-		s.state = "idle"
-		s.mu.Unlock()
+		s.TransitionTo("idle")
 		return "", err
 	}
 
@@ -494,13 +580,11 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.state = "idle"
+	s.transitionToLocked("idle")
 	return "", nil
 }
 
 func (s *Session) waitForComplete(ctx context.Context, prompt string) error {
-	const pollInterval = 100 * time.Millisecond
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -512,16 +596,21 @@ func (s *Session) waitForComplete(ctx context.Context, prompt string) error {
 				return fmt.Errorf("session closed")
 			}
 			s.output.Write(data)
-
-		case <-time.After(pollInterval):
-			// Wait for state to be explicitly set to "idle" by the agent
+		default:
+			// Wait for state change using condition variable
 			s.mu.Lock()
+			for s.state == "running" {
+				s.idleCond.Wait() // blocks until state changes
+			}
 			currentState := s.state
 			s.mu.Unlock()
 
 			if currentState == "idle" {
 				debug.Log("[session %s] idle detected (explicit signal, %d bytes)", s.id, s.output.Len())
 				return nil
+			}
+			if currentState == "error" || currentState == "stopped" || currentState == "exited" {
+				return fmt.Errorf("session state changed to %s", currentState)
 			}
 		}
 	}
@@ -530,14 +619,14 @@ func (s *Session) waitForComplete(ctx context.Context, prompt string) error {
 // SendAsync sends a prompt asynchronously without waiting for completion.
 //
 // State Transitions:
-//   - idle → running (immediately upon successful send)
+//   - idle → running (via TryReserve + TransitionTo)
 //   - running → idle (when background completion detection finishes)
 //   - running → error (if completion detection fails)
 //
 // Lock Strategy:
-//   - Lock held during state validation and transition to "running"
+//   - TryReserve() atomically checks and reserves the session
 //   - Lock released during I/O operations (sendLiteral, sendKeys) to avoid blocking
-//   - Background goroutine re-acquires lock to transition back to idle/error
+//   - Background goroutine uses TransitionTo() for validated state changes
 //
 // Error Handling:
 //   - Returns error immediately if send operations fail before submission
@@ -564,7 +653,12 @@ func (s *Session) SendAsync(ctx context.Context, prompt string) error {
 		return unlockAndReturn(fmt.Errorf("session stopped (use Restart to restart)"))
 	}
 
-	if s.state == "running" {
+	if s.state == "running" || s.reserved {
+		return unlockAndReturn(fmt.Errorf("session busy"))
+	}
+
+	// Reserve session atomically
+	if !s.tryReserveLocked() {
 		return unlockAndReturn(fmt.Errorf("session busy"))
 	}
 
@@ -572,6 +666,7 @@ func (s *Session) SendAsync(ctx context.Context, prompt string) error {
 	if strings.HasPrefix(prompt, "/") && s.commands != nil {
 		if !s.commands.IsSupported(prompt) {
 			cmd := strings.Fields(prompt)[0]
+			s.releaseReservationLocked()
 			return unlockAndReturn(fmt.Errorf("slash command not supported by %s backend: %s\nTo use manually, middle-click Attach", s.backendName, cmd))
 		}
 	}
@@ -592,8 +687,11 @@ func (s *Session) SendAsync(ctx context.Context, prompt string) error {
 	// Log user prompt to chat log (already holding lock)
 	s.appendToChatLogLocked("USER", originalPrompt)
 
-	// Set state to running before sending
-	s.state = "running"
+	// Transition to running (reservation already held)
+	if err := s.transitionToLocked("running"); err != nil {
+		s.releaseReservationLocked()
+		return unlockAndReturn(err)
+	}
 	s.output.Reset()
 
 	// Reset stopCh for this request (must be done while holding lock)
@@ -614,9 +712,7 @@ func (s *Session) SendAsync(ctx context.Context, prompt string) error {
 	if err := sendLiteral(target, prompt); err != nil {
 		debug.Log("[session %s] SendAsync: sendLiteral failed: %v", s.id, err)
 		// Revert state on error - no partial input sent
-		s.mu.Lock()
-		s.state = "idle"
-		s.mu.Unlock()
+		s.TransitionTo("idle")
 		return err
 	}
 	debug.Log("[session %s] SendAsync: sendLiteral succeeded, sending Enter", s.id)
@@ -630,9 +726,7 @@ func (s *Session) SendAsync(ctx context.Context, prompt string) error {
 		// CRITICAL: Partial input was sent but not submitted (Enter failed)
 		// The backend has the prompt text in its input buffer but it's not submitted.
 		// Mark session as error state since it's in an undefined state.
-		s.mu.Lock()
-		s.state = "error"
-		s.mu.Unlock()
+		s.TransitionTo("error")
 		return fmt.Errorf("failed to submit prompt (partial input sent, session in error state): %w", err)
 	}
 	debug.Log("[session %s] SendAsync: sendKeys succeeded", s.id)
@@ -643,15 +737,11 @@ func (s *Session) SendAsync(ctx context.Context, prompt string) error {
 		if err := s.waitForComplete(ctx, prompt); err != nil {
 			debug.Log("[session %s] SendAsync: waitForComplete error: %v", s.id, err)
 			// Completion detection failed - mark as error state
-			s.mu.Lock()
-			s.state = "error"
-			s.mu.Unlock()
+			s.TransitionTo("error")
 			debug.Log("[session %s] SendAsync: error during completion, state set to error", s.id)
 			return
 		}
-		s.mu.Lock()
-		s.state = "idle"
-		s.mu.Unlock()
+		s.TransitionTo("idle")
 		debug.Log("[session %s] SendAsync: completed, state set to idle", s.id)
 	}()
 
@@ -744,14 +834,14 @@ func (s *Session) stopInternal(ctx context.Context) error {
 	if !windowExists(tmuxSession, windowName) {
 		debug.Log("[session %s] tmux window was unexpectedly destroyed", sessionID)
 		s.mu.Lock()
-		s.state = "exited"
+		s.transitionToLocked("exited")
 		s.pid = 0
 		return fmt.Errorf("tmux window was unexpectedly destroyed")
 	}
 
 	// 5. Update state
 	s.mu.Lock()
-	s.state = "stopped"
+	s.transitionToLocked("stopped")
 	s.pid = 0
 	// Note: Reset stopCh for next operation
 	s.stopCh = make(chan struct{})
@@ -936,7 +1026,7 @@ func (s *Session) Restart(ctx context.Context) error {
 
 	s.mu.Lock()
 	s.pid = pid
-	s.state = "starting"
+	s.transitionToLocked("starting")
 	s.fifo = fifo
 	s.dataCh = make(chan []byte, 100)
 	s.stopCh = make(chan struct{})
@@ -949,16 +1039,11 @@ func (s *Session) Restart(ctx context.Context) error {
 
 	// 14. Wait for ready (reuse existing waitForReady logic)
 	if err := s.waitForReady(ctx, 30*time.Second); err != nil {
-		s.mu.Lock()
-		s.state = "error"
-		s.mu.Unlock()
+		s.TransitionTo("error")
 		return fmt.Errorf("restart failed: %w", err)
 	}
 
-	s.mu.Lock()
-	s.state = "idle"
-	s.output.Reset()
-	s.mu.Unlock()
+	s.TransitionTo("idle")
 
 	debug.Log("[session %s] restarted successfully (pid=%d)", s.id, pid)
 	return nil

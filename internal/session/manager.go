@@ -153,7 +153,7 @@ func (m *Manager) processMailboxes() {
 		if senderSess := m.Get(msg.From); senderSess != nil {
 			if tmuxSess, ok := senderSess.(*tmux.Session); ok {
 				tmuxSess.AppendToChatLog("ASSISTANT", msg.Body)
-				tmuxSess.SetState("idle")
+				tmuxSess.TransitionTo("idle")
 			}
 		}
 	}
@@ -162,6 +162,13 @@ func (m *Manager) processMailboxes() {
 	for _, sess := range sessions {
 		if sess.State() != "idle" {
 			continue
+		}
+		
+		// Check if reserved (prevents race with SendAsync)
+		if tmuxSess, ok := sess.(*tmux.Session); ok {
+			if tmuxSess.IsReserved() {
+				continue
+			}
 		}
 		
 		messages, err := m.mailManager.GetPendingMessages(sess.ID())

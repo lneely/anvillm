@@ -540,15 +540,12 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		if sess == nil {
 			return errFcall(fc, "session not found")
 		}
-		fmt.Fprintf(os.Stderr, "[DEBUG] /in write: session=%s input=%q state=%s\n", parts[0], input, sess.State())
 		// Use async send to avoid blocking on response
 		if tmuxSess, ok := sess.(*tmux.Session); ok {
 			ctx := context.Background()
 			if err := tmuxSess.SendAsync(ctx, input); err != nil {
-				fmt.Fprintf(os.Stderr, "[DEBUG] /in write: SendAsync failed: %v\n", err)
 				return errFcall(fc, err.Error())
 			}
-			fmt.Fprintf(os.Stderr, "[DEBUG] /in write: SendAsync succeeded\n")
 		} else {
 			return errFcall(fc, "async send not supported for this backend")
 		}
@@ -621,7 +618,9 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		}
 
 		if tmuxSess, ok := sess.(*tmux.Session); ok {
-			tmuxSess.SetState(input)
+			if err := tmuxSess.TransitionTo(input); err != nil {
+				return errFcall(fc, fmt.Sprintf("invalid state transition: %v", err))
+			}
 		}
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
@@ -650,7 +649,7 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		// This allows the sender to receive responses and prevents getting stuck in "running"
 		if sess := s.mgr.Get(sessID); sess != nil {
 			if tmuxSess, ok := sess.(*tmux.Session); ok {
-				tmuxSess.SetState("idle")
+				tmuxSess.TransitionTo("idle")
 			}
 		}
 		

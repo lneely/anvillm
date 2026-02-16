@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -323,6 +324,7 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 		environment:        b.cfg.Environment,
 		originalCommandStr: cmdStr,
 	}
+	sess.idleCond = sync.NewCond(&sess.mu)
 
 	// 10. Start reader goroutine
 	go sess.reader()
@@ -334,13 +336,11 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 		if err := sess.waitForReady(bgCtx, b.cfg.StartupTime); err != nil {
 			debug.Log("[session %s] startup failed: %v", sess.ID(), err)
 			// Don't close the session - let user debug via tmux attach
-			sess.mu.Lock()
-			sess.state = "error"
-			sess.mu.Unlock()
+			sess.TransitionTo("error")
 			return
 		}
 		sess.mu.Lock()
-		sess.state = "idle"
+		sess.transitionToLocked("idle")
 		sess.output.Reset()
 		sess.mu.Unlock()
 		debug.Log("[session %s] ready (tmux=%s:%s, pid=%d)", sess.ID(), b.tmuxSession, windowName, sess.pid)
