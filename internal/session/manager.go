@@ -127,17 +127,14 @@ func (m *Manager) processMailboxes() {
 	}
 	m.mu.RUnlock()
 	
-	// 1. Deliver outbound messages (from sessions and user)
+	// 1. Deliver outbound messages in batch (drain all outboxes)
 	allSenders := append([]string{"user"}, m.List()...)
 	for _, senderID := range allSenders {
-		if m.mailManager.HasOutbox(senderID) {
+		for m.mailManager.HasOutbox(senderID) {
 			msg, err := m.mailManager.ReadOutbox(senderID)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error reading outbox for %s: %v\n", senderID, err)
-				continue
+				break
 			}
-			
-			// Deliver to recipient
 			if err := m.mailManager.DeliverToInbox(msg.To, msg); err != nil {
 				fmt.Fprintf(os.Stderr, "Error delivering message to %s: %v\n", msg.To, err)
 			}
@@ -161,54 +158,51 @@ func (m *Manager) processMailboxes() {
 		}
 	}
 	
-	// 3. Process inbound messages for idle sessions
+	// 3. Process inbound messages for idle sessions (one message at a time)
 	for _, sess := range sessions {
-		if sess.State() == "idle" {
-			messages, err := m.mailManager.GetPendingMessages(sess.ID())
-			if err != nil || len(messages) == 0 {
-				continue
-			}
-			
-			// Process first message
-			msg := messages[0]
-			
-			// Move to completed BEFORE sending to prevent duplicate processing
-			if err := m.mailManager.CompleteMessage(sess.ID(), msg.ID); err != nil {
-				continue
-			}
-			
-			// Format message for bot
-			prompt := fmt.Sprintf("[Message from %s]\nType: %s\nSubject: %s\n\n%s", 
-				msg.From, msg.Type, msg.Subject, msg.Body)
-			
-			// Send to bot (non-blocking)
-			go func(s backend.Session, p string, message *mailbox.Message) {
-				_, err := s.Send(context.Background(), p)
-				if err != nil {
-					message.Retries++
-					if message.Retries > 3 {
-						// Discard message after 3 failed attempts
-						fmt.Fprintf(os.Stderr, "Message %s from %s to %s failed after 3 retries, discarding\nSubject: %s\nBody: %s\n", 
-							message.ID, message.From, s.ID(), message.Subject, message.Body)
-						
-						// Notify sender via their chat log (visible to human)
-						if message.From != "" && message.From != "user" {
-							if senderSess := m.Get(message.From); senderSess != nil {
-								if tmuxSess, ok := senderSess.(*tmux.Session); ok {
-									notification := fmt.Sprintf("\n[DELIVERY FAILURE]\nFailed to deliver message to %s after 3 attempts.\nSubject: %s\nBody: %s\n\n", 
-										s.ID(), message.Subject, message.Body)
-									tmuxSess.AppendToChatLog("SYSTEM", notification)
-								}
-							}
+		if sess.State() != "idle" {
+			continue
+		}
+		
+		messages, err := m.mailManager.GetPendingMessages(sess.ID())
+		if err != nil || len(messages) == 0 {
+			continue
+		}
+		
+		// Process first message only
+		msg := messages[0]
+		
+		// Format message for bot
+		prompt := fmt.Sprintf("[Message from %s]\nType: %s\nSubject: %s\n\n%s",
+			msg.From, msg.Type, msg.Subject, msg.Body)
+		
+		// Send synchronously - only move to completed after success
+		_, err = sess.Send(context.Background(), prompt)
+		if err != nil {
+			msg.Retries++
+			if msg.Retries > 3 {
+				// Discard after 3 failed attempts
+				m.mailManager.CompleteMessage(sess.ID(), msg.ID)
+				fmt.Fprintf(os.Stderr, "Message %s from %s to %s failed after 3 retries, discarding\nSubject: %s\nBody: %s\n",
+					msg.ID, msg.From, sess.ID(), msg.Subject, msg.Body)
+				
+				// Notify sender
+				if msg.From != "" && msg.From != "user" {
+					if senderSess := m.Get(msg.From); senderSess != nil {
+						if tmuxSess, ok := senderSess.(*tmux.Session); ok {
+							notification := fmt.Sprintf("\n[DELIVERY FAILURE]\nFailed to deliver message to %s after 3 attempts.\nSubject: %s\nBody: %s\n\n",
+								sess.ID(), msg.Subject, msg.Body)
+							tmuxSess.AppendToChatLog("SYSTEM", notification)
 						}
-					} else {
-						fmt.Fprintf(os.Stderr, "Error sending message to %s (retry %d/3): %v\n", s.ID(), message.Retries, err)
-						// Restore message to inbox for retry
-						m.mailManager.DeliverToInbox(s.ID(), message)
 					}
 				}
-			}(sess, prompt, msg)
+			}
+			// Message stays in inbox for retry on next tick
+			continue
 		}
+		
+		// Success - move to completed
+		m.mailManager.CompleteMessage(sess.ID(), msg.ID)
 	}
 }
 
