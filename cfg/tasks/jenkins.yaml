@@ -1,0 +1,13 @@
+# Jenkins CI task configuration
+filesystem:
+  ro:
+    - "{HOME}/.jenkins"
+    - "{HOME}/.netrc"
+network:
+  enabled: true
+  connect_tcp:
+    - "443"   # HTTPS API access
+    - "8080"  # Default Jenkins port
+env:
+  - JENKINS_USER_ID
+  - JENKINS_API_TOKEN
