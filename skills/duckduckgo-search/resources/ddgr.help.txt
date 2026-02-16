@@ -1,0 +1,41 @@
+usage: ddgr [-h] [-n N] [-r REG] [--colorize [{auto,always,never}]] [-C]
+            [--colors COLORS] [-j] [-t SPAN] [-w SITE] [-x] [-p URI]
+            [--unsafe] [--noua] [--json] [--gb] [--np] [--rev]
+            [--url-handler UTIL] [--show-browser-logs] [-v] [-d]
+            [KEYWORD ...]
+
+DuckDuckGo from the terminal.
+
+positional arguments:
+  KEYWORD               search keywords
+
+options:
+  -h, --help            show this help message and exit
+  -n, --num N           show N (0<=N<=25) results per page (default 10); N=0
+                        shows actual number of results fetched per page
+  -r, --reg REG         region-specific search e.g. 'us-en' for US (default);
+                        visit https://duckduckgo.com/params
+  --colorize [{auto,always,never}]
+                        whether to colorize output; defaults to 'auto', which
+                        enables color when stdout is a tty device; using
+                        --colorize without an argument is equivalent to
+                        --colorize=always
+  -C, --nocolor         equivalent to --colorize=never
+  --colors COLORS       set output colors (see man page for details)
+  -j, --ducky           open the first result in a web browser; implies --np
+  -t, --time SPAN       time limit search [d (1 day), w (1 wk), m (1 month),
+                        y (1 year)]
+  -w, --site SITE       search sites using DuckDuckGo
+  -x, --expand          Show complete url in search results
+  -p, --proxy URI       tunnel traffic through an HTTPS proxy; URI format:
+                        [http[s]://][user:pwd@]host[:port]
+  --unsafe              disable safe search
+  --noua                disable user agent
+  --json                output in JSON format; implies --np
+  --gb, --gui-browser   open a bang directly in gui browser
+  --np, --noprompt      perform search and exit, do not prompt
+  --rev, --reverse      list entries in reversed order
+  --url-handler UTIL    custom script or cli utility to open results
+  --show-browser-logs   do not suppress browser output (stdout and stderr)
+  -v, --version         show program's version number and exit
+  -d, --debug           enable debugging
