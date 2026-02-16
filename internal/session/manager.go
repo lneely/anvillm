@@ -144,7 +144,7 @@ func (m *Manager) processMailboxes() {
 		}
 	}
 	
-	// 2. Process user inbox - write to sender's log
+	// 2. Process user inbox - write to sender's log and set sender to idle
 	userMessages, _ := m.mailManager.GetPendingMessages("user")
 	for _, msg := range userMessages {
 		// Move to completed
@@ -152,10 +152,11 @@ func (m *Manager) processMailboxes() {
 			continue
 		}
 		
-		// Write human-readable output to sender's log
+		// Write human-readable output to sender's log and set idle
 		if senderSess := m.Get(msg.From); senderSess != nil {
 			if tmuxSess, ok := senderSess.(*tmux.Session); ok {
 				tmuxSess.AppendToChatLog("ASSISTANT", msg.Body)
+				tmuxSess.SetState("idle")
 			}
 		}
 	}

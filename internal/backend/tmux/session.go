@@ -435,18 +435,14 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	// Save original prompt for chat log (before modification)
 	originalPrompt := prompt
 
-	// Prepend idle signaling instruction at the top of the prompt
-	// This instruction tells the agent to signal when it's done processing
-	idleSignal := fmt.Sprintf("IMPORTANT: After completing ALL work including writing summary to out, signal idle by running:\necho idle | 9p write agent/%s/state\n", s.id)
-
-	// Instruction to write final response summary to 'out' file
-	outInstruction := fmt.Sprintf("IMPORTANT: Before signaling idle, you MUST write a comprehensive summary by running:\necho 'your summary here' | 9p write agent/%s/out\n\nThe summary MUST include:\n- Your ACTUAL complete response text (the full message sent to the user)\n- All tool usages (bash commands, file operations, etc.)\n- All files read and written\n- Key diffs or changes made\n\nDo NOT just write a meta-description - include the actual response content! Only signal idle AFTER writing this summary.\n", s.id)
+	// Instruction to send response to user via mailbox (triggers idle transition)
+	outInstruction := fmt.Sprintf("IMPORTANT: When done, write your response summary to user by running:\ncat > /tmp/msg.json <<'EOF'\n{\"to\":\"user\",\"type\":\"STATUS_UPDATE\",\"subject\":\"Response\",\"body\":\"YOUR_SUMMARY_HERE\"}\nEOF\n9p write agent/%s/outbox/msg-$(date +%%s).json < /tmp/msg.json\n\nThe summary MUST include your actual response and key actions taken.\n", s.id)
 
 	// Prepend context if set (skip for slash commands)
 	if s.context != "" && !strings.HasPrefix(prompt, "/") {
-		prompt = idleSignal + "\n" + outInstruction + "\n" + s.context + "\n\n" + prompt
+		prompt = outInstruction + "\n" + s.context + "\n\n" + prompt
 	} else if !strings.HasPrefix(prompt, "/") {
-		prompt = idleSignal + "\n" + outInstruction + "\n" + prompt
+		prompt = outInstruction + "\n" + prompt
 	}
 
 	// Log user prompt to chat log (already holding lock)
@@ -583,18 +579,14 @@ func (s *Session) SendAsync(ctx context.Context, prompt string) error {
 	// Save original prompt for chat log (before modification)
 	originalPrompt := prompt
 
-	// Prepend idle signaling instruction at the top of the prompt
-	// This instruction tells the agent to signal when it's done processing
-	idleSignal := fmt.Sprintf("IMPORTANT: After completing ALL work including writing summary to out, signal idle by running:\necho idle | 9p write agent/%s/state\n", s.id)
-
-	// Instruction to write final response summary to 'out' file
-	outInstruction := fmt.Sprintf("IMPORTANT: Before signaling idle, you MUST write a comprehensive summary by running:\necho 'your summary here' | 9p write agent/%s/out\n\nThe summary MUST include:\n- Your ACTUAL complete response text (the full message sent to the user)\n- All tool usages (bash commands, file operations, etc.)\n- All files read and written\n- Key diffs or changes made\n\nDo NOT just write a meta-description - include the actual response content! Only signal idle AFTER writing this summary.\n", s.id)
+	// Instruction to send response to user via mailbox (triggers idle transition)
+	outInstruction := fmt.Sprintf("IMPORTANT: When done, write your response summary to user by running:\ncat > /tmp/msg.json <<'EOF'\n{\"to\":\"user\",\"type\":\"STATUS_UPDATE\",\"subject\":\"Response\",\"body\":\"YOUR_SUMMARY_HERE\"}\nEOF\n9p write agent/%s/outbox/msg-$(date +%%s).json < /tmp/msg.json\n\nThe summary MUST include your actual response and key actions taken.\n", s.id)
 
 	// Prepend context if set (skip for slash commands)
 	if s.context != "" && !strings.HasPrefix(prompt, "/") {
-		prompt = idleSignal + "\n" + outInstruction + "\n" + s.context + "\n\n" + prompt
+		prompt = outInstruction + "\n" + s.context + "\n\n" + prompt
 	} else if !strings.HasPrefix(prompt, "/") {
-		prompt = idleSignal + "\n" + outInstruction + "\n" + prompt
+		prompt = outInstruction + "\n" + prompt
 	}
 
 	// Log user prompt to chat log (already holding lock)
