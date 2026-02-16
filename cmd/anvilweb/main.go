@@ -10,12 +10,15 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"9fans.net/go/plan9"
 	"9fans.net/go/plan9/client"
 )
+
+const terminalCommand = "foot"
 
 //go:embed static/*
 var static embed.FS
@@ -109,7 +112,7 @@ func listSessions(w http.ResponseWriter, r *http.Request) {
 			PID:   fields[3],
 			CWD:   fields[4],
 		}
-		
+
 		// Read backend for each session
 		if backendFid, err := fs.Open(filepath.Join(sess.ID, "backend"), plan9.OREAD); err == nil {
 			if backendData, err := io.ReadAll(backendFid); err == nil {
@@ -117,7 +120,7 @@ func listSessions(w http.ResponseWriter, r *http.Request) {
 			}
 			backendFid.Close()
 		}
-		
+
 		sessions = append(sessions, sess)
 	}
 
@@ -268,6 +271,26 @@ func getSession(w http.ResponseWriter, r *http.Request, id string) {
 	json.NewEncoder(w).Encode(sess)
 }
 
+func getSessionTmux(id string) string {
+	fs, err := connect()
+	if err != nil {
+		return ""
+	}
+	defer fs.Close()
+
+	fid, err := fs.Open(filepath.Join(id, "tmux"), plan9.OREAD)
+	if err != nil {
+		return ""
+	}
+	defer fid.Close()
+
+	data, err := io.ReadAll(fid)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
 func getSessionFile(w http.ResponseWriter, r *http.Request, id, file string) {
 	fs, err := connect()
 	if err != nil {
@@ -342,9 +365,25 @@ func controlSession(w http.ResponseWriter, r *http.Request, id string) {
 	}
 
 	// Validate command
-	validCmds := map[string]bool{"stop": true, "restart": true, "kill": true, "refresh": true}
+	validCmds := map[string]bool{"stop": true, "restart": true, "kill": true, "refresh": true, "attach": true}
 	if !validCmds[req.Command] {
 		http.Error(w, "Invalid command", http.StatusBadRequest)
+		return
+	}
+
+	// Handle attach specially - launch terminal with tmux attach
+	if req.Command == "attach" {
+		tmuxTarget := getSessionTmux(id)
+		if tmuxTarget == "" {
+			http.Error(w, "Session does not support attach", http.StatusBadRequest)
+			return
+		}
+		cmd := exec.Command(terminalCommand, "-e", "tmux", "attach", "-t", tmuxTarget)
+		if err := cmd.Start(); err != nil {
+			http.Error(w, "Failed to launch terminal: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 
@@ -402,7 +441,6 @@ func updateSessionFile(w http.ResponseWriter, r *http.Request, id, file string) 
 	w.WriteHeader(http.StatusOK)
 }
 
-
 func handleLogStream(w http.ResponseWriter, r *http.Request) {
 	// Extract session ID from path
 	id := strings.TrimPrefix(r.URL.Path, "/api/log/")
@@ -458,7 +496,7 @@ func handleLogStream(w http.ResponseWriter, r *http.Request) {
 			// Connection closed or error
 			break
 		}
-		
+
 		// Check if client disconnected
 		select {
 		case <-r.Context().Done():

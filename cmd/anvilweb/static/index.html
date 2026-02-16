@@ -38,6 +38,30 @@
         .actions-cell { white-space: nowrap; }
         .session-id { font-family: monospace; font-size: 0.875rem; color: var(--pico-muted-color); }
         
+        .action-menu { position: relative; display: inline-block; }
+        .action-menu-btn { min-width: 2rem; }
+        .action-menu-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            background: var(--pico-card-background-color);
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: 0.25rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            z-index: 100;
+            min-width: 120px;
+        }
+        .action-menu-content button {
+            display: block;
+            width: 100%;
+            text-align: left;
+            border: none;
+            border-radius: 0;
+            margin: 0;
+        }
+        .action-menu-content button:hover { background: var(--pico-secondary-background); }
+        .action-menu.open .action-menu-content { display: block; }
+        
         #prompt-area { min-height: 100px; }
         .hidden { display: none; }
         
@@ -197,12 +221,47 @@
         let logEventSource = null;
         let sortColumn = 'alias';
         let sortAsc = true;
+        let previousStates = {};
+
+        // Request notification permission on load
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+
+        function notifyStateChange(session, oldState, newState) {
+            if ('Notification' in window && Notification.permission === 'granted') {
+                const name = session.alias || session.id.substring(0, 8);
+                new Notification(`AnviLLM: ${name}`, {
+                    body: `${oldState} → ${newState}`,
+                    tag: session.id
+                });
+            }
+        }
 
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }
+
+        let openMenuSessionId = null;
+
+        function toggleMenu(btn) {
+            const menu = btn.closest('.action-menu');
+            const sessionId = btn.closest('tr').querySelector('[data-session-id]').dataset.sessionId;
+            document.querySelectorAll('.action-menu.open').forEach(m => {
+                if (m !== menu) m.classList.remove('open');
+            });
+            menu.classList.toggle('open');
+            openMenuSessionId = menu.classList.contains('open') ? sessionId : null;
+        }
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.action-menu')) {
+                document.querySelectorAll('.action-menu.open').forEach(m => m.classList.remove('open'));
+                openMenuSessionId = null;
+            }
+        });
 
         function filterSessions() {
             const query = document.getElementById('search-box').value.toLowerCase();
@@ -218,6 +277,11 @@
                 return searchText.includes(query);
             });
             renderSessions(filtered);
+            // Restore open menu after render
+            if (openMenuSessionId) {
+                const btn = document.querySelector(`[data-session-id="${openMenuSessionId}"]`)?.closest('tr')?.querySelector('.action-menu-btn');
+                if (btn) btn.closest('.action-menu').classList.add('open');
+            }
         }
 
         function renderSessions(sessions) {
@@ -275,12 +339,18 @@
                                     <td><small>${pid}</small></td>
                                     <td class="actions-cell">
                                         <button data-session-id="${id}" data-action="log">Log</button>
-                                        <button data-session-id="${id}" data-action="prompt" ${s.state !== 'idle' ? 'disabled' : ''}>Prompt</button>
-                                        <button data-session-id="${id}" data-action="context" class="secondary">Context</button>
-                                        <button data-session-id="${id}" data-action="alias" class="secondary">Alias</button>
-                                        <button data-session-id="${id}" data-action="stop" ${s.state === 'stopped' ? 'disabled' : ''} class="secondary">Stop</button>
-                                        <button data-session-id="${id}" data-action="restart" class="secondary">Restart</button>
-                                        <button data-session-id="${id}" data-action="kill" class="contrast">Kill</button>
+                                        <button data-session-id="${id}" data-action="prompt">Prompt</button>
+                                        <button data-session-id="${id}" data-action="attach">Attach</button>
+                                        <div class="action-menu">
+                                            <button class="action-menu-btn secondary" onclick="toggleMenu(this)">⋯</button>
+                                            <div class="action-menu-content">
+                                                <button data-session-id="${id}" data-action="context">Context</button>
+                                                <button data-session-id="${id}" data-action="alias">Alias</button>
+                                                <button data-session-id="${id}" data-action="stop" ${s.state === 'stopped' ? 'disabled' : ''}>Stop</button>
+                                                <button data-session-id="${id}" data-action="restart">Restart</button>
+                                                <button data-session-id="${id}" data-action="kill" class="contrast">Kill</button>
+                                            </div>
+                                        </div>
                                     </td>
                                 </tr>
                             `;
@@ -296,6 +366,16 @@
             try {
                 const res = await fetch('/api/sessions');
                 const sessions = await res.json();
+                
+                // Check for state transitions and notify
+                for (const s of sessions) {
+                    const oldState = previousStates[s.id];
+                    if (oldState && oldState !== s.state) {
+                        notifyStateChange(s, oldState, s.state);
+                    }
+                    previousStates[s.id] = s.state;
+                }
+                
                 allSessions = sessions;
                 filterSessions();
             } catch (err) {
@@ -468,6 +548,22 @@
 
         // Load sessions on page load
         loadSessions();
+
+        async function attachSession(id) {
+            try {
+                const res = await fetch(`/api/session/${id}/ctl`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'attach' })
+                });
+                if (!res.ok) {
+                    const text = await res.text();
+                    alert(text || 'Session does not support attach (not tmux-based)');
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
         
         // Auto-refresh every 5 seconds
         setInterval(loadSessions, 5000);
@@ -496,6 +592,7 @@
             
             switch (action) {
                 case 'log': openLogPane(id); break;
+                case 'attach': attachSession(id); break;
                 case 'prompt': openPromptDialog(id); break;
                 case 'context': openContextDialog(id); break;
                 case 'alias': openAliasDialog(id); break;

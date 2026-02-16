@@ -88,10 +88,11 @@ const (
 	fileContext
 	fileRole
 	fileTasks
+	fileTmux
 	fileCount
 )
 
-var fileNames = []string{"ctl", "in", "out", "log", "state", "pid", "cwd", "alias", "backend", "context", "role", "tasks"}
+var fileNames = []string{"ctl", "in", "out", "log", "state", "pid", "cwd", "alias", "backend", "context", "role", "tasks", "tmux"}
 
 // Directory names in session
 var dirNames = []string{"inbox", "outbox", "completed"}
@@ -990,6 +991,13 @@ func (s *Server) getSessionFile(sess backend.Session, idx int) string {
 		return sess.Role()
 	case fileTasks:
 		return strings.Join(sess.Tasks(), ",")
+	case fileTmux:
+		tmuxSession, hasSession := meta.Extra["tmux_session"]
+		tmuxWindow, hasWindow := meta.Extra["tmux_window"]
+		if hasSession && hasWindow {
+			return fmt.Sprintf("%s:%s", tmuxSession, tmuxWindow)
+		}
+		return ""
 	}
 	return ""
 }
