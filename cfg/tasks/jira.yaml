@@ -2,7 +2,13 @@
 filesystem:
   ro:
     - "{HOME}/.jira.d"
-    - "{XDG_CONFIG_HOME}/jira-cli"
+  rw:
+    - "{XDG_CONFIG_HOME}/.jira"
+env:
+    - JIRA_API_TOKEN
+    - BITBUCKET_ACCESS_TOKEN
+    - BITBUCKET_TOKEN
+    - BITBUCKET_USERNAME
 network:
   enabled: true
   connect_tcp:

@@ -6,3 +6,4 @@ filesystem:
     - "{HOME}/bin"
     - "{HOME}/.local/bin"
     - "{HOME}/src"
+    - "{HOME}/prj"

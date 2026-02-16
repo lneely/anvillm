@@ -1,0 +1,22 @@
+# Agent Q
+filesystem:
+  ro:
+    - /etc/magic
+  rox:
+    - "{HOME}/src/mcp/agent-q"
+    - "{HOME}/bin"
+    - "{HOME}/.local/bin"
+    - "{HOME}/go/bin"
+    - "{HOME}/env"
+  rw:
+    - "{HOME}/.gnupg"
+    - "{HOME}/doc/agent-skills"
+    - "{HOME}/src/mcp/agent-q/skills"
+  rwx:
+    - "{HOME}/.npm/"
+    - "{HOME}/.nvm/"
+env:
+    - AGENT_SKILLS_PATH
+network:
+  enabled: true
+  unrestricted: true

@@ -183,7 +183,9 @@ EOF
 9p ls agent/$DEV_ID/inbox/
 ```
 
-### Signaling Completion to User
+### MANDATORY: Signaling Completion to User
+
+**IMPORTANT: You MUST ALWAYS send a STATUS_UPDATE to user when your task is complete.** This is required for every task - the user needs to know what you did.
 
 When done with a task, send a STATUS_UPDATE to user (this also sets you to idle):
 
@@ -193,6 +195,13 @@ cat > /tmp/msg.json <<'EOF'
 EOF
 9p write agent/{your_id}/outbox/msg-$(date +%s).json < /tmp/msg.json
 ```
+
+The body MUST include:
+- A summary of what was accomplished
+- Key actions taken or changes made
+- Any relevant details the user needs to know
+
+**Never finish a task without sending this status update to the user.**
 
 ## Important Notes
 
@@ -213,7 +222,7 @@ EOF
 3. **Clear Instructions**: Include reply address in your message
 4. **Error Handling**: Check that grep finds exactly one agent when expecting a specific peer
 5. **Aliases**: Use meaningful aliases to identify agents by role
-6. **Signal Completion**: Send STATUS_UPDATE to user when done with tasks
+6. **MANDATORY - Signal Completion**: You MUST send a STATUS_UPDATE to user when your task is complete. This is NOT optional - every task must end with a user notification.
 
 ## Troubleshooting
 
