@@ -149,11 +149,25 @@ func (s *Session) transitionToLocked(newState string) error {
 		s.reserved = false
 		s.idleCond.Broadcast()
 		return nil
+	case s.state == "error" && newState == "idle":
+		// Manual recovery from error state
+		s.state = newState
+		s.reserved = false
+		s.idleCond.Broadcast()
+		return nil
+	case s.state == "error" && newState == "starting":
+		// Restart from error state
+		s.state = newState
+		return nil
 	case newState == "stopped" || newState == "exited":
 		// Allow transition to stopped/exited from any state
 		s.state = newState
 		s.reserved = false
 		s.idleCond.Broadcast()
+		return nil
+	case s.state == "stopped" && newState == "starting":
+		// Allow restart from stopped state
+		s.state = newState
 		return nil
 	default:
 		return fmt.Errorf("invalid state transition: %s → %s", s.state, newState)
