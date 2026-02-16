@@ -2,6 +2,7 @@
 filesystem:
   rw:
     - "{HOME}/.kiro"
+    - "{HOME}/.aws"
     - "{XDG_DATA_HOME}/kiro-cli"
     - "{CWD}/.kiro"
 network:

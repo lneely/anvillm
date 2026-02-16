@@ -27,6 +27,9 @@ filesystem:
         - /etc/resolv.conf
         - /etc/services
         - /etc/ssl/certs
+        - /etc/ld.so.cache
+        - /etc/host.conf
+        - /etc/gai.conf
         - /proc
         - '{XDG_CONFIG_HOME}/anvillm'
         - '{HOME}/env'
@@ -43,7 +46,9 @@ filesystem:
         - /dev/zero
         - /dev/urandom
         - /dev/random
-    rwx: []
+    rwx:
+        - /home/lkn/src/mcp/agent-q/
+
 network:
     enabled: false
     unrestricted: false

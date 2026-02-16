@@ -339,10 +339,10 @@ func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error
 			quiesceStart = time.Time{} // Reset quiescence on new data
 
 			// Check for error patterns that indicate launch failure
-			if strings.Contains(output, "Error:") ||
-			   strings.Contains(output, "ERROR") ||
-			   strings.Contains(output, "Failed to apply sandbox") ||
-			   strings.Contains(output, "missing kernel Landlock support") {
+			// But only if the backend hasn't shown its ready prompt yet
+			hasPrompt := strings.Contains(output, "!>")
+			if !hasPrompt && (strings.Contains(output, "Failed to apply sandbox") ||
+			   strings.Contains(output, "missing kernel Landlock support")) {
 				fmt.Fprintf(os.Stderr, "Error: backend failed to launch\n")
 				fmt.Fprintf(os.Stderr, "Backend output:\n%s\n", output)
 				return fmt.Errorf("backend launch failed")
