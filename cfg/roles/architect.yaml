@@ -1,6 +1,7 @@
 # Architect role: access to knowledge base and planning documents
 filesystem:
   ro:
+    - "{CWD}"
     - "{XDG_DOCUMENTS_DIR}/agent-kb"
     - "{HOME}/doc/agent-kb"
   rw:
