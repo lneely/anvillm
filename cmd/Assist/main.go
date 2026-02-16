@@ -509,15 +509,15 @@ func refreshList(w *acme.Win) {
 		return
 	}
 
-	buf.WriteString(fmt.Sprintf("%-5s %-10s %-9s %-16s %s\n", "ID", "Backend", "State", "Alias", "Cwd"))
-	buf.WriteString(fmt.Sprintf("%-5s %-10s %-9s %-16s %s\n", "-----", "----------", "---------", "----------------", strings.Repeat("-", 40)))
+	buf.WriteString(fmt.Sprintf("%-8s %-10s %-9s %-16s %s\n", "ID", "Backend", "State", "Alias", "Cwd"))
+	buf.WriteString(fmt.Sprintf("%-8s %-10s %-9s %-16s %s\n", "--------", "----------", "---------", "----------------", strings.Repeat("-", 40)))
 
 	for _, sess := range sessions {
 		alias := sess.Alias
 		if alias == "" {
 			alias = "-"
 		}
-		buf.WriteString(fmt.Sprintf("%-5s %-10s %-9s %-16s %s\n", sess.ID, sess.Backend, sess.State, alias, sess.Cwd))
+		buf.WriteString(fmt.Sprintf("%-8s %-10s %-9s %-16s %s\n", sess.ID, sess.Backend, sess.State, alias, sess.Cwd))
 	}
 
 	w.Addr(",")
