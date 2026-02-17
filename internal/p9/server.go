@@ -842,7 +842,7 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 		})
 		dirs = append(dirs, plan9.Dir{
 			Qid:  plan9.Qid{Type: QTDir, Path: qidUserOutbox},
-			Mode: plan9.DMDIR | 0755, Name: "outbox", Uid: "q", Gid: "q", Muid: "q",
+			Mode: plan9.DMDIR | 0555, Name: "outbox", Uid: "q", Gid: "q", Muid: "q",
 		})
 		dirs = append(dirs, plan9.Dir{
 			Qid:  plan9.Qid{Type: QTDir, Path: qidUserCompleted},
@@ -920,7 +920,7 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 				mode = 0555 // read-only (can list and read files)
 			} else if dirName == "outbox" {
 				qidBase = qidOutboxBase
-				mode = 0755 // writable (can create files, create handler enforces write-only)
+				mode = 0555 // read-only (can list and read files)
 			} else {
 				qidBase = qidCompletedBase
 				mode = 0555 // read-only (can list and read files)

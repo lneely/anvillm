@@ -1,6 +1,7 @@
 ---
 name: anvillm-communication
 description: Communicate within anvillm via the 9P mailbox system. Use for agent-to-agent messaging (review requests, questions, approvals), agent-to-user responses, discovering peer agents, and any inter-agent coordination.
+when_to_load: Load this skill when you need to send messages to other agents, respond to the user, discover peer agents, check your inbox, or coordinate with other agents in a workflow. Also load when you see instructions about sending messages via 9p write agent/*/mail.
 ---
 
 # Anvillm Communication
@@ -48,7 +49,7 @@ All communication uses the mailbox system. Write JSON messages via the mail file
 
 ```bash
 cat > /tmp/msg.json <<'EOF'
-{"to":"{session_id}","type":"QUERY_REQUEST","subject":"Brief subject","body":"Your message here"}
+{"to":"{session_id}","type":"PROMPT","subject":"Brief subject","body":"Your message here"}
 EOF
 9p write agent/{your_id}/mail < /tmp/msg.json
 ```
@@ -71,8 +72,8 @@ EOF
 - `LOG_ERROR` - Error reports
 
 **Persistent (inbox only):**
-- `PROMPT` - User instructions to bot
-- `QUERY_REQUEST` / `QUERY_RESPONSE` - Information requests
+- `PROMPT` - User instructions to bot, or agent-to-agent work requests
+- `QUERY_REQUEST` / `QUERY_RESPONSE` - Research bot workflows (asking research questions)
 - `REVIEW_REQUEST` / `REVIEW_RESPONSE` - Code review workflow
 - `APPROVAL_REQUEST` / `APPROVAL_RESPONSE` - QA testing workflow
 
@@ -94,12 +95,10 @@ EOF
 ### Structure
 
 Each agent has:
-- **mail** - Write messages here to send (creates UUID in outbox)
+- **mail** - Write messages here to send
 - **inbox/** - Receive messages from others
-- **outbox/** - Outgoing messages (read-only, populated by mail writes)
-- **completed/** - Archive of processed messages
 
-The special `user` participant also has mailboxes at `agent/user/mail`, `agent/user/inbox`, `agent/user/outbox`, `agent/user/completed`.
+The special `user` participant also has mailboxes at `agent/user/mail` and `agent/user/inbox`.
 
 ### Message Format
 
@@ -111,15 +110,10 @@ Messages are JSON files with:
 
 ### Message Flow
 
-1. Write message JSON to your outbox
-### Message Flow
-
 1. Write message JSON to the mail file
-2. Mail processor (runs every 5s) picks it up from outbox
-3. Delivers to recipient's inbox
-4. For agents: when idle, message is formatted and sent to their `in` file
-5. For user: message body is written to sender's chat log
-6. Processed messages move to completed/
+2. System delivers to recipient's inbox
+3. For agents: messages are automatically delivered when they arrive
+4. For user: message body is written to sender's chat log
 
 ### User Communication
 
@@ -128,6 +122,9 @@ Messages are JSON files with:
 
 ### Checking for Messages
 
+**You do not need to actively check your inbox.** When messages arrive, the system automatically delivers them to you. Simply continue your work - incoming messages will be delivered automatically.
+
+If you need to manually check:
 ```bash
 9p ls agent/{your_id}/inbox/
 9p read agent/{your_id}/inbox/msg-{id}.json
@@ -177,7 +174,7 @@ A_ID=$(9p read agent/list | grep agent-a | awk '{print $1}')
 
 # A sends request to B
 cat > /tmp/msg.json <<'EOF'
-{"to":"$B_ID","type":"QUESTION","subject":"Work request","body":"Please do X"}
+{"to":"$B_ID","type":"PROMPT","subject":"Work request","body":"Please do X"}
 EOF
 9p write agent/$A_ID/mail < /tmp/msg.json
 
@@ -200,16 +197,16 @@ EOF
 
 ### Signaling to User (MANDATORY)
 
-**You MUST send a STATUS_UPDATE to user at the end of EVERY interaction**, not just when the overall task is complete. This keeps the user informed of progress at each step.
+**You MUST send LOG_INFO to user at the end of EVERY interaction**, not just when the overall task is complete. This keeps the user informed of progress at each step.
 
 ```bash
 cat > /tmp/msg.json <<'EOF'
-{"to":"user","type":"STATUS_UPDATE","subject":"Response","body":"Summary of what was done in THIS interaction"}
+{"to":"user","type":"LOG_INFO","subject":"Response","body":"Summary of what was done in THIS interaction"}
 EOF
 9p write agent/{your_id}/mail < /tmp/msg.json
 ```
 
-Examples of when to send STATUS_UPDATE to user:
+Examples of when to send LOG_INFO to user:
 - After implementing changes and sending a review request (before waiting for reviewer)
 - After receiving reviewer feedback and making requested changes
 - After completing the final step of a task
@@ -224,10 +221,6 @@ The body should summarize the key actions taken in that specific interaction.
 - `"user"` is a special recipient for human communication
 - Writing to user automatically transitions sender to idle
 - Aliases help identify agents but IDs are required for communication
-- All interactions use the mailbox system (outbox/inbox/completed)
-- Mail processor delivers messages every 5 seconds
-- Messages to agents are delivered when recipient is idle
-- Failed deliveries retry up to 3 times, then are discarded
 
 ## Workflow Best Practices
 
@@ -236,7 +229,7 @@ The body should summarize the key actions taken in that specific interaction.
 3. **Clear Instructions**: Include reply address in your message
 4. **Error Handling**: Check that grep finds exactly one agent when expecting a specific peer
 5. **Aliases**: Use meaningful aliases to identify agents by role
-6. **Status Updates**: Send STATUS_UPDATE to user at the end of EVERY interaction (not just task completion)
+6. **Status Updates**: Send LOG_INFO to user at the end of EVERY interaction (not just task completion)
 
 ## Troubleshooting
 

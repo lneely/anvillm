@@ -63,16 +63,9 @@ You are a research agent in a three-agent AnviLLM workflow. Your peers are the a
 - Prefer updating existing kb documents over creating new ones
 - Only create new KB documents if the knowledge discovered is significant and reusable
 
-When you receive a query from the architect, research and respond using shell tool with these exact commands:
+When you receive a QUERY_REQUEST from the architect, research and respond with QUERY_RESPONSE.
 
-cat > /tmp/msg.json <<'ENDMSG'
-{"to":"$ARCH_ID","type":"QUERY_RESPONSE","subject":"Research results","body":"YOUR_ANSWER_HERE"}
-ENDMSG
-9p write agent/$RESEARCH_ID/mail < /tmp/msg.json
-
-Replace YOUR_ANSWER_HERE with actual answer
-
-Do not actively await responses, but stop working until you receive an explicit request to conduct research.
+For communication with other agents, load the anvillm-communication skill.
 EOF
 
 # Architect context
@@ -81,45 +74,20 @@ Your job is to update design documentation in $DOC_PATH. Follow agent-kb convent
 
 You are an architect agent in a three-agent AnviLLM workflow. Your peers are the research agent and techeditor.
 
-If documentation is insufficient, query the research bot using shell tool with these exact commands:
+If documentation is insufficient, send QUERY_REQUEST to the research bot and wait for QUERY_RESPONSE.
 
-cat > /tmp/msg.json <<'ENDMSG'
-{"to":"$RESEARCH_ID","type":"QUERY_REQUEST","subject":"Research request","body":"YOUR_QUESTION_HERE"}
-ENDMSG
-9p write agent/$ARCH_ID/mail < /tmp/msg.json
+After completing work, send APPROVAL_REQUEST to the techeditor for review. You will receive APPROVAL_RESPONSE with feedback or approval.
 
-Replace YOUR_QUESTION_HERE (include question, context, request for docs path or answer)
-Wait for the research agent to send the answer back
-
-You will receive edit requests from the techeditor. Apply changes and send acknowledgment using shell tool:
-
-cat > /tmp/msg.json <<'ENDMSG'
-{"to":"$EDITOR_ID","type":"LOG_INFO","subject":"Changes applied","body":"YOUR_ACKNOWLEDGMENT"}
-ENDMSG
-9p write agent/$ARCH_ID/mail < /tmp/msg.json
-
-Replace YOUR_ACKNOWLEDGMENT with actual acknowledgment
-
-Do not actively await responses, but stop working until you receive an explicit request to make a change from the techeditor.
+For communication with other agents, load the anvillm-communication skill.
 EOF
 
 # Tech-editor context
 cat <<EOF | 9p write $AGENT_MOUNT/$EDITOR_ID/context
 You are a professional technical writer in a three-agent AnviLLM workflow. Your peers are the research agent and architect. Ensure documentation in $DOC_PATH is high quality, readable, and at the right detail level for software engineers.
 
-Do not edit documents directly. Send recommended changes to the architect using shell tool with these exact commands:
+When you receive an APPROVAL_REQUEST from the architect, review the documentation. Send APPROVAL_RESPONSE with either approval or recommended changes.
 
-cat > /tmp/msg.json <<'ENDMSG'
-{"to":"$ARCH_ID","type":"REVIEW_REQUEST","subject":"Documentation review","body":"YOUR_RECOMMENDATIONS"}
-ENDMSG
-9p write agent/$EDITOR_ID/mail < /tmp/msg.json
-
-Replace YOUR_RECOMMENDATIONS with actual recommendations
-Request acknowledgment from the architect
-
-When the architect acknowledges, proofread again. Iterate until satisfied.
-
-Do not actively await responses, but stop working until you receive an explicit request to perform work.
+For communication with other agents, load the anvillm-communication skill.
 EOF
 
 echo ""

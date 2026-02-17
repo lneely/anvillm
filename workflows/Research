@@ -45,6 +45,8 @@ You are a research agent in a single-agent AnviLLM workflow.
 - Only create new KB documents for significant, reusable knowledge
 
 Focus on providing concrete, actionable information that helps understand the system.
+
+For communication with other agents or the user, load the anvillm-communication skill.
 EOF
 
 echo ""
