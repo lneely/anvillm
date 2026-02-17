@@ -1119,24 +1119,15 @@ func openMessageWindow(idx int) error {
 	}
 
 	filename := filenames[idx-1]
+	msg := messages[idx-1]
+	
 	w, err := acme.New()
 	if err != nil {
 		return err
 	}
 
 	w.Name(fmt.Sprintf("/AnviLLM/inbox/%s", filename))
-
-	data, err := readFile(filepath.Join("user/inbox", filename))
-	if err != nil {
-		w.CloseFiles()
-		return err
-	}
-
-	var msg Message
-	if err := json.Unmarshal(data, &msg); err != nil {
-		w.CloseFiles()
-		return err
-	}
+	w.Write("tag", []byte("Reply "))
 
 	var buf strings.Builder
 	buf.WriteString(fmt.Sprintf("From: %s\n", msg.From))
@@ -1150,5 +1141,105 @@ func openMessageWindow(idx int) error {
 	w.Write("body", []byte(buf.String()))
 	w.Ctl("clean")
 
+	go handleMessageWindow(w, &msg)
+	return nil
+}
+
+func handleMessageWindow(w *acme.Win, msg *Message) {
+	defer w.CloseFiles()
+
+	for e := range w.EventChan() {
+		if (e.C2 == 'x' || e.C2 == 'X') && string(e.Text) == "Reply" {
+			openReplyWindow(msg)
+		} else {
+			w.WriteEvent(e)
+		}
+	}
+}
+
+func openReplyWindow(originalMsg *Message) error {
+	w, err := acme.New()
+	if err != nil {
+		return err
+	}
+
+	replyType := getReplyType(originalMsg.Type)
+	replySubject := fmt.Sprintf("Re: %s", originalMsg.Subject)
+	
+	w.Name(fmt.Sprintf("/AnviLLM/reply/%s", originalMsg.From))
+	w.Write("tag", []byte("Send "))
+	w.Ctl("clean")
+
+	go handleReplyWindow(w, originalMsg.From, replyType, replySubject)
+	return nil
+}
+
+func getReplyType(msgType string) string {
+	switch msgType {
+	case "QUERY_REQUEST":
+		return "QUERY_RESPONSE"
+	case "REVIEW_REQUEST":
+		return "REVIEW_RESPONSE"
+	case "APPROVAL_REQUEST":
+		return "APPROVAL_RESPONSE"
+	default:
+		return "PROMPT"
+	}
+}
+
+func handleReplyWindow(w *acme.Win, to, msgType, subject string) {
+	defer w.CloseFiles()
+
+	for e := range w.EventChan() {
+		if (e.C2 == 'x' || e.C2 == 'X') && string(e.Text) == "Send" {
+			body, err := w.ReadAll("body")
+			if err != nil {
+				continue
+			}
+			prompt := strings.TrimSpace(string(body))
+			if prompt != "" {
+				if err := sendReply(to, msgType, subject, prompt); err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to send reply: %v\n", err)
+					continue
+				}
+				w.Ctl("delete")
+				return
+			}
+		} else {
+			w.WriteEvent(e)
+		}
+	}
+}
+
+func sendReply(to, msgType, subject, body string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
+	
+	msg := map[string]interface{}{
+		"to":      to,
+		"type":    msgType,
+		"subject": subject,
+		"body":    body,
+	}
+	msgJSON, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %w", err)
+	}
+	
+	timestamp := time.Now().Unix()
+	filename := fmt.Sprintf("msg-%d.json", timestamp)
+	path := filepath.Join("user/outbox", filename)
+	
+	fid, err := fs.Create(path, plan9.OWRITE, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to create message: %w", err)
+	}
+	defer fid.Close()
+	
+	if _, err := fid.Write(msgJSON); err != nil {
+		return fmt.Errorf("failed to write message: %w", err)
+	}
+	
 	return nil
 }
