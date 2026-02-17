@@ -19,11 +19,11 @@ build:V:
 	mkdir -p $HOME/.kiro/agents/kiro-cli
 	mkdir -p $HOME/.claude/agents
 	mkdir -p $HOME/.claude/hooks
-	cp agents/kiro-cli/* $HOME/.kiro/agents/kiro-cli/
-	cp agents/claude/* $HOME/.claude/agents/
+	cp kiro-cli/agent/* $HOME/.kiro/agents/kiro-cli/
+	cp claude/agent/* $HOME/.claude/agents/
 	cp claude/hooks/* $HOME/.claude/hooks/
 	chmod +x $HOME/.claude/hooks/*.sh
-	bash scripts/install-claude-hooks.sh
+	bash claude/install-hooks.sh
 
 install:V: build
 
