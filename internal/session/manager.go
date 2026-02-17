@@ -158,51 +158,31 @@ func (m *Manager) processMailboxes() {
 		}
 	}
 	
-	// 3. Process inbound messages for idle sessions (one message at a time)
+	// 3. Prompt idle agents with pending messages (after 30 seconds of idle)
 	for _, sess := range sessions {
 		if sess.State() != "idle" {
 			continue
 		}
 		
-		messages, err := m.mailManager.GetPendingMessages(sess.ID())
-		if err != nil || len(messages) == 0 {
+		// Check if session has been idle for more than 30 seconds
+		tmuxSess, ok := sess.(*tmux.Session)
+		if !ok {
 			continue
 		}
 		
-		// Process first message only
-		msg := messages[0]
-		
-		// Format message for bot
-		prompt := fmt.Sprintf("[Message from %s]\nType: %s\nSubject: %s\n\n%s",
-			msg.From, msg.Type, msg.Subject, msg.Body)
-		
-		// Send asynchronously - only move to completed after success
-		_, err = sess.Send(context.Background(), prompt)
-		if err != nil {
-			msg.Retries++
-			if msg.Retries > 3 {
-				// Discard after 3 failed attempts
-				m.mailManager.CompleteMessage(sess.ID(), msg.ID)
-				fmt.Fprintf(os.Stderr, "Message %s from %s to %s failed after 3 retries, discarding\nSubject: %s\nBody: %s\n",
-					msg.ID, msg.From, sess.ID(), msg.Subject, msg.Body)
-				
-				// Notify sender
-				if msg.From != "" && msg.From != "user" {
-					if senderSess := m.Get(msg.From); senderSess != nil {
-						if tmuxSess, ok := senderSess.(*tmux.Session); ok {
-							notification := fmt.Sprintf("\n[DELIVERY FAILURE]\nFailed to deliver message to %s after 3 attempts.\nSubject: %s\nBody: %s\n\n",
-								sess.ID(), msg.Subject, msg.Body)
-							tmuxSess.AppendToChatLog("SYSTEM", notification)
-						}
-					}
-				}
-			}
-			// Message stays in inbox for retry on next tick
+		idleDuration := tmuxSess.IdleDuration()
+		if idleDuration < 30*time.Second {
 			continue
 		}
 		
-		// Success - move to completed
-		m.mailManager.CompleteMessage(sess.ID(), msg.ID)
+		// Check if inbox has messages
+		if !m.mailManager.HasPendingMessages(sess.ID()) {
+			continue
+		}
+		
+		// Prompt agent to check inbox
+		ctx := context.Background()
+		sess.Send(ctx, "check your inbox with 9p-read-inbox")
 	}
 }
 

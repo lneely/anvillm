@@ -57,6 +57,7 @@ type Session struct {
 	
 	// State machine
 	idleCond *sync.Cond  // Signals when state transitions to idle
+	idleSince time.Time  // Timestamp when session last transitioned to idle
 
 	mu sync.Mutex
 }
@@ -95,11 +96,23 @@ func (s *Session) TransitionTo(newState string) error {
 	return s.transitionToLocked(newState)
 }
 
+// IdleDuration returns how long the session has been idle.
+// Returns 0 if not currently idle.
+func (s *Session) IdleDuration() time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state != "idle" || s.idleSince.IsZero() {
+		return 0
+	}
+	return time.Since(s.idleSince)
+}
+
 func (s *Session) transitionToLocked(newState string) error {
 	// Validate transition
 	switch {
 	case s.state == "starting" && newState == "idle":
 		s.state = newState
+		s.idleSince = time.Now()
 		s.idleCond.Broadcast()
 		return nil
 	case s.state == "starting" && newState == "error":
@@ -110,6 +123,7 @@ func (s *Session) transitionToLocked(newState string) error {
 		return nil
 	case s.state == "running" && newState == "idle":
 		s.state = newState
+		s.idleSince = time.Now()
 		s.idleCond.Broadcast()
 		return nil
 	case s.state == "running" && newState == "error":
@@ -119,6 +133,7 @@ func (s *Session) transitionToLocked(newState string) error {
 	case s.state == "error" && newState == "idle":
 		// Manual recovery from error state
 		s.state = newState
+		s.idleSince = time.Now()
 		s.idleCond.Broadcast()
 		return nil
 	case s.state == "error" && newState == "starting":

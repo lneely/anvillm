@@ -62,6 +62,7 @@ const (
 	qidRoot = iota
 	qidCtl
 	qidList
+	qidStatus
 	qidUser                      // user directory
 	qidUserInbox                 // user/inbox
 	qidUserOutbox                // user/outbox
@@ -106,8 +107,9 @@ type Server struct {
 }
 
 type connState struct {
-	fids map[uint32]*fid
-	mu   sync.RWMutex
+	fids      map[uint32]*fid
+	mu        sync.RWMutex
+	sessionID string // Track which session owns this connection
 }
 
 type fid struct {
@@ -203,6 +205,8 @@ func (s *Server) handle(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return s.read(cs, fc)
 	case plan9.Twrite:
 		return s.write(cs, fc)
+	case plan9.Tremove:
+		return s.remove(cs, fc)
 	case plan9.Tstat:
 		return s.stat(cs, fc)
 	case plan9.Tclunk:
@@ -507,7 +511,7 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		}
 		args := strings.Fields(input)
 		if len(args) == 0 {
-			return errFcall(fc, "usage: stop | restart | kill | refresh")
+			return errFcall(fc, "usage: stop | restart | kill | refresh | complete <msg-id>")
 		}
 		switch args[0] {
 		case "stop":
@@ -528,6 +532,15 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			if err := sess.Refresh(ctx); err != nil {
 				return errFcall(fc, err.Error())
 			}
+		case "complete":
+			if len(args) < 2 {
+				return errFcall(fc, "usage: complete <msg-id>")
+			}
+			msgID := args[1]
+			mailMgr := s.mgr.GetMailManager()
+			if err := mailMgr.CompleteMessage(parts[0], msgID); err != nil {
+				return errFcall(fc, err.Error())
+			}
 		default:
 			return errFcall(fc, "unknown command")
 		}
@@ -536,10 +549,12 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 
 	// /{id}/in - send prompt (async, non-blocking)
 	if len(parts) == 2 && parts[1] == "in" {
-		sess := s.mgr.Get(parts[0])
+		sessID := parts[0]
+		sess := s.mgr.Get(sessID)
 		if sess == nil {
 			return errFcall(fc, "session not found")
 		}
+		
 		ctx := context.Background()
 		if _, err := sess.Send(ctx, input); err != nil {
 			return errFcall(fc, err.Error())
@@ -593,7 +608,8 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 
 	// /{id}/state - set session state (with validation)
 	if len(parts) == 2 && parts[1] == "state" {
-		sess := s.mgr.Get(parts[0])
+		sessID := parts[0]
+		sess := s.mgr.Get(sessID)
 		if sess == nil {
 			return errFcall(fc, "session not found")
 		}
@@ -617,12 +633,27 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 				return errFcall(fc, fmt.Sprintf("invalid state transition: %v", err))
 			}
 		}
+		
+		// Track this connection's session ID
+		cs.mu.Lock()
+		if cs.sessionID == "" {
+			cs.sessionID = sessID
+		}
+		cs.mu.Unlock()
+		
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
 	// /{id}/outbox/msg-*.json - write message to outbox
 	if len(parts) == 3 && parts[1] == "outbox" && strings.HasSuffix(parts[2], ".json") {
 		sessID := parts[0]
+		
+		// Track this connection's session ID
+		cs.mu.Lock()
+		if cs.sessionID == "" {
+			cs.sessionID = sessID
+		}
+		cs.mu.Unlock()
 		
 		// Parse JSON message
 		msg, err := mailbox.FromJSON(fc.Data)
@@ -691,6 +722,45 @@ func (s *Server) stat(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	return &plan9.Fcall{Type: plan9.Rstat, Tag: fc.Tag, Stat: stat}
 }
 
+func (s *Server) remove(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
+	cs.mu.Lock()
+	f, ok := cs.fids[fc.Fid]
+	sessionID := cs.sessionID
+	cs.mu.Unlock()
+	if !ok {
+		return errFcall(fc, "bad fid")
+	}
+	
+	// Only support removing inbox messages (marks them as completed)
+	parts := strings.Split(strings.TrimPrefix(f.path, "/"), "/")
+	if len(parts) == 3 && parts[1] == "inbox" && strings.HasSuffix(parts[2], ".json") {
+		sessID := parts[0]
+		msgID := strings.TrimSuffix(parts[2], ".json")
+		
+		// Validate ownership: only allow removing from own inbox or user inbox
+		if sessionID == "" || (sessID != "user" && sessID != sessionID) {
+			return errFcall(fc, "permission denied: can only remove from own inbox")
+		}
+		
+		mailMgr := s.mgr.GetMailManager()
+		if mailMgr == nil {
+			return errFcall(fc, "mailbox not available")
+		}
+		
+		if err := mailMgr.CompleteMessage(sessID, msgID); err != nil {
+			return errFcall(fc, err.Error())
+		}
+		
+		cs.mu.Lock()
+		delete(cs.fids, fc.Fid)
+		cs.mu.Unlock()
+		
+		return &plan9.Fcall{Type: plan9.Rremove, Tag: fc.Tag}
+	}
+	
+	return errFcall(fc, "remove not supported for this file")
+}
+
 func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 	var dirs []plan9.Dir
 
@@ -701,6 +771,10 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 		})
 		dirs = append(dirs, plan9.Dir{
 			Qid: plan9.Qid{Type: QTFile, Path: qidList}, Mode: 0444, Name: "list",
+			Uid: "q", Gid: "q", Muid: "q",
+		})
+		dirs = append(dirs, plan9.Dir{
+			Qid: plan9.Qid{Type: QTFile, Path: qidStatus}, Mode: 0444, Name: "status",
 			Uid: "q", Gid: "q", Muid: "q",
 		})
 		dirs = append(dirs, plan9.Dir{
@@ -886,6 +960,35 @@ func (s *Server) readFile(path string) string {
 					alias = "-"
 				}
 				lines = append(lines, fmt.Sprintf("%s\t%s\t%s\t%d\t%s", sess.ID(), alias, sess.State(), meta.Pid, meta.Cwd))
+			}
+		}
+		return strings.Join(lines, "\n") + "\n"
+	}
+
+	if path == "/status" {
+		var lines []string
+		mailMgr := s.mgr.GetMailManager()
+		for _, id := range s.mgr.List() {
+			sess := s.mgr.Get(id)
+			if sess != nil {
+				state := sess.State()
+				idleSince := "-"
+				inboxCount := 0
+				
+				if tmuxSess, ok := sess.(*tmux.Session); ok {
+					if state == "idle" {
+						idleDuration := tmuxSess.IdleDuration()
+						if idleDuration > 0 {
+							idleSince = fmt.Sprintf("%ds", int(idleDuration.Seconds()))
+						}
+					}
+				}
+				
+				if mailMgr != nil {
+					inboxCount = len(mailMgr.GetInbox(id))
+				}
+				
+				lines = append(lines, fmt.Sprintf("%s %s %s %d", id, state, idleSince, inboxCount))
 			}
 		}
 		return strings.Join(lines, "\n") + "\n"

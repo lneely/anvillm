@@ -26,6 +26,12 @@ fi
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Found session ID: $session" >> /tmp/claude-hooks.log
 if echo idle | 9p write agent/$session/state 2>>/tmp/claude-hooks.log; then
 	echo "$(date '+%Y-%m-%d %H:%M:%S') - SUCCESS: Wrote 'idle' to agent/$session/state" >> /tmp/claude-hooks.log
+	
+	# Check for pending messages in inbox
+	if [ -n "$(9p ls agent/$session/inbox/ 2>/dev/null)" ]; then
+		echo "$(date '+%Y-%m-%d %H:%M:%S') - INBOX: Pending messages detected" >> /tmp/claude-hooks.log
+		echo "[INBOX] You have pending messages. Check with: 9p-read-inbox"
+	fi
 else
 	echo "$(date '+%Y-%m-%d %H:%M:%S') - ERROR: Failed to write to agent/$session/state" >> /tmp/claude-hooks.log
 fi

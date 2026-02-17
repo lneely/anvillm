@@ -9,8 +9,20 @@ description: Query and maintain a local knowledge base of code insights and arch
 
 Leverage accumulated knowledge in `~/doc/agent-kb` to avoid redundant code research. Add new entries when discoveries warrant preservation.
 
+## Answer Priority Hierarchy
+
+When answering user questions, follow this strict priority order:
+
+1. **KB First** - Search `~/doc/agent-kb/` for relevant entries
+2. **Code Search** - If KB doesn't have the answer, search/inspect the codebase
+3. **Web Search** - If code doesn't provide clarity, research online with proper citations
+4. **Training Data** - Only as last resort to fill remaining gaps
+
+**Always cite your source** - Tell the user which level you're answering from.
+
 ## When to Use
 
+- **When user asks any question** - Check KB first before answering
 - Encountering unfamiliar code patterns, services, or architecture
 - When user asks questions outside training data that would require code research
 - Before extensive codebase research—check KB first
@@ -47,7 +59,12 @@ After significant code exploration, consider what was learned:
    grep -l "pattern" ~/doc/agent-kb/*.md
    ```
 
-3. Read relevant entries before researching code.
+3. Search by content before answering questions:
+   ```bash
+   grep -il "keyword" ~/doc/agent-kb/*.md
+   ```
+
+4. Read relevant entries before researching code.
 
 ## File Naming Convention
 
@@ -79,7 +96,7 @@ Examples:
    tags:       [tag1, tag2]
    identifier: YYYYMMDDThhmmss
    verified:   YYYY-MM-DD
-   source:     code-inspection | documentation | verbal | inferred
+   source:     code-inspection | documentation | online | verbal | inferred
    ---
 
    # Title
@@ -94,6 +111,7 @@ Examples:
      - `documentation` - from internal docs (Confluence, etc.)
      - `online` - from external online documentation
      - `verbal` - expert opinion, discussion, tacit knowledge
+     - `inferred` - derived from training data (lowest priority)
 
    If a source has a URL (online or documentation), add a `## Sources` section at the bottom of the document with the citation(s).
 
@@ -112,4 +130,4 @@ When knowledge becomes stale or incomplete:
 
 ## What Belongs in the KB
 
-- **Only verifiable knowledge from existing code** - no design alternatives, proposals, or "we could do X" speculation. Code is the source of truth.
+- **Only verifiable knowledge from authoritative sources** - code inspection, official documentation, or properly cited research. No speculation, design alternatives, or "we could do X" proposals.

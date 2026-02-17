@@ -1,5 +1,7 @@
 # Developer role configuration
 filesystem:
+  ro:
+    - "{HOME}/doc"
   rw:
     - "{CWD}"
   rwx:

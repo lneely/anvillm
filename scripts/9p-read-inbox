@@ -1,0 +1,50 @@
+#!/bin/bash
+# Read next message from bot's inbox and mark it complete
+# Usage: 9p-read-inbox [--help]
+
+set -e
+
+if [ "$1" = "--help" ]; then
+    echo "Usage: 9p-read-inbox"
+    echo "Read the next message from the bot's inbox and mark it complete"
+    exit 0
+fi
+
+# Get agent ID from namespace file
+KIRO_PID=$(ps -o ppid= -p $PPID | tr -d ' ')
+AGENT_ID=$(cat $(namespace)/anvillm-session-id-$KIRO_PID 2>/dev/null)
+
+if [ -z "$AGENT_ID" ]; then
+    echo "Error: Cannot determine agent ID" >&2
+    exit 1
+fi
+
+INBOX_PATH="agent/$AGENT_ID/inbox"
+
+# List messages
+MESSAGES=$(9p ls "$INBOX_PATH" 2>/dev/null) || {
+    echo "Error: Failed to list inbox" >&2
+    exit 1
+}
+
+if [ -z "$MESSAGES" ]; then
+    echo "No messages"
+    exit 0
+fi
+
+# Read first message
+FIRST_MSG=$(echo "$MESSAGES" | head -1)
+MSG_JSON=$(9p read "$INBOX_PATH/$FIRST_MSG") || {
+    echo "Error: Failed to read message" >&2
+    exit 1
+}
+
+# Display the message body
+echo "$MSG_JSON" | jq -r '"[Message from \(.from)]", "Type: \(.type)", "Subject: \(.subject)", "", .body'
+
+# Mark as complete by writing to ctl file (strip .json extension)
+MSG_ID="${FIRST_MSG%.json}"
+echo "complete $MSG_ID" | 9p write "agent/$AGENT_ID/ctl" || {
+    echo "Warning: Failed to mark message as complete" >&2
+    exit 1
+}

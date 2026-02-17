@@ -138,6 +138,42 @@ func (m *Manager) GetPendingMessages(sessionID string) ([]*Message, error) {
 	return m.GetInbox(sessionID), nil
 }
 
+// PullMessage retrieves and removes the first message from inbox
+func (m *Manager) PullMessage(sessionID string) (*Message, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	msgs := m.inboxes[sessionID]
+	if len(msgs) == 0 {
+		return nil, fmt.Errorf("no messages in inbox")
+	}
+	
+	msg := msgs[0]
+	m.inboxes[sessionID] = msgs[1:]
+	return msg, nil
+}
+
+// PeekInbox returns first message without removing it
+func (m *Manager) PeekInbox(sessionID string) (*Message, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	
+	msgs := m.inboxes[sessionID]
+	if len(msgs) == 0 {
+		return nil, fmt.Errorf("no messages in inbox")
+	}
+	
+	return msgs[0], nil
+}
+
+// HasPendingMessages checks if inbox has messages
+func (m *Manager) HasPendingMessages(sessionID string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	
+	return len(m.inboxes[sessionID]) > 0
+}
+
 // CompleteMessage moves a message from inbox to completed
 func (m *Manager) CompleteMessage(sessionID, msgID string) error {
 	m.mu.Lock()

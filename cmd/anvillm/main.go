@@ -377,6 +377,18 @@ func sendPrompt(id, prompt string) error {
 	return nil
 }
 
+func sendPromptDirect(id, prompt string) error {
+	path := filepath.Join(id, "in")
+	fid, err := fs.Open(path, plan9.OWRITE)
+	if err != nil {
+		return err
+	}
+	defer fid.Close()
+
+	_, err = fid.Write([]byte(prompt))
+	return err
+}
+
 func updateStatus(msg string) {
 	statusBar.Clear()
 	fmt.Fprintf(statusBar, " %s", msg)

@@ -16,7 +16,7 @@
     ],
     "stop": [
       {
-        "command": "KIRO_PID=$(ps -o ppid= -p $PPID | tr -d ' '); cat $(namespace)/anvillm-session-id-$KIRO_PID 2>/dev/null | xargs -I{} sh -c 'echo idle | 9p write agent/{}/state 2>/dev/null' || true"
+        "command": "KIRO_PID=$(ps -o ppid= -p $PPID | tr -d ' '); cat $(namespace)/anvillm-session-id-$KIRO_PID 2>/dev/null | xargs -I{} sh -c 'echo idle | 9p write agent/{}/state 2>/dev/null; AGENT_ID=$(9p ls agent/ 2>/dev/null | head -1); [ -n \"$AGENT_ID\" ] && [ -n \"$(9p ls agent/$AGENT_ID/inbox/ 2>/dev/null)\" ] && echo \"[INBOX] You have pending messages. Check with: 9p-read-inbox\"' || true"
       }
     ]
   }

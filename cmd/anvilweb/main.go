@@ -203,6 +203,8 @@ func handleSession(w http.ResponseWriter, r *http.Request) {
 	case "POST":
 		if action == "prompt" {
 			sendPrompt(w, r, id)
+		} else if action == "prompt-direct" {
+			sendPromptDirect(w, r, id)
 		} else if action == "ctl" {
 			controlSession(w, r, id)
 		} else {
@@ -367,6 +369,44 @@ func sendPrompt(w http.ResponseWriter, r *http.Request, id string) {
 	
 	if _, err := fid.Write(msgJSON); err != nil {
 		http.Error(w, fmt.Sprintf("failed to write message: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func sendPromptDirect(w http.ResponseWriter, r *http.Request, id string) {
+	var req struct {
+		Prompt string `json:"prompt"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(req.Prompt) == "" {
+		http.Error(w, "Prompt cannot be empty", http.StatusBadRequest)
+		return
+	}
+
+	fs, err := connect()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer fs.Close()
+
+	path := filepath.Join(id, "in")
+	fid, err := fs.Open(path, plan9.OWRITE)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer fid.Close()
+
+	if _, err := fid.Write([]byte(req.Prompt)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 

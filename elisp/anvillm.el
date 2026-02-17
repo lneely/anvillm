@@ -183,7 +183,7 @@ Format: id alias state pid cwd (whitespace-separated; often tabs)."
     entry))
 
 (defun anvillm-send-prompt-minibuffer ()
-  "Send a prompt to the selected session."
+  "Send a prompt to the selected session via mailbox (queued)."
   (interactive)
   (if-let ((session-id (anvillm--get-selected-session)))
       (let ((prompt (read-string "Prompt: ")))
@@ -202,6 +202,20 @@ Format: id alias state pid cwd (whitespace-separated; often tabs)."
                 (message "Sent prompt to %s" (substring session-id 0 (min 8 (length session-id)))))
             (error
              (message "Failed to send prompt: %s" (error-message-string err))))))
+    (message "No session selected")))
+
+(defun anvillm-send-prompt-direct ()
+  "Send a prompt directly to the selected session (immediate, may block)."
+  (interactive)
+  (if-let ((session-id (anvillm--get-selected-session)))
+      (let ((prompt (read-string "Prompt (direct): ")))
+        (when (> (length prompt) 0)
+          (condition-case err
+              (progn
+                (anvillm--9p-write (concat anvillm-agent-path "/" session-id "/in") prompt)
+                (message "Sent direct prompt to %s" (substring session-id 0 (min 8 (length session-id)))))
+            (error
+             (message "Failed to send direct prompt: %s" (error-message-string err))))))
     (message "No session selected")))
 
 (defun anvillm-stop-session ()
@@ -315,6 +329,7 @@ Backends:
     (set-keymap-parent map tabulated-list-mode-map)
     (define-key map (kbd "s") #'anvillm-start-session)
     (define-key map (kbd "P") #'anvillm-send-prompt-minibuffer)
+    (define-key map (kbd "M-P") #'anvillm-send-prompt-direct)
     (define-key map (kbd "t") #'anvillm-stop-session)
     (define-key map (kbd "R") #'anvillm-restart-session)
     (define-key map (kbd "K") #'anvillm-kill-session)
