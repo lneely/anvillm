@@ -12,6 +12,7 @@ filesystem:
     - "/etc/gitattributes"
     - "/etc/ssh/ssh_config"
     - "/etc/ssh/ssh_known_hosts"
+    - "{HOME}/doc"
   rw:
     - "{HOME}/.ssh/known_hosts"
     - "{HOME}/.git-credentials"
