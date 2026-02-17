@@ -1,10 +1,11 @@
 # Default role: permissive settings for ad-hoc usage
 # Equivalent to current global sandbox.yaml behavior
 filesystem:
-  rw:
+  rwx:
     - "{CWD}"
+    - "{PLAN9}/bin"
+  rox:
+    - "{HOME}/bin"
+    - "{HOME}/.local/bin"
 network:
   unrestricted: true
-env:
-  - ANTHROPIC_API_KEY
-  - KIRO_API_KEY

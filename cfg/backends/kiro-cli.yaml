@@ -1,5 +1,7 @@
 # Kiro backend requirements
 filesystem:
+  rox:
+    - "{HOME}/.local/bin"
   rw:
     - "{HOME}/.kiro"
     - "{HOME}/.aws"
