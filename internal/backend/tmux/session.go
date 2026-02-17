@@ -18,7 +18,7 @@ import (
 type Session struct {
 	id          string
 	backendName string // backend name (e.g., "kiro-cli", "claude")
-	tmuxSession string // persistent tmux session name (e.g., "anvillm-kiro-cli")
+	tmuxSession string // persistent tmux session name (e.g., "anvillm-0")
 	windowName  string // window name within tmux session (same as id)
 	cwd         string
 	alias       string

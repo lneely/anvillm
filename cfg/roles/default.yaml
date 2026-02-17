@@ -1,6 +1,22 @@
 # Default role: permissive settings for ad-hoc usage
 # Equivalent to current global sandbox.yaml behavior
 filesystem:
+  ro:
+    - "{HOME}/.gitconfig"
+    - "{XDG_CONFIG_HOME}/git/config"
+    - "{XDG_CONFIG_HOME}/git/ignore"
+    - "{XDG_CONFIG_HOME}/git/attributes"
+    - "{HOME}/.ssh"
+    - "{HOME}/.netrc"
+    - "/etc/gitconfig"
+    - "/etc/gitattributes"
+    - "/etc/ssh/ssh_config"
+    - "/etc/ssh/ssh_known_hosts"
+  rw:
+    - "{HOME}/.ssh/known_hosts"
+    - "{HOME}/.git-credentials"
+    - "{XDG_CONFIG_HOME}/git/credentials"
+    - "{XDG_RUNTIME_DIR}/git/"
   rwx:
     - "{CWD}"
     - "{PLAN9}/bin"

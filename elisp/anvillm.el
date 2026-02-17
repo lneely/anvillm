@@ -182,42 +182,6 @@ Format: id alias state pid cwd (whitespace-separated; often tabs)."
   (when-let ((entry (tabulated-list-get-id)))
     entry))
 
-(defun anvillm-send-prompt-minibuffer ()
-  "Send a prompt to the selected session via mailbox (queued)."
-  (interactive)
-  (if-let ((session-id (anvillm--get-selected-session)))
-      (let ((prompt (read-string "Prompt: ")))
-        (when (> (length prompt) 0)
-          (condition-case err
-              (progn
-                ;; Create message JSON for user outbox
-                (let* ((timestamp (format-time-string "%s"))
-                       (filename (format "msg-%s.json" timestamp))
-                       (path (concat anvillm-agent-path "/user/outbox/" filename))
-                       (msg (json-encode `((to . ,session-id)
-                                         (type . "PROMPT")
-                                         (subject . "User prompt")
-                                         (body . ,prompt)))))
-                  (anvillm--9p-write path msg))
-                (message "Sent prompt to %s" (substring session-id 0 (min 8 (length session-id)))))
-            (error
-             (message "Failed to send prompt: %s" (error-message-string err))))))
-    (message "No session selected")))
-
-(defun anvillm-send-prompt-direct ()
-  "Send a prompt directly to the selected session (immediate, may block)."
-  (interactive)
-  (if-let ((session-id (anvillm--get-selected-session)))
-      (let ((prompt (read-string "Prompt (direct): ")))
-        (when (> (length prompt) 0)
-          (condition-case err
-              (progn
-                (anvillm--9p-write (concat anvillm-agent-path "/" session-id "/in") prompt)
-                (message "Sent direct prompt to %s" (substring session-id 0 (min 8 (length session-id)))))
-            (error
-             (message "Failed to send direct prompt: %s" (error-message-string err))))))
-    (message "No session selected")))
-
 (defun anvillm-stop-session ()
   "Stop the selected session."
   (interactive)
@@ -328,8 +292,6 @@ Backends:
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map tabulated-list-mode-map)
     (define-key map (kbd "s") #'anvillm-start-session)
-    (define-key map (kbd "P") #'anvillm-send-prompt-minibuffer)
-    (define-key map (kbd "M-P") #'anvillm-send-prompt-direct)
     (define-key map (kbd "t") #'anvillm-stop-session)
     (define-key map (kbd "R") #'anvillm-restart-session)
     (define-key map (kbd "K") #'anvillm-kill-session)
@@ -399,16 +361,15 @@ Backends:
   (interactive)
   (if-let ((session-id (anvillm--get-selected-session)))
       (condition-case err
-          (let* ((backend (string-trim (anvillm--9p-read (concat anvillm-agent-path "/" session-id "/backend"))))
-                 (tmux-session (format "anvillm-%s" backend))
-                 (tmux-window session-id)
-                 (tmux-target (format "%s:%s" tmux-session tmux-window)))
-            (start-process
-             (format "tmux-attach-%s" session-id)
-             nil
-             anvillm-terminal-command
-             "-e" "tmux" "attach" "-t" tmux-target)
-            (message "Attached to tmux session %s" tmux-target))
+          (let ((tmux-target (string-trim (anvillm--9p-read (concat anvillm-agent-path "/" session-id "/tmux")))))
+            (if (string-empty-p tmux-target)
+                (message "Session does not support attach")
+              (start-process
+               (format "tmux-attach-%s" session-id)
+               nil
+               anvillm-terminal-command
+               "-e" "tmux" "attach" "-t" tmux-target)
+              (message "Attached to tmux session %s" tmux-target)))
         (error
          (message "Failed to attach to session: %s" (error-message-string err))))
     (message "No session selected")))

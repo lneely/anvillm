@@ -650,20 +650,19 @@ func handleContextWindow(w *acme.Win, sess *SessionInfo) {
 }
 
 func attachSession(id string) error {
-	sess, err := getSession(id)
+	// Read tmux session/window from the tmux file
+	tmuxPath := filepath.Join(id, "tmux")
+	data, err := readFile(tmuxPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read tmux target: %w", err)
 	}
 
-	// Read tmux session/window from session metadata
-	// This requires reading the extra metadata - for now, construct from backend name
-	// The server stores tmux_session and tmux_window in Extra, but we can't access that via 9P yet
-	// For now, assume tmux session is "anvillm-{backend}" and window is the session ID
-	tmuxSession := fmt.Sprintf("anvillm-%s", sess.Backend)
-	tmuxWindow := id
+	target := strings.TrimSpace(string(data))
+	if target == "" {
+		return fmt.Errorf("session does not support attach")
+	}
 
 	go func() {
-		target := fmt.Sprintf("%s:%s", tmuxSession, tmuxWindow)
 		cmd := exec.Command(terminalCommand, "-e", "tmux", "attach", "-t", target)
 		if err := cmd.Start(); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to launch terminal: %v\n", err)

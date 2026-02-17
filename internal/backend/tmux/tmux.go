@@ -56,7 +56,7 @@ type Config struct {
 // Backend implements backend.Backend for tmux-based CLI tools
 type Backend struct {
 	cfg         Config
-	tmuxSession string // Persistent tmux session name (e.g., "anvillm-kiro-cli")
+	tmuxSession string // Persistent tmux session name (e.g., "anvillm-0")
 }
 
 // generateID creates a unique session ID using random bytes
@@ -79,7 +79,8 @@ func New(cfg Config) backend.Backend {
 	}
 
 	// Build tmux session name with namespace suffix if provided
-	sessionName := fmt.Sprintf("anvillm-%s", cfg.Name)
+	// All backends share the same tmux session per namespace
+	sessionName := "anvillm"
 	if cfg.NsSuffix != "" {
 		sessionName = fmt.Sprintf("%s-%s", sessionName, cfg.NsSuffix)
 	}

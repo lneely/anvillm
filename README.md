@@ -394,7 +394,7 @@ See `workflows/DevReview` and `workflows/Planning` for complete examples.
 | Session won't start | Check stderr; verify `which claude` or `which kiro-cli` |
 | Landlock ABI error | Set `best_effort: true` or upgrade kernel |
 | Permission denied | Add paths to sandbox config |
-| Orphaned tmux | `tmux kill-session -t anvillm-claude` |
+| Orphaned tmux | `tmux kill-session -t anvillm-0` (or anvillm-N for namespace :N) |
 | 9P not working | Verify plan9port: `9p ls agent` |
 | Stale PID file | `anvilsrv stop` cleans up automatically |
 | Daemon won't stop | Check logs with `anvilsrv fgstart` |
