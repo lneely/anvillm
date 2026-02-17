@@ -107,7 +107,11 @@ func main() {
 			// In a 2-1 chord, the selection comes through as e.Arg
 			if sessionIDRegex.MatchString(cmd) {
 				if len(e.Arg) > 0 {
-					go sendPrompt(cmd, string(e.Arg))
+					go func(id, prompt string) {
+						if err := sendPrompt(id, prompt); err != nil {
+							fmt.Fprintf(os.Stderr, "Failed to send prompt: %v\n", err)
+						}
+					}(cmd, string(e.Arg))
 				}
 				continue
 			}
@@ -565,7 +569,9 @@ func handlePromptWindow(w *acme.Win, sess *SessionInfo) {
 			}
 			prompt := strings.TrimSpace(string(body))
 			if prompt != "" {
-				go sendPrompt(sess.ID, prompt)
+				if err := sendPrompt(sess.ID, prompt); err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to send prompt: %v\n", err)
+				}
 				w.Ctl("delete")
 				return
 			}
