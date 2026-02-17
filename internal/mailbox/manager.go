@@ -92,26 +92,42 @@ func (m *Manager) HasOutbox(sessionID string) bool {
 	return len(m.outboxes[sessionID]) > 0
 }
 
-// ReadOutbox reads the first message from outbox and removes it
-func (m *Manager) ReadOutbox(sessionID string) (*Message, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// PeekOutbox reads the first message from outbox without removing it
+func (m *Manager) PeekOutbox(sessionID string) (*Message, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	
 	msgs := m.outboxes[sessionID]
 	if len(msgs) == 0 {
 		return nil, fmt.Errorf("no messages in outbox")
 	}
 	
-	msg := msgs[0]
-	m.outboxes[sessionID] = msgs[1:]
+	return msgs[0], nil
+}
+
+// RemoveFromOutbox removes the first message from outbox
+func (m *Manager) RemoveFromOutbox(sessionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	
-	return msg, nil
+	msgs := m.outboxes[sessionID]
+	if len(msgs) == 0 {
+		return fmt.Errorf("no messages in outbox")
+	}
+	
+	m.outboxes[sessionID] = msgs[1:]
+	return nil
 }
 
 // DeliverToInbox delivers a message to a session's inbox
 func (m *Manager) DeliverToInbox(sessionID string, msg *Message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	
+	// Check if receiver exists
+	if _, exists := m.inboxes[sessionID]; !exists {
+		return fmt.Errorf("receiver %s does not exist", sessionID)
+	}
 	
 	m.inboxes[sessionID] = append(m.inboxes[sessionID], msg)
 	
@@ -261,6 +277,14 @@ func (m *Manager) GetMessage(sessionID, msgID string) (*Message, error) {
 	}
 	
 	return nil, fmt.Errorf("message not found")
+}
+
+// MoveToCompleted moves a message to the completed folder
+func (m *Manager) MoveToCompleted(sessionID string, msg *Message) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	m.completed[sessionID] = append(m.completed[sessionID], msg)
 }
 
 // GetAuditLog returns the audit log

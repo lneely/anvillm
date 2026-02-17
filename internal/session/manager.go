@@ -147,12 +147,23 @@ func (m *Manager) processMailboxes() {
 	allSenders := append([]string{"user"}, m.List()...)
 	for _, senderID := range allSenders {
 		for m.mailManager.HasOutbox(senderID) {
-			msg, err := m.mailManager.ReadOutbox(senderID)
+			msg, err := m.mailManager.PeekOutbox(senderID)
 			if err != nil {
 				break
 			}
+			// Deliver first, then remove only if successful
 			if err := m.mailManager.DeliverToInbox(msg.To, msg); err != nil {
-				fmt.Fprintf(os.Stderr, "Error delivering message to %s: %v\n", msg.To, err)
+				// Receiver doesn't exist - move to dead letter (completed)
+				m.mailManager.RemoveFromOutbox(senderID)
+				if msg.Metadata == nil {
+					msg.Metadata = make(map[string]interface{})
+				}
+				msg.Metadata["error"] = err.Error()
+				m.mailManager.MoveToCompleted(senderID, msg)
+				fmt.Fprintf(os.Stderr, "Message undeliverable to %s: %v\n", msg.To, err)
+			} else {
+				// Remove only after successful delivery
+				m.mailManager.RemoveFromOutbox(senderID)
 			}
 		}
 	}
