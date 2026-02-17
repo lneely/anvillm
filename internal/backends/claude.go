@@ -25,20 +25,15 @@ func NewClaude(nsSuffix string) backend.Backend {
 	return newClaudeWithCommand([]string{"claude", "--dangerously-skip-permissions"}, nsSuffix)
 }
 
-// NewClaudeWithContinue creates a backend that continues the most recent conversation
-func NewClaudeWithContinue(nsSuffix string) backend.Backend {
-	return newClaudeWithCommand([]string{"claude", "--dangerously-skip-permissions", "--continue"}, nsSuffix)
-}
-
-// NewClaudeWithResume creates a backend that resumes a specific session by ID
-func NewClaudeWithResume(sessionID string, nsSuffix string) backend.Backend {
-	return newClaudeWithCommand([]string{"claude", "--dangerously-skip-permissions", "--resume", sessionID}, nsSuffix)
-}
-
 func newClaudeWithCommand(command []string, nsSuffix string) backend.Backend {
+	agentName := os.Getenv("CLAUDE_AGENT_NAME")
+	if agentName == "" {
+		agentName = "anvillm-agent"
+	}
+	
 	return tmux.New(tmux.Config{
 		Name:    "claude",
-		Command: command,
+		Command: append(command, "--agent", agentName),
 		Environment: map[string]string{
 			"TERM": "xterm-256color",
 		},
@@ -99,17 +94,12 @@ func (h *claudeCommands) Execute(ctx context.Context, command string) (string, e
 //
 // NOTE: Save/Load operations are NOT supported for Claude backend.
 // - Claude auto-saves all conversations to ~/.claude/projects/<dir>/<session-id>.jsonl
+// - Sessions are automatically continued via --agent hook integration
 // - No practical way to "load" context from one session into another
 // - Context sharing would require either:
 //   1. Expensive message replay (burns tokens, slow)
 //   2. Lossy summarization (defeats purpose of context sharing)
 //   3. File manipulation (risky, undefined behavior)
-//
-// For session management:
-// - Use NewClaudeWithResume(sessionID) to continue a specific session
-// - Use NewClaudeWithContinue() to continue most recent session
-// - Use ListSessions(cwd) to browse available sessions
-// Claude automatically saves conversations to ~/.claude/projects/<dir-path>/<session-id>.jsonl
 
 // GetSessionDir returns the directory where Claude stores sessions for the given working directory
 func GetSessionDir(cwd string) string {

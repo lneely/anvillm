@@ -16,8 +16,14 @@ build:V:
 	chmod 0755 $INSTALL_PATH/Workflows/*
 	mkdir -p $HOME/.config/anvillm
 	cp -rf cfg/* $HOME/.config/anvillm/
-	mkdir -p $HOME/.kiro/agents
-	cp agents/* $HOME/.kiro/agents/
+	mkdir -p $HOME/.kiro/agents/kiro-cli
+	mkdir -p $HOME/.claude/agents
+	mkdir -p $HOME/.claude/hooks
+	cp agents/kiro-cli/* $HOME/.kiro/agents/kiro-cli/
+	cp agents/claude/* $HOME/.claude/agents/
+	cp claude/hooks/* $HOME/.claude/hooks/
+	chmod +x $HOME/.claude/hooks/*.sh
+	bash scripts/install-claude-hooks.sh
 
 install:V: build
 
