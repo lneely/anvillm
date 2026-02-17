@@ -190,7 +190,15 @@ Format: id alias state pid cwd (whitespace-separated; often tabs)."
         (when (> (length prompt) 0)
           (condition-case err
               (progn
-                (anvillm--9p-write (concat anvillm-agent-path "/" session-id "/in") prompt)
+                ;; Create message JSON for user outbox
+                (let* ((timestamp (format-time-string "%s"))
+                       (filename (format "msg-%s.json" timestamp))
+                       (path (concat anvillm-agent-path "/user/outbox/" filename))
+                       (msg (json-encode `((to . ,session-id)
+                                         (type . "PROMPT")
+                                         (subject . "User prompt")
+                                         (body . ,prompt)))))
+                  (anvillm--9p-write path msg))
                 (message "Sent prompt to %s" (substring session-id 0 (min 8 (length session-id)))))
             (error
              (message "Failed to send prompt: %s" (error-message-string err))))))

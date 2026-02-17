@@ -2,6 +2,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"path/filepath"
@@ -344,6 +345,38 @@ func writeFile(path string, data []byte) error {
 	return err
 }
 
+func sendPrompt(id, prompt string) error {
+	// Create message JSON
+	msg := map[string]interface{}{
+		"to":      id,
+		"type":    "PROMPT",
+		"subject": "User prompt",
+		"body":    prompt,
+	}
+	msgJSON, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %w", err)
+	}
+	
+	// Write to user outbox
+	timestamp := time.Now().Unix()
+	filename := fmt.Sprintf("msg-%d.json", timestamp)
+	path := filepath.Join("user/outbox", filename)
+	
+	fid, err := fs.Create(path, plan9.OWRITE, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to create message file: %w", err)
+	}
+	defer fid.Close()
+	
+	_, err = fid.Write(msgJSON)
+	if err != nil {
+		return fmt.Errorf("failed to write message: %w", err)
+	}
+	
+	return nil
+}
+
 func updateStatus(msg string) {
 	statusBar.Clear()
 	fmt.Fprintf(statusBar, " %s", msg)
@@ -444,8 +477,7 @@ func showPromptDialog() {
 	form.AddButton("Send", func() {
 		prompt := input.GetText()
 		if prompt != "" {
-			path := filepath.Join(sess.ID, "in")
-			if err := writeFile(path, []byte(prompt)); err != nil {
+			if err := sendPrompt(sess.ID, prompt); err != nil {
 				updateStatus(fmt.Sprintf("[red]Error: %v", err))
 			} else {
 				updateStatus(fmt.Sprintf("[green]Sent prompt to %s", sess.ID[:8]))

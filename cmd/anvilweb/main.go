@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"9fans.net/go/plan9"
 	"9fans.net/go/plan9/client"
@@ -339,15 +340,33 @@ func sendPrompt(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	defer fs.Close()
 
-	fid, err := fs.Open(filepath.Join(id, "in"), plan9.OWRITE)
+	// Create message JSON
+	msg := map[string]interface{}{
+		"to":      id,
+		"type":    "PROMPT",
+		"subject": "User prompt",
+		"body":    req.Prompt,
+	}
+	msgJSON, err := json.Marshal(msg)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to marshal message: %v", err), http.StatusInternalServerError)
+		return
+	}
+	
+	// Write to user outbox
+	timestamp := time.Now().Unix()
+	filename := fmt.Sprintf("msg-%d.json", timestamp)
+	path := filepath.Join("user/outbox", filename)
+	
+	fid, err := fs.Create(path, plan9.OWRITE, 0644)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to create message file: %v", err), http.StatusInternalServerError)
 		return
 	}
 	defer fid.Close()
-
-	if _, err := fid.Write([]byte(req.Prompt)); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	
+	if _, err := fid.Write(msgJSON); err != nil {
+		http.Error(w, fmt.Sprintf("failed to write message: %v", err), http.StatusInternalServerError)
 		return
 	}
 
