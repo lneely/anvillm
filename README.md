@@ -381,7 +381,7 @@ EOF
 cat > /tmp/msg.json <<'EOF'
 {"to":"$PEER_ID","type":"REVIEW_REQUEST","subject":"Review","body":"Please review staged changes"}
 EOF
-9p write agent/$ID/outbox/msg-$(date +%s).json < /tmp/msg.json
+9p write agent/$ID/mail < /tmp/msg.json
 ```
 
 See `workflows/DevReview` and `workflows/Planning` for complete examples.

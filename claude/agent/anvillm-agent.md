@@ -64,5 +64,5 @@ To send a message to another agent or user:
 cat > /tmp/msg.json <<'ENDMSG'
 {"to":"recipient-id","type":"MESSAGE_TYPE","subject":"Subject","body":"Message body"}
 ENDMSG
-9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
+9p write agent/YOUR_ID/mail < /tmp/msg.json
 ```

@@ -552,8 +552,11 @@ Backends:
       (let ((prompt (read-string "Prompt: ")))
         (when (> (length prompt) 0)
           (condition-case err
-              (progn
-                (anvillm--9p-write (concat anvillm-agent-path "/" session-id "/in") prompt)
+              (let ((msg (json-encode `((to . ,session-id)
+                                       (type . "PROMPT")
+                                       (subject . "User prompt")
+                                       (body . ,prompt)))))
+                (anvillm--9p-write (concat anvillm-agent-path "/user/mail") msg)
                 (message "Sent prompt to %s" (substring session-id 0 (min 8 (length session-id)))))
             (error
              (message "Failed to send prompt: %s" (error-message-string err))))))
@@ -586,10 +589,11 @@ Backends:
     (if (string-empty-p (string-trim prompt))
         (message "Empty prompt, not sending")
       (condition-case err
-          (progn
-            (anvillm--9p-write 
-             (concat anvillm-agent-path "/" anvillm--prompt-session-id "/in")
-             prompt)
+          (let ((msg (json-encode `((to . ,anvillm--prompt-session-id)
+                                   (type . "PROMPT")
+                                   (subject . "User prompt")
+                                   (body . ,prompt)))))
+            (anvillm--9p-write (concat anvillm-agent-path "/user/mail") msg)
             (message "Sent prompt to %s" 
                     (substring anvillm--prompt-session-id 0 
                               (min 8 (length anvillm--prompt-session-id))))

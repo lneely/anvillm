@@ -74,7 +74,7 @@ You are the developer agent in a three-agent AnviLLM workflow. Your peers are th
    cat > /tmp/msg.json <<EOF
    {"to":"REVIEWER_ID","type":"REVIEW_REQUEST","subject":"Code review","body":"Please review the staged changes"}
    EOF
-   9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
+   9p write agent/YOUR_ID/mail < /tmp/msg.json
 
    Replace REVIEWER_ID and YOUR_ID with actual session IDs
 5. Wait for the reviewer's response
@@ -86,7 +86,7 @@ You are the developer agent in a three-agent AnviLLM workflow. Your peers are th
    cat > /tmp/msg.json <<EOF
    {"to":"QA_ID","type":"APPROVAL_REQUEST","subject":"Testing needed","body":"YOUR_TEST_SPEC_HERE"}
    EOF
-   9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
+   9p write agent/YOUR_ID/mail < /tmp/msg.json
 
    Replace QA_ID, YOUR_ID, and YOUR_TEST_SPEC_HERE (include APIs, test commands, expected behavior)
    - Wait for QA results
@@ -117,14 +117,14 @@ You are the code reviewer agent in a three-agent AnviLLM workflow. Your peers ar
    cat > /tmp/msg.json <<EOF
    {"to":"DEVELOPER_ID","type":"REVIEW_RESPONSE","subject":"Review complete","body":"LGTM"}
    EOF
-   9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
+   9p write agent/YOUR_ID/mail < /tmp/msg.json
 
    - If changes needed:
 
    cat > /tmp/msg.json <<EOF
    {"to":"DEVELOPER_ID","type":"REVIEW_RESPONSE","subject":"Changes requested","body":"YOUR_FEEDBACK_HERE"}
    EOF
-   9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
+   9p write agent/YOUR_ID/mail < /tmp/msg.json
 
    Replace DEVELOPER_ID, YOUR_ID, and YOUR_FEEDBACK_HERE with actual values
 5. Wait for the developer to implement changes and send another review request
@@ -171,14 +171,14 @@ You are the QA agent in a three-agent AnviLLM workflow. Your peers are the devel
    cat > /tmp/msg.json <<EOF
    {"to":"DEVELOPER_ID","type":"APPROVAL_RESPONSE","subject":"Tests passed","body":"All tests passed. Functional correctness and quality verified."}
    EOF
-   9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
+   9p write agent/YOUR_ID/mail < /tmp/msg.json
 
    - If issues found:
 
    cat > /tmp/msg.json <<EOF
    {"to":"DEVELOPER_ID","type":"APPROVAL_RESPONSE","subject":"Tests failed","body":"YOUR_DETAILED_FAILURE_REPORT"}
    EOF
-   9p write agent/YOUR_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
+   9p write agent/YOUR_ID/mail < /tmp/msg.json
 
    Replace DEVELOPER_ID, YOUR_ID, and YOUR_DETAILED_FAILURE_REPORT with actual values
 6. Wait for the developer to fix issues and send another test request

@@ -68,7 +68,7 @@ When you receive a query from the architect, research and respond using shell to
 cat > /tmp/msg.json <<'ENDMSG'
 {"to":"$ARCH_ID","type":"QUERY_RESPONSE","subject":"Research results","body":"YOUR_ANSWER_HERE"}
 ENDMSG
-9p write agent/$RESEARCH_ID/outbox/msg-\$(date +%s).json < /tmp/msg.json
+9p write agent/$RESEARCH_ID/mail < /tmp/msg.json
 
 Replace YOUR_ANSWER_HERE with actual answer
 
@@ -86,7 +86,7 @@ If documentation is insufficient, query the research bot using shell tool with t
 cat > /tmp/msg.json <<'ENDMSG'
 {"to":"$RESEARCH_ID","type":"QUERY_REQUEST","subject":"Research request","body":"YOUR_QUESTION_HERE"}
 ENDMSG
-9p write agent/$ARCH_ID/outbox/msg-\$(date +%s).json < /tmp/msg.json
+9p write agent/$ARCH_ID/mail < /tmp/msg.json
 
 Replace YOUR_QUESTION_HERE (include question, context, request for docs path or answer)
 Wait for the research agent to send the answer back
@@ -96,7 +96,7 @@ You will receive edit requests from the techeditor. Apply changes and send ackno
 cat > /tmp/msg.json <<'ENDMSG'
 {"to":"$EDITOR_ID","type":"LOG_INFO","subject":"Changes applied","body":"YOUR_ACKNOWLEDGMENT"}
 ENDMSG
-9p write agent/$ARCH_ID/outbox/msg-\$(date +%s).json < /tmp/msg.json
+9p write agent/$ARCH_ID/mail < /tmp/msg.json
 
 Replace YOUR_ACKNOWLEDGMENT with actual acknowledgment
 
@@ -112,7 +112,7 @@ Do not edit documents directly. Send recommended changes to the architect using 
 cat > /tmp/msg.json <<'ENDMSG'
 {"to":"$ARCH_ID","type":"REVIEW_REQUEST","subject":"Documentation review","body":"YOUR_RECOMMENDATIONS"}
 ENDMSG
-9p write agent/$EDITOR_ID/outbox/msg-\$(date +%s).json < /tmp/msg.json
+9p write agent/$EDITOR_ID/mail < /tmp/msg.json
 
 Replace YOUR_RECOMMENDATIONS with actual recommendations
 Request acknowledgment from the architect

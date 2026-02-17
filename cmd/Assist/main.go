@@ -359,7 +359,7 @@ func sendPrompt(id, prompt string) error {
 	if !isConnected() {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
-	
+
 	// Create message JSON
 	msg := map[string]interface{}{
 		"to":      id,
@@ -371,23 +371,20 @@ func sendPrompt(id, prompt string) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
-	
-	// Write to user outbox
-	timestamp := time.Now().Unix()
-	filename := fmt.Sprintf("msg-%d.json", timestamp)
-	path := filepath.Join("user/outbox", filename)
-	
-	fid, err := fs.Create(path, plan9.OWRITE, 0644)
+
+	// Write to user mail
+	path := "user/mail"
+
+	fid, err := fs.Open(path, plan9.OWRITE)
 	if err != nil {
-		return fmt.Errorf("failed to create message file: %w", err)
+		return fmt.Errorf("failed to open mail file: %w", err)
 	}
 	defer fid.Close()
-	
 	_, err = fid.Write(msgJSON)
 	if err != nil {
 		return fmt.Errorf("failed to write message: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -1086,9 +1083,6 @@ func listInboxMessages() ([]Message, []string, error) {
 		if err := json.Unmarshal(data, &msg); err != nil {
 			continue
 		}
-		if msg.ID == "" {
-			msg.ID = filename
-		}
 		messages = append(messages, msg)
 	}
 
@@ -1097,7 +1091,10 @@ func listInboxMessages() ([]Message, []string, error) {
 
 func extractTimestamp(filename string) int64 {
 	var ts int64
-	fmt.Sscanf(filename, "msg-%d.json", &ts)
+	parts := strings.Split(strings.TrimSuffix(filename, ".json"), "-")
+	if len(parts) == 2 {
+		fmt.Sscanf(parts[1], "%d", &ts)
+	}
 	return ts
 }
 
@@ -1124,7 +1121,7 @@ func openMessageWindow(idx int) error {
 
 	filename := filenames[idx-1]
 	msg := messages[idx-1]
-	
+
 	w, err := acme.New()
 	if err != nil {
 		return err
@@ -1159,6 +1156,7 @@ func handleMessageWindow(w *acme.Win, msg *Message, filename string) {
 			if err := archiveMessage(msg.ID); err != nil {
 				w.Fprintf("errors", "Archive failed: %v\n", err)
 			} else {
+				refreshInboxWindowByName()
 				w.Ctl("delete")
 			}
 		} else {
@@ -1175,7 +1173,7 @@ func openReplyWindow(originalMsg *Message) error {
 
 	replyType := getReplyType(originalMsg.Type)
 	replySubject := fmt.Sprintf("Re: %s", originalMsg.Subject)
-	
+
 	w.Name(fmt.Sprintf("/AnviLLM/reply/%s", originalMsg.From))
 	w.Write("tag", []byte("Send "))
 	w.Ctl("clean")
@@ -1184,11 +1182,29 @@ func openReplyWindow(originalMsg *Message) error {
 	return nil
 }
 
+func refreshInboxWindowByName() {
+	wins, err := acme.Windows()
+	if err != nil {
+		return
+	}
+	for _, info := range wins {
+		if info.Name == "/AnviLLM/inbox" {
+			w, err := acme.Open(info.ID, nil)
+			if err != nil {
+				continue
+			}
+			refreshInboxWindow(w)
+			w.CloseFiles()
+			return
+		}
+	}
+}
+
 func archiveMessage(msgID string) error {
 	if !isConnected() {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
-	
+
 	fid, err := fs.Open("user/ctl", plan9.OWRITE)
 	if err != nil {
 		return err
@@ -1241,7 +1257,7 @@ func sendReply(to, msgType, subject, body string) error {
 	if !isConnected() {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
-	
+
 	msg := map[string]interface{}{
 		"to":      to,
 		"type":    msgType,
@@ -1252,20 +1268,18 @@ func sendReply(to, msgType, subject, body string) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
-	
-	timestamp := time.Now().Unix()
-	filename := fmt.Sprintf("msg-%d.json", timestamp)
-	path := filepath.Join("user/outbox", filename)
-	
-	fid, err := fs.Create(path, plan9.OWRITE, 0644)
+
+	path := "user/mail"
+
+	fid, err := fs.Open(path, plan9.OWRITE)
 	if err != nil {
-		return fmt.Errorf("failed to create message: %w", err)
+		return fmt.Errorf("failed to open mail file: %w", err)
 	}
 	defer fid.Close()
-	
+
 	if _, err := fid.Write(msgJSON); err != nil {
 		return fmt.Errorf("failed to write message: %w", err)
 	}
-	
+
 	return nil
 }

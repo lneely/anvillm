@@ -50,7 +50,7 @@ You will receive review feedback from the techeditor. Apply changes and send ack
 cat > /tmp/msg.json <<'ENDMSG'
 {"to":"$EDITOR_ID","type":"LOG_INFO","subject":"Changes applied","body":"YOUR_ACKNOWLEDGMENT"}
 ENDMSG
-9p write agent/$WRITER_ID/outbox/msg-\$(date +%s).json < /tmp/msg.json
+9p write agent/$WRITER_ID/mail < /tmp/msg.json
 
 Replace YOUR_ACKNOWLEDGMENT with actual acknowledgment
 
@@ -65,7 +65,7 @@ Do not edit documents directly. Send recommended changes to the writer using she
 cat > /tmp/msg.json <<'ENDMSG'
 {"to":"$WRITER_ID","type":"REVIEW_REQUEST","subject":"Documentation review","body":"YOUR_RECOMMENDATIONS"}
 ENDMSG
-9p write agent/$EDITOR_ID/outbox/msg-\$(date +%s).json < /tmp/msg.json
+9p write agent/$EDITOR_ID/mail < /tmp/msg.json
 
 Replace YOUR_RECOMMENDATIONS with actual recommendations
 

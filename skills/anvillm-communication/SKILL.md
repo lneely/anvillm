@@ -42,7 +42,7 @@ From the agent list output, the first field is the session ID you need for commu
 
 ## Sending Messages
 
-All communication uses the mailbox system. Write JSON messages to your outbox.
+All communication uses the mailbox system. Write JSON messages via the mail file.
 
 ### To Another Agent
 
@@ -50,7 +50,7 @@ All communication uses the mailbox system. Write JSON messages to your outbox.
 cat > /tmp/msg.json <<'EOF'
 {"to":"{session_id}","type":"QUERY_REQUEST","subject":"Brief subject","body":"Your message here"}
 EOF
-9p write agent/{your_id}/outbox/msg-$(date +%s).json < /tmp/msg.json
+9p write agent/{your_id}/mail < /tmp/msg.json
 ```
 
 ### To User
@@ -61,7 +61,7 @@ The special recipient `"user"` sends messages to the human operator.
 cat > /tmp/msg.json <<'EOF'
 {"to":"user","type":"LOG_INFO","subject":"Task complete","body":"Summary of what was done"}
 EOF
-9p write agent/{your_id}/outbox/msg-$(date +%s).json < /tmp/msg.json
+9p write agent/{your_id}/mail < /tmp/msg.json
 ```
 
 ### Message Types
@@ -86,7 +86,7 @@ EOF
 
 1. **Discover the peer**: `9p read agent/list | grep research`
 2. **Extract ID**: Note the session ID (first field)
-3. **Create message**: Write JSON to your outbox
+3. **Create message**: Write JSON to the mail file
 4. **Check inbox**: `9p ls agent/{your_id}/inbox/` for responses
 
 ## Mailbox System
@@ -94,11 +94,12 @@ EOF
 ### Structure
 
 Each agent has:
-- **outbox/** - Write messages here to send
+- **mail** - Write messages here to send (creates UUID in outbox)
 - **inbox/** - Receive messages from others
+- **outbox/** - Outgoing messages (read-only, populated by mail writes)
 - **completed/** - Archive of processed messages
 
-The special `user` participant also has mailboxes at `agent/user/inbox`, `agent/user/outbox`, `agent/user/completed`.
+The special `user` participant also has mailboxes at `agent/user/mail`, `agent/user/inbox`, `agent/user/outbox`, `agent/user/completed`.
 
 ### Message Format
 
@@ -111,7 +112,10 @@ Messages are JSON files with:
 ### Message Flow
 
 1. Write message JSON to your outbox
-2. Mail processor (runs every 5s) picks it up
+### Message Flow
+
+1. Write message JSON to the mail file
+2. Mail processor (runs every 5s) picks it up from outbox
 3. Delivers to recipient's inbox
 4. For agents: when idle, message is formatted and sent to their `in` file
 5. For user: message body is written to sender's chat log
@@ -119,8 +123,8 @@ Messages are JSON files with:
 
 ### User Communication
 
-- **bot → user**: Bot writes to its outbox with `to="user"`. Message body appears in bot's chat log. Sender transitions to idle.
-- **user → bot**: User writes to `agent/user/outbox` with `to="{session_id}"`. Delivered to bot's inbox.
+- **bot → user**: Bot writes to `agent/{id}/mail` with `to="user"`. Message body appears in bot's chat log. Sender transitions to idle.
+- **user → bot**: User writes to `agent/user/mail` with `to="{session_id}"`. Delivered to bot's inbox.
 
 ### Checking for Messages
 
@@ -175,7 +179,7 @@ A_ID=$(9p read agent/list | grep agent-a | awk '{print $1}')
 cat > /tmp/msg.json <<'EOF'
 {"to":"$B_ID","type":"QUESTION","subject":"Work request","body":"Please do X"}
 EOF
-9p write agent/$A_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
+9p write agent/$A_ID/mail < /tmp/msg.json
 
 # Check inbox for B's response
 9p ls agent/$A_ID/inbox/
@@ -188,7 +192,7 @@ EOF
 cat > /tmp/msg.json <<'EOF'
 {"to":"$REVIEWER_ID","type":"REVIEW_REQUEST","subject":"Code review","body":"Please review staged changes"}
 EOF
-9p write agent/$DEV_ID/outbox/msg-$(date +%s).json < /tmp/msg.json
+9p write agent/$DEV_ID/mail < /tmp/msg.json
 
 # Developer checks inbox for response
 9p ls agent/$DEV_ID/inbox/
@@ -202,7 +206,7 @@ EOF
 cat > /tmp/msg.json <<'EOF'
 {"to":"user","type":"STATUS_UPDATE","subject":"Response","body":"Summary of what was done in THIS interaction"}
 EOF
-9p write agent/{your_id}/outbox/msg-$(date +%s).json < /tmp/msg.json
+9p write agent/{your_id}/mail < /tmp/msg.json
 ```
 
 Examples of when to send STATUS_UPDATE to user:

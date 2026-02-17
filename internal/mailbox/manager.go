@@ -13,6 +13,7 @@ type Manager struct {
 	outboxes  map[string][]*Message
 	completed map[string][]*Message
 	mu        sync.RWMutex
+	idCounter uint64
 }
 
 // NewManager creates a new mailbox manager

@@ -126,7 +126,7 @@ Use existing `APPROVAL_REQUEST` and `APPROVAL_RESPONSE` message types:
 cat > /tmp/approval.json <<EOF
 {"to":"human","type":"APPROVAL_REQUEST","subject":"OAuth implementation","body":"Implemented OAuth login. Added 3 files, 200 LOC. All tests pass. Please review and approve."}
 EOF
-9p write agent/dev-123/outbox/msg-$(date +%s).json < /tmp/approval.json
+9p write agent/dev-123/mail < /tmp/approval.json
 
 # Bot waits (stays idle, checks inbox for response)
 ```
@@ -144,7 +144,7 @@ External daemon monitors special "human" inbox or approval queue:
 cat > /tmp/response.json <<EOF
 {"to":"dev-123","type":"APPROVAL_RESPONSE","subject":"Approved","body":"LGTM - OAuth implementation looks good. Proceed with deployment."}
 EOF
-9p write agent/human/outbox/msg-$(date +%s).json < /tmp/response.json
+9p write agent/human/mail < /tmp/response.json
 ```
 
 ### Bot Behavior

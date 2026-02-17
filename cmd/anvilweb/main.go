@@ -13,7 +13,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"9fans.net/go/plan9"
 	"9fans.net/go/plan9/client"
@@ -359,14 +358,12 @@ func sendPrompt(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 
-	// Write to user outbox
-	timestamp := time.Now().Unix()
-	filename := fmt.Sprintf("msg-%d.json", timestamp)
-	path := filepath.Join("user/outbox", filename)
+	// Write to user mail
+	path := "user/mail"
 
-	fid, err := fs.Create(path, plan9.OWRITE, 0644)
+	fid, err := fs.Open(path, plan9.OWRITE)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to create message file: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to open mail file: %v", err), http.StatusInternalServerError)
 		return
 	}
 	defer fid.Close()
@@ -631,7 +628,10 @@ func handleInbox(w http.ResponseWriter, r *http.Request) {
 			}
 
 			var ts int64
-			fmt.Sscanf(d.Name, "msg-%d.json", &ts)
+			parts := strings.Split(strings.TrimSuffix(d.Name, ".json"), "-")
+			if len(parts) == 2 {
+				fmt.Sscanf(parts[1], "%d", &ts)
+			}
 
 			messages = append(messages, InboxMessage{
 				Message:   msg,
@@ -719,11 +719,9 @@ func handleInboxReply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	timestamp := time.Now().Unix()
-	filename := fmt.Sprintf("msg-%d.json", timestamp)
-	path := filepath.Join("user/outbox", filename)
+	path := "user/mail"
 
-	fid, err := fs.Create(path, plan9.OWRITE, 0644)
+	fid, err := fs.Open(path, plan9.OWRITE)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

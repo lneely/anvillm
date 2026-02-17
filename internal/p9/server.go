@@ -19,6 +19,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/google/uuid"
+
 	"9fans.net/go/plan9"
 	"9fans.net/go/plan9/client"
 )
@@ -69,6 +71,7 @@ const (
 	qidUserOutbox                // user/outbox
 	qidUserCompleted             // user/completed
 	qidUserCtl                   // user/ctl
+	qidUserMail                  // user/mail
 	qidSessionBase   = 1000
 	qidPeersBase     = 0x10000000 // peers/{id}/file
 	qidInboxBase     = 0x20000000 // session/{id}/inbox
@@ -92,10 +95,11 @@ const (
 	fileRole
 	fileTasks
 	fileTmux
+	fileMail
 	fileCount
 )
 
-var fileNames = []string{"ctl", "in", "out", "log", "state", "pid", "cwd", "alias", "backend", "context", "role", "tasks", "tmux"}
+var fileNames = []string{"ctl", "in", "out", "log", "state", "pid", "cwd", "alias", "backend", "context", "role", "tasks", "tmux", "mail"}
 
 // Directory names in session
 var dirNames = []string{"inbox", "outbox", "completed"}
@@ -285,6 +289,9 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			case "ctl":
 				qid = plan9.Qid{Type: QTFile, Path: qidUserCtl}
 				newPath = "/user/ctl"
+			case "mail":
+				qid = plan9.Qid{Type: QTFile, Path: qidUserMail}
+				newPath = "/user/mail"
 			default:
 				return errFcall(fc, "not found")
 			}
@@ -356,46 +363,7 @@ func (s *Server) open(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 }
 
 func (s *Server) create(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-	
-	f, ok := cs.fids[fc.Fid]
-	if !ok {
-		return errFcall(fc, "bad fid")
-	}
-	
-	// Allow creating files in outbox directories (session or user)
-	parts := strings.Split(strings.TrimPrefix(f.path, "/"), "/")
-	isUserOutbox := f.path == "/user/outbox"
-	isSessionOutbox := len(parts) == 2 && parts[1] == "outbox"
-	
-	if !isUserOutbox && !isSessionOutbox {
-		return errFcall(fc, "can only create files in outbox")
-	}
-	
-	fileName := fc.Name
-	
-	// Must be a .json file
-	if !strings.HasSuffix(fileName, ".json") {
-		return errFcall(fc, "message files must end with .json")
-	}
-	
-	// Create new message file
-	newPath := f.path + "/" + fileName
-	var hashKey string
-	if isUserOutbox {
-		hashKey = "user" + "outbox" + fileName
-	} else {
-		hashKey = parts[0] + "outbox" + fileName
-	}
-	qid := plan9.Qid{Type: QTFile, Path: qidMessageBase + hashID(hashKey)}
-	
-	f.qid = qid
-	f.path = newPath
-	f.mode = fc.Mode
-	f.offset = 0
-	
-	return &plan9.Fcall{Type: plan9.Rcreate, Tag: fc.Tag, Qid: qid}
+	return errFcall(fc, "create not supported")
 }
 
 func (s *Server) read(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
@@ -671,8 +639,8 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
-	// /{id}/outbox/msg-*.json - write message to outbox
-	if len(parts) == 3 && parts[1] == "outbox" && strings.HasSuffix(parts[2], ".json") {
+	// /{id}/mail - write message to outbox (generates UUID filename)
+	if len(parts) == 2 && parts[1] == "mail" {
 		sessID := parts[0]
 		
 		// Track this connection's session ID
@@ -693,6 +661,9 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			return errFcall(fc, err.Error())
 		}
 		
+		// Generate UUID for message
+		msg.ID = uuid.New().String()
+		
 		// Add to outbox
 		mailMgr := s.mgr.GetMailManager()
 		if mailMgr == nil {
@@ -704,7 +675,6 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		}
 		
 		// Transition sender to idle after sending any outbox message
-		// This allows the sender to receive responses and prevents getting stuck in "running"
 		if sess := s.mgr.Get(sessID); sess != nil {
 			if tmuxSess, ok := sess.(*tmux.Session); ok {
 				tmuxSess.TransitionTo("idle")
@@ -714,8 +684,8 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
-	// /user/outbox/msg-*.json - write message from user to bot
-	if len(parts) == 3 && parts[0] == "user" && parts[1] == "outbox" && strings.HasSuffix(parts[2], ".json") {
+	// /user/mail - write message from user to bot (generates UUID filename)
+	if len(parts) == 2 && parts[0] == "user" && parts[1] == "mail" {
 		// Parse JSON message
 		msg, err := mailbox.FromJSON(fc.Data)
 		if err != nil {
@@ -730,6 +700,9 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		// Set from field to "user"
 		msg.From = "user"
 		
+		// Generate UUID for message
+		msg.ID = uuid.New().String()
+		
 		// Add to user's outbox
 		mailMgr := s.mgr.GetMailManager()
 		if mailMgr == nil {
@@ -737,6 +710,43 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		}
 		
 		if err := mailMgr.AddToOutbox("user", msg); err != nil {
+			return errFcall(fc, fmt.Sprintf("failed to add message: %v", err))
+		}
+		
+		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
+	}
+
+	// /agent/{id}/mail - write message from agent (generates UUID filename)
+	if len(parts) == 2 && parts[1] == "mail" {
+		sessID := parts[0]
+		if s.mgr.Get(sessID) == nil {
+			return errFcall(fc, "session not found")
+		}
+		
+		// Parse JSON message
+		msg, err := mailbox.FromJSON(fc.Data)
+		if err != nil {
+			return errFcall(fc, fmt.Sprintf("invalid message JSON: %v", err))
+		}
+		
+		// Validate message type
+		if err := mailbox.ValidateMessageType(msg.Type); err != nil {
+			return errFcall(fc, err.Error())
+		}
+		
+		// Set from field to session ID
+		msg.From = sessID
+		
+		// Generate UUID for message
+		msg.ID = uuid.New().String()
+		
+		// Add to agent's outbox
+		mailMgr := s.mgr.GetMailManager()
+		if mailMgr == nil {
+			return errFcall(fc, "mailbox not available")
+		}
+		
+		if err := mailMgr.AddToOutbox(sessID, msg); err != nil {
 			return errFcall(fc, fmt.Sprintf("failed to add message: %v", err))
 		}
 		
@@ -841,6 +851,10 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 		dirs = append(dirs, plan9.Dir{
 			Qid:  plan9.Qid{Type: QTFile, Path: qidUserCtl},
 			Mode: 0222, Name: "ctl", Uid: "q", Gid: "q", Muid: "q",
+		})
+		dirs = append(dirs, plan9.Dir{
+			Qid:  plan9.Qid{Type: QTFile, Path: qidUserMail},
+			Mode: 0222, Name: "mail", Uid: "q", Gid: "q", Muid: "q",
 		})
 	} else if strings.HasPrefix(path, "/user/") && strings.Count(path, "/") == 2 {
 		// User mailbox directory (inbox/outbox/completed)

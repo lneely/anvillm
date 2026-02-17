@@ -357,36 +357,22 @@ func sendPrompt(id, prompt string) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
-	
-	// Write to user outbox
-	timestamp := time.Now().Unix()
-	filename := fmt.Sprintf("msg-%d.json", timestamp)
-	path := filepath.Join("user/outbox", filename)
-	
-	fid, err := fs.Create(path, plan9.OWRITE, 0644)
+
+	// Write to user mail
+	path := "user/mail"
+
+	fid, err := fs.Open(path, plan9.OWRITE)
 	if err != nil {
-		return fmt.Errorf("failed to create message file: %w", err)
+		return fmt.Errorf("failed to open mail file: %w", err)
 	}
 	defer fid.Close()
-	
+
 	_, err = fid.Write(msgJSON)
 	if err != nil {
 		return fmt.Errorf("failed to write message: %w", err)
 	}
-	
+
 	return nil
-}
-
-func sendPromptDirect(id, prompt string) error {
-	path := filepath.Join(id, "in")
-	fid, err := fs.Open(path, plan9.OWRITE)
-	if err != nil {
-		return err
-	}
-	defer fid.Close()
-
-	_, err = fid.Write([]byte(prompt))
-	return err
 }
 
 func updateStatus(msg string) {
