@@ -158,20 +158,20 @@ func (m *Manager) processMailboxes() {
 		}
 	}
 	
-	// 3. Prompt idle agents with pending messages (after 30 seconds of idle)
+	// 3. Prompt idle agents with pending messages (after 15 seconds of idle)
 	for _, sess := range sessions {
 		if sess.State() != "idle" {
 			continue
 		}
 		
-		// Check if session has been idle for more than 30 seconds
+		// Check if session has been idle for more than 15 seconds
 		tmuxSess, ok := sess.(*tmux.Session)
 		if !ok {
 			continue
 		}
 		
 		idleDuration := tmuxSess.IdleDuration()
-		if idleDuration < 30*time.Second {
+		if idleDuration < 15*time.Second {
 			continue
 		}
 		
