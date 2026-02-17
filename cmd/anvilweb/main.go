@@ -51,7 +51,7 @@ func main() {
 	http.Handle("/", http.FileServer(http.FS(staticFS)))
 	http.HandleFunc("/api/sessions", handleSessions)
 	http.HandleFunc("/api/session/", handleSession)
-	http.HandleFunc("/api/log/", handleLogStream)
+	http.HandleFunc("/api/log", handleLogStream)
 	http.HandleFunc("/api/inbox", handleInbox)
 	http.HandleFunc("/api/inbox/count", handleInboxCount)
 	http.HandleFunc("/api/inbox/reply", handleInboxReply)
@@ -502,13 +502,7 @@ func updateSessionFile(w http.ResponseWriter, r *http.Request, id, file string) 
 }
 
 func handleLogStream(w http.ResponseWriter, r *http.Request) {
-	// Extract session ID from path
-	id := strings.TrimPrefix(r.URL.Path, "/api/log/")
-	if id == "" {
-		http.Error(w, "Invalid session ID", http.StatusBadRequest)
-		return
-	}
-
+	// Stream the centralized audit log
 	// Set headers for SSE
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -521,8 +515,8 @@ func handleLogStream(w http.ResponseWriter, r *http.Request) {
 	}
 	defer fs.Close()
 
-	// Open log file for streaming
-	fid, err := fs.Open(filepath.Join(id, "log"), plan9.OREAD)
+	// Open audit log file for streaming
+	fid, err := fs.Open("audit", plan9.OREAD)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

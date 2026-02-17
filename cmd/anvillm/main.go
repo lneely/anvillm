@@ -586,23 +586,17 @@ func killSelectedSession() {
 }
 
 func showLogViewer() {
-	sess := getSelectedSession()
-	if sess == nil {
-		updateStatus("[yellow]No session selected")
-		return
-	}
-
-	// Read the log from the 'log' file
-	path := filepath.Join(sess.ID, "log")
+	// Read the centralized audit log
+	path := "audit"
 	logData, err := readLogFile(path)
 	if err != nil {
-		updateStatus(fmt.Sprintf("[red]Error reading log: %v", err))
+		updateStatus(fmt.Sprintf("[red]Error reading audit log: %v", err))
 		return
 	}
 
 	logText := string(logData)
 	if logText == "" {
-		logText = "[gray]No log output yet[-]"
+		logText = "[gray]No audit log entries yet[-]"
 	}
 
 	textView := tview.NewTextView().
@@ -612,7 +606,7 @@ func showLogViewer() {
 		SetWordWrap(true)
 
 	textView.SetBorder(true).
-		SetTitle(fmt.Sprintf(" Log: %s ", sess.ID[:8])).
+		SetTitle(" Audit Log ").
 		SetTitleAlign(tview.AlignLeft)
 
 	// Scroll to bottom
@@ -632,7 +626,7 @@ func showLogViewer() {
 			}
 			logText := string(logData)
 			if logText == "" {
-				logText = "[gray]No log output yet[-]"
+				logText = "[gray]No audit log entries yet[-]"
 			}
 			textView.SetText(logText)
 			textView.ScrollToEnd()

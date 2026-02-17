@@ -416,25 +416,18 @@ Backends:
             nil t))
 
 (defun anvillm-view-log ()
-  "View the log for the selected session."
+  "View the centralized audit log."
   (interactive)
-  (if-let ((session-id (anvillm--get-selected-session)))
-      (let* ((session-info (anvillm--get-session-info session-id))
-             (display-name (or (plist-get session-info :alias)
-                              (substring session-id 0 (min 8 (length session-id)))))
-             (buffer-name (format "*AnviLLM Log: %s*" display-name))
-             (buffer (get-buffer-create buffer-name)))
-        (with-current-buffer buffer
-          (anvillm-log-mode)
-          (setq anvillm--log-session-id session-id)
-          (anvillm--refresh-log-buffer))
-        (pop-to-buffer buffer))
-    (message "No session selected")))
+  (let* ((buffer-name "*AnviLLM Audit Log*")
+         (buffer (get-buffer-create buffer-name)))
+    (with-current-buffer buffer
+      (anvillm-log-mode)
+      (setq anvillm--log-session-id nil) ; Not session-specific anymore
+      (anvillm--refresh-log-buffer))
+    (pop-to-buffer buffer)))
 
 (defun anvillm--refresh-log-buffer ()
   "Refresh the log content in the current buffer by starting a streaming read."
-  (unless anvillm--log-session-id
-    (error "No session ID associated with this buffer"))
   
   ;; Kill existing process if any
   (when (and anvillm--log-process
@@ -444,10 +437,10 @@ Backends:
   (let ((inhibit-read-only t)
         (log-buffer (current-buffer)))
     (erase-buffer)
-    (insert "Loading log...\n")
+    (insert "Loading audit log...\n")
     
-    ;; Start streaming process
-    (let* ((path (concat anvillm-agent-path "/" anvillm--log-session-id "/log"))
+    ;; Start streaming process for centralized audit log
+    (let* ((path (concat anvillm-agent-path "/audit"))
            (proc (start-process "9p-log-stream" log-buffer anvillm-9p-command "read" path)))
       
       (setq anvillm--log-process proc)
@@ -459,10 +452,10 @@ Backends:
            (with-current-buffer log-buffer
              (let ((inhibit-read-only t)
                    (at-end (= (point) (point-max))))
-               ;; Clear "Loading log..." on first output
+               ;; Clear "Loading audit log..." on first output
                (when (save-excursion
                        (goto-char (point-min))
-                       (looking-at "Loading log..."))
+                       (looking-at "Loading audit log..."))
                  (erase-buffer))
                ;; Insert new output
                (goto-char (point-max))
@@ -479,7 +472,7 @@ Backends:
              (let ((inhibit-read-only t))
                (when (and (= (point-min) (point-max))
                          (not (string-match-p "^run" event)))
-                 (insert "No log output yet.\n"))))))))))
+                 (insert "No audit log entries yet.\n"))))))))))
 
 (defun anvillm-log-refresh ()
   "Refresh the log content."

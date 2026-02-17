@@ -1,10 +1,16 @@
 package mailbox
 
 import (
+	"anvillm/internal/audit"
 	"fmt"
 	"sync"
 	"time"
 )
+
+// SessionGetter provides access to session aliases
+type SessionGetter interface {
+	GetAlias(id string) string
+}
 
 // Manager handles mailbox operations for all sessions (in-memory)
 type Manager struct {
@@ -14,6 +20,8 @@ type Manager struct {
 	completed map[string][]*Message
 	mu        sync.RWMutex
 	idCounter uint64
+	auditLog  *audit.Log
+	sessions  SessionGetter
 }
 
 // NewManager creates a new mailbox manager
@@ -22,12 +30,20 @@ func NewManager() *Manager {
 		inboxes:   make(map[string][]*Message),
 		outboxes:  make(map[string][]*Message),
 		completed: make(map[string][]*Message),
+		auditLog:  audit.NewLog(),
 	}
 	// Initialize user mailbox
 	m.inboxes["user"] = []*Message{}
 	m.outboxes["user"] = []*Message{}
 	m.completed["user"] = []*Message{}
 	return m
+}
+
+// SetSessionGetter sets the session getter for alias lookup
+func (m *Manager) SetSessionGetter(sg SessionGetter) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sessions = sg
 }
 
 // EnsureMailbox initializes mailbox for a session (no-op for in-memory)
@@ -98,7 +114,30 @@ func (m *Manager) DeliverToInbox(sessionID string, msg *Message) error {
 	defer m.mu.Unlock()
 	
 	m.inboxes[sessionID] = append(m.inboxes[sessionID], msg)
+	
+	// Format sender and receiver with aliases
+	sender := m.formatParticipant(msg.From)
+	receiver := m.formatParticipant(msg.To)
+	
+	// Audit log the delivery
+	m.auditLog.Append(string(msg.Type), sender, receiver, msg.Subject, msg.Body)
+	
 	return nil
+}
+
+// formatParticipant formats a participant ID with alias if available
+// Returns "session-id" if no alias, or "alias(session-id)" if alias is set
+func (m *Manager) formatParticipant(id string) string {
+	if m.sessions == nil {
+		return id
+	}
+	
+	alias := m.sessions.GetAlias(id)
+	if alias == "" {
+		return id
+	}
+	
+	return fmt.Sprintf("%s(%s)", alias, id)
 }
 
 // GetInbox returns all messages in inbox (copy to prevent modification)
@@ -222,4 +261,9 @@ func (m *Manager) GetMessage(sessionID, msgID string) (*Message, error) {
 	}
 	
 	return nil, fmt.Errorf("message not found")
+}
+
+// GetAuditLog returns the audit log
+func (m *Manager) GetAuditLog() *audit.Log {
+	return m.auditLog
 }

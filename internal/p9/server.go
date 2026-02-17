@@ -66,6 +66,7 @@ const (
 	qidCtl
 	qidList
 	qidStatus
+	qidAudit                     // agent/audit
 	qidUser                      // user directory
 	qidUserInbox                 // user/inbox
 	qidUserOutbox                // user/outbox
@@ -85,7 +86,6 @@ const (
 	fileCtl = iota
 	fileIn
 	fileOut
-	fileLog
 	fileState
 	filePid
 	fileCwd
@@ -99,7 +99,7 @@ const (
 	fileCount
 )
 
-var fileNames = []string{"ctl", "in", "out", "log", "state", "pid", "cwd", "alias", "backend", "context", "role", "tasks", "tmux", "mail"}
+var fileNames = []string{"ctl", "in", "out", "state", "pid", "cwd", "alias", "backend", "context", "role", "tasks", "tmux", "mail"}
 
 // Directory names in session
 var dirNames = []string{"inbox", "outbox", "completed"}
@@ -262,6 +262,9 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			case "list":
 				qid = plan9.Qid{Type: QTFile, Path: qidList}
 				newPath = "/list"
+			case "audit":
+				qid = plan9.Qid{Type: QTFile, Path: qidAudit}
+				newPath = "/audit"
 			case "user":
 				qid = plan9.Qid{Type: QTDir, Path: qidUser}
 				newPath = "/user"
@@ -378,19 +381,14 @@ func (s *Server) read(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 
 	if f.qid.Type&QTDir != 0 {
 		data = s.readDir(f.path, fc.Offset, fc.Count)
+	} else if f.path == "/audit" {
+		// Streaming audit log (like tail -f)
+		data = s.readAuditLog(fc.Offset, fc.Count)
 	} else {
-		// Check if this is a log file for streaming behavior
-		parts := strings.SplitN(f.path, "/", 3)
-		isLogFile := len(parts) == 3 && parts[2] == "log"
-		
-		if isLogFile {
-			data = s.readLogFile(parts[1], fc.Offset, fc.Count)
-		} else {
-			content := s.readFile(f.path)
-			if fc.Offset < uint64(len(content)) {
-				end := min(int(fc.Offset)+int(fc.Count), len(content))
-				data = []byte(content[fc.Offset:end])
-			}
+		content := s.readFile(f.path)
+		if fc.Offset < uint64(len(content)) {
+			end := min(int(fc.Offset)+int(fc.Count), len(content))
+			data = []byte(content[fc.Offset:end])
 		}
 	}
 
@@ -825,6 +823,10 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 			Uid: "q", Gid: "q", Muid: "q",
 		})
 		dirs = append(dirs, plan9.Dir{
+			Qid: plan9.Qid{Type: QTFile, Path: qidAudit}, Mode: 0444, Name: "audit",
+			Uid: "q", Gid: "q", Muid: "q",
+		})
+		dirs = append(dirs, plan9.Dir{
 			Qid:  plan9.Qid{Type: QTDir, Path: qidUser},
 			Mode: plan9.DMDIR | 0555, Name: "user", Uid: "q", Gid: "q", Muid: "q",
 		})
@@ -980,19 +982,19 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 	return data[offset:end]
 }
 
-func (s *Server) readLogFile(sessionID string, offset uint64, count uint32) []byte {
-	sess := s.mgr.Get(sessionID)
-	if sess == nil {
+func (s *Server) readAuditLog(offset uint64, count uint32) []byte {
+	mailMgr := s.mgr.GetMailManager()
+	if mailMgr == nil {
 		return nil
 	}
 
-	tmuxSess, ok := sess.(*tmux.Session)
-	if !ok {
+	auditLog := mailMgr.GetAuditLog()
+	if auditLog == nil {
 		return nil
 	}
 
 	// Try to read from current offset
-	logData, hasMore := tmuxSess.GetChatLogFrom(int64(offset))
+	logData, hasMore := auditLog.ReadFrom(int64(offset))
 	if hasMore && len(logData) > 0 {
 		// Return available data
 		end := min(int(count), len(logData))
@@ -1000,16 +1002,16 @@ func (s *Server) readLogFile(sessionID string, offset uint64, count uint32) []by
 	}
 
 	// No data available at this offset, wait for new data
-	waitCh := tmuxSess.WaitForLogData()
+	waitCh := auditLog.WaitForData()
 	<-waitCh
-	
+
 	// Check again after new data arrived
-	logData, hasMore = tmuxSess.GetChatLogFrom(int64(offset))
+	logData, hasMore = auditLog.ReadFrom(int64(offset))
 	if hasMore && len(logData) > 0 {
 		end := min(int(count), len(logData))
 		return []byte(logData[:end])
 	}
-	
+
 	return nil
 }
 
@@ -1028,6 +1030,18 @@ func (s *Server) readFile(path string) string {
 			}
 		}
 		return strings.Join(lines, "\n") + "\n"
+	}
+
+	if path == "/audit" {
+		mailMgr := s.mgr.GetMailManager()
+		if mailMgr == nil {
+			return ""
+		}
+		auditLog := mailMgr.GetAuditLog()
+		if auditLog == nil {
+			return ""
+		}
+		return auditLog.Read()
 	}
 
 	if path == "/status" {
@@ -1119,12 +1133,6 @@ func (s *Server) getSessionFile(sess backend.Session, idx int) string {
 	case fileOut:
 		// Output from last command - not currently exposed
 		// Bots write to this via 9P, which appends to chat log
-		return ""
-	case fileLog:
-		// Full chat history (USER:/ASSISTANT: with --- separators)
-		if tmuxSess, ok := sess.(*tmux.Session); ok {
-			return tmuxSess.GetChatLog()
-		}
 		return ""
 	case fileState:
 		return sess.State()

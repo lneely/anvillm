@@ -707,17 +707,13 @@
             // Close existing stream if any
             closeLogPane();
             
-            // Find session info for title
-            const session = allSessions.find(s => s.id === id);
-            const displayName = session ? (session.alias || session.id.substring(0, 8)) : id.substring(0, 8);
-            
-            // Update UI
-            document.getElementById('log-title').textContent = `Log: ${displayName}`;
+            // Update UI for centralized audit log
+            document.getElementById('log-title').textContent = 'Audit Log';
             document.getElementById('log-content').textContent = '';
             document.getElementById('log-pane').classList.remove('hidden');
             
-            // Start streaming
-            logEventSource = new EventSource(`/api/log/${id}`);
+            // Start streaming centralized audit log
+            logEventSource = new EventSource('/api/log');
             
             logEventSource.onmessage = (event) => {
                 const logContent = document.getElementById('log-content');

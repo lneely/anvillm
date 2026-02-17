@@ -33,6 +33,9 @@ func NewManager(backends map[string]backend.Backend) *Manager {
 		stopCh:      make(chan struct{}),
 	}
 	
+	// Set session getter for alias lookup
+	mailMgr.SetSessionGetter(m)
+	
 	// Start mail processing loop
 	m.wg.Add(1)
 	go m.mailProcessingLoop()
@@ -70,6 +73,19 @@ func (m *Manager) Get(id string) backend.Session {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.sessions[id]
+}
+
+// GetAlias returns the alias for a session ID, or empty string if not set
+func (m *Manager) GetAlias(id string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	
+	sess := m.sessions[id]
+	if sess == nil {
+		return ""
+	}
+	
+	return sess.Metadata().Alias
 }
 
 // List returns all session IDs
