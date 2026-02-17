@@ -48,7 +48,7 @@ You are a writer agent in a two-agent AnviLLM workflow. Your peer is the techedi
 You will receive review feedback from the techeditor. Apply changes and send acknowledgment using shell tool:
 
 cat > /tmp/msg.json <<'ENDMSG'
-{"to":"$EDITOR_ID","type":"STATUS_UPDATE","subject":"Changes applied","body":"YOUR_ACKNOWLEDGMENT"}
+{"to":"$EDITOR_ID","type":"LOG_INFO","subject":"Changes applied","body":"YOUR_ACKNOWLEDGMENT"}
 ENDMSG
 9p write agent/$WRITER_ID/outbox/msg-\$(date +%s).json < /tmp/msg.json
 

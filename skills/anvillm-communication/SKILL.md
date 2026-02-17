@@ -48,28 +48,39 @@ All communication uses the mailbox system. Write JSON messages to your outbox.
 
 ```bash
 cat > /tmp/msg.json <<'EOF'
-{"to":"{session_id}","type":"QUESTION","subject":"Brief subject","body":"Your message here"}
+{"to":"{session_id}","type":"QUERY_REQUEST","subject":"Brief subject","body":"Your message here"}
 EOF
 9p write agent/{your_id}/outbox/msg-$(date +%s).json < /tmp/msg.json
 ```
 
 ### To User
 
-The special recipient `"user"` sends messages to the human operator. Writing to user also transitions your agent to idle state automatically.
+The special recipient `"user"` sends messages to the human operator.
 
 ```bash
 cat > /tmp/msg.json <<'EOF'
-{"to":"user","type":"STATUS_UPDATE","subject":"Task complete","body":"Summary of what was done"}
+{"to":"user","type":"LOG_INFO","subject":"Task complete","body":"Summary of what was done"}
 EOF
 9p write agent/{your_id}/outbox/msg-$(date +%s).json < /tmp/msg.json
 ```
 
 ### Message Types
 
-- `QUESTION` - Ask for information
-- `REVIEW_REQUEST` - Request code review
-- `APPROVAL_REQUEST` - Request approval
-- `STATUS_UPDATE` - Notify of status change
+**Ephemeral (logged, auto-completed):**
+- `LOG_INFO` - Status updates, progress notices
+- `LOG_ERROR` - Error reports
+
+**Persistent (inbox only):**
+- `PROMPT` - User instructions to bot
+- `QUERY_REQUEST` / `QUERY_RESPONSE` - Information requests
+- `REVIEW_REQUEST` / `REVIEW_RESPONSE` - Code review workflow
+- `APPROVAL_REQUEST` / `APPROVAL_RESPONSE` - QA testing workflow
+
+**Deprecated (use new types):**
+- `STATUS_UPDATE` → use `LOG_INFO`
+- `ERROR_REPORT` → use `LOG_ERROR`
+- `QUESTION` → use `QUERY_REQUEST`
+- `ANSWER` → use `QUERY_RESPONSE`
 
 ### Example Workflow
 

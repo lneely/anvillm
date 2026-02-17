@@ -66,7 +66,7 @@ You are a research agent in a three-agent AnviLLM workflow. Your peers are the a
 When you receive a query from the architect, research and respond using shell tool with these exact commands:
 
 cat > /tmp/msg.json <<'ENDMSG'
-{"to":"$ARCH_ID","type":"ANSWER","subject":"Research results","body":"YOUR_ANSWER_HERE"}
+{"to":"$ARCH_ID","type":"QUERY_RESPONSE","subject":"Research results","body":"YOUR_ANSWER_HERE"}
 ENDMSG
 9p write agent/$RESEARCH_ID/outbox/msg-\$(date +%s).json < /tmp/msg.json
 
@@ -84,7 +84,7 @@ You are an architect agent in a three-agent AnviLLM workflow. Your peers are the
 If documentation is insufficient, query the research bot using shell tool with these exact commands:
 
 cat > /tmp/msg.json <<'ENDMSG'
-{"to":"$RESEARCH_ID","type":"QUESTION","subject":"Research request","body":"YOUR_QUESTION_HERE"}
+{"to":"$RESEARCH_ID","type":"QUERY_REQUEST","subject":"Research request","body":"YOUR_QUESTION_HERE"}
 ENDMSG
 9p write agent/$ARCH_ID/outbox/msg-\$(date +%s).json < /tmp/msg.json
 
@@ -94,7 +94,7 @@ Wait for the research agent to send the answer back
 You will receive edit requests from the techeditor. Apply changes and send acknowledgment using shell tool:
 
 cat > /tmp/msg.json <<'ENDMSG'
-{"to":"$EDITOR_ID","type":"STATUS_UPDATE","subject":"Changes applied","body":"YOUR_ACKNOWLEDGMENT"}
+{"to":"$EDITOR_ID","type":"LOG_INFO","subject":"Changes applied","body":"YOUR_ACKNOWLEDGMENT"}
 ENDMSG
 9p write agent/$ARCH_ID/outbox/msg-\$(date +%s).json < /tmp/msg.json
 

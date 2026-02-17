@@ -10,14 +10,24 @@ import (
 type MessageType string
 
 const (
-	MessageTypeReviewRequest  MessageType = "REVIEW_REQUEST"
-	MessageTypeReviewResponse MessageType = "REVIEW_RESPONSE"
-	MessageTypeQuestion       MessageType = "QUESTION"
-	MessageTypeAnswer         MessageType = "ANSWER"
-	MessageTypeApprovalRequest MessageType = "APPROVAL_REQUEST"
-	MessageTypeApprovalResponse MessageType = "APPROVAL_RESPONSE"
-	MessageTypeStatusUpdate   MessageType = "STATUS_UPDATE"
-	MessageTypeErrorReport    MessageType = "ERROR_REPORT"
+	// Ephemeral message types (log only, auto-complete)
+	MessageTypeLogInfo  MessageType = "LOG_INFO"  // Status updates, progress
+	MessageTypeLogError MessageType = "LOG_ERROR" // Errors
+
+	// Persistent message types (inbox only)
+	MessageTypePrompt           MessageType = "PROMPT"            // User instructions to bot
+	MessageTypeQueryRequest     MessageType = "QUERY_REQUEST"     // Request information
+	MessageTypeQueryResponse    MessageType = "QUERY_RESPONSE"    // Provide information
+	MessageTypeReviewRequest    MessageType = "REVIEW_REQUEST"    // Request code review
+	MessageTypeReviewResponse   MessageType = "REVIEW_RESPONSE"   // Provide review feedback
+	MessageTypeApprovalRequest  MessageType = "APPROVAL_REQUEST"  // Request testing/approval
+	MessageTypeApprovalResponse MessageType = "APPROVAL_RESPONSE" // Provide test results
+
+	// Deprecated types (for backward compatibility)
+	MessageTypeQuestion     MessageType = "QUESTION"      // Deprecated: use QUERY_REQUEST
+	MessageTypeAnswer       MessageType = "ANSWER"        // Deprecated: use QUERY_RESPONSE
+	MessageTypeStatusUpdate MessageType = "STATUS_UPDATE" // Deprecated: use LOG_INFO
+	MessageTypeErrorReport  MessageType = "ERROR_REPORT"  // Deprecated: use LOG_ERROR
 )
 
 // Message represents a structured message between sessions

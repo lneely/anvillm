@@ -141,20 +141,30 @@ func (m *Manager) processMailboxes() {
 		}
 	}
 	
-	// 2. Process user inbox - write to sender's log and set sender to idle
+	// 2. Process user inbox with type-based routing
 	userMessages, _ := m.mailManager.GetPendingMessages("user")
 	for _, msg := range userMessages {
-		// Move to completed
-		if err := m.mailManager.CompleteMessage("user", msg.ID); err != nil {
-			continue
+		// Get sender session
+		senderSess := m.Get(msg.From)
+		var tmuxSess *tmux.Session
+		var ok bool
+		if senderSess != nil {
+			tmuxSess, ok = senderSess.(*tmux.Session)
 		}
-		
-		// Write human-readable output to sender's log and set idle
-		if senderSess := m.Get(msg.From); senderSess != nil {
-			if tmuxSess, ok := senderSess.(*tmux.Session); ok {
+
+		// Route based on message type
+		switch msg.Type {
+		case mailbox.MessageTypeLogInfo, mailbox.MessageTypeLogError, 
+			mailbox.MessageTypeStatusUpdate, mailbox.MessageTypeErrorReport:
+			// LOG_*: Write to log, auto-complete (ephemeral)
+			if ok {
 				tmuxSess.AppendToChatLog("ASSISTANT", msg.Body)
-				tmuxSess.TransitionTo("idle")
 			}
+			m.mailManager.CompleteMessage("user", msg.ID)
+
+		default:
+			// All other types: inbox only, DON'T log, DON'T auto-complete
+			// Message stays in inbox for user to review
 		}
 	}
 	
