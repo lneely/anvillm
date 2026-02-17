@@ -3,6 +3,7 @@ package main
 
 import (
 	"anvillm/internal/sandbox"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -354,15 +355,36 @@ func sendPrompt(id, prompt string) error {
 	if !isConnected() {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
-	path := filepath.Join(id, "in")
-	fid, err := fs.Open(path, plan9.OWRITE)
+	
+	// Create message JSON
+	msg := map[string]interface{}{
+		"to":      id,
+		"type":    "PROMPT",
+		"subject": "User prompt",
+		"body":    prompt,
+	}
+	msgJSON, err := json.Marshal(msg)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal message: %w", err)
+	}
+	
+	// Write to user outbox
+	timestamp := time.Now().Unix()
+	filename := fmt.Sprintf("msg-%d.json", timestamp)
+	path := filepath.Join("user/outbox", filename)
+	
+	fid, err := fs.Create(path, plan9.OWRITE, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to create message file: %w", err)
 	}
 	defer fid.Close()
-
-	_, err = fid.Write([]byte(prompt))
-	return err
+	
+	_, err = fid.Write(msgJSON)
+	if err != nil {
+		return fmt.Errorf("failed to write message: %w", err)
+	}
+	
+	return nil
 }
 
 func setAlias(id, alias string) error {
@@ -571,6 +593,7 @@ func handlePromptWindow(w *acme.Win, sess *SessionInfo) {
 			if prompt != "" {
 				if err := sendPrompt(sess.ID, prompt); err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to send prompt: %v\n", err)
+					continue
 				}
 				w.Ctl("delete")
 				return
