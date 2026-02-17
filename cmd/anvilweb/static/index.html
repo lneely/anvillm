@@ -11,6 +11,7 @@
             background: var(--pico-primary-background);
             padding: 0.75rem 2rem;
             margin-bottom: 1rem;
+            position: relative;
         }
         header h1 { 
             margin: 0; 
@@ -103,15 +104,54 @@
         th.sortable::after { content: ' ⇅'; opacity: 0.3; }
         th.sortable.asc::after { content: ' ↑'; opacity: 1; }
         th.sortable.desc::after { content: ' ↓'; opacity: 1; }
+        
+        .inbox-btn {
+            position: absolute;
+            top: 50%;
+            right: 2rem;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            font-size: 2rem;
+            cursor: pointer;
+            padding: 0;
+            color: white;
+            line-height: 1;
+        }
+        .inbox-btn:hover {
+            opacity: 0.8;
+        }
+        .inbox-badge {
+            position: absolute;
+            top: -0.25rem;
+            left: -0.25rem;
+            background: #ef4444;
+            color: white;
+            border-radius: 50%;
+            width: 1rem;
+            height: 1rem;
+            font-size: 0.625rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        .inbox-badge.hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
     <header>
-        <h1>AnviLLM</h1>
+        <h1><a href="#" onclick="showTab('sessions'); return false;" style="color: white; text-decoration: none;">AnviLLM</a></h1>
+        <button class="inbox-btn" onclick="showTab('inbox')" title="Inbox">
+            <span class="inbox-badge hidden" id="inbox-badge"></span>
+            ✉
+        </button>
     </header>
 
     <main>
-        <section>
+        <section id="sessions-tab">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <h2>Sessions</h2>
                 <div>
@@ -121,6 +161,17 @@
             </div>
             <input type="search" id="search-box" placeholder="Search sessions..." style="margin-top: 1rem;">
             <div id="sessions-container"></div>
+        </section>
+
+        <section id="inbox-tab" class="hidden">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>Inbox</h2>
+                <div>
+                    <button onclick="loadInbox()" class="secondary">Refresh</button>
+                    <button onclick="showTab('sessions')" class="secondary">Back</button>
+                </div>
+            </div>
+            <div id="inbox-container" style="margin-top: 1rem;"></div>
         </section>
 
         <section id="log-pane" class="hidden">
@@ -211,6 +262,46 @@
                         <button type="button" onclick="closeAliasDialog()" class="secondary">Cancel</button>
                     </footer>
                 </form>
+            </article>
+        </dialog>
+
+        <dialog id="reply-dialog">
+            <article>
+                <header>
+                    <button aria-label="Close" rel="prev" onclick="closeReplyDialog()"></button>
+                    <h3>Reply</h3>
+                </header>
+                <form id="reply-form">
+                    <input type="hidden" id="reply-to" name="to">
+                    <input type="hidden" id="reply-type" name="type">
+                    <label>
+                        Subject
+                        <input type="text" id="reply-subject" name="subject" readonly>
+                    </label>
+                    <label>
+                        Message
+                        <textarea id="reply-body" name="body" rows="10" required></textarea>
+                    </label>
+                    <footer style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                        <button type="submit">Send</button>
+                        <button type="button" onclick="closeReplyDialog()" class="secondary">Cancel</button>
+                    </footer>
+                </form>
+            </article>
+        </dialog>
+
+        <dialog id="message-dialog">
+            <article>
+                <header>
+                    <button aria-label="Close" rel="prev" onclick="closeMessageDialog()"></button>
+                    <h3>Message</h3>
+                </header>
+                <div id="message-content" style="white-space: pre-wrap;"></div>
+                <footer style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    <button onclick="replyToMessage()" id="message-reply-btn">Reply</button>
+                    <button onclick="archiveCurrentMessage()" class="secondary">Archive</button>
+                    <button onclick="closeMessageDialog()" class="secondary">Close</button>
+                </footer>
             </article>
         </dialog>
     </main>
@@ -566,7 +657,16 @@
         }
         
         // Auto-refresh every 5 seconds
-        setInterval(loadSessions, 5000);
+        setInterval(() => {
+            loadSessions();
+            updateInboxBadge();
+            if (!document.getElementById('inbox-tab').classList.contains('hidden')) {
+                loadInbox();
+            }
+        }, 5000);
+
+        // Initial load
+        updateInboxBadge();
 
         // Search box filtering
         document.getElementById('search-box').addEventListener('input', filterSessions);
@@ -647,6 +747,177 @@
             document.getElementById('log-pane').classList.add('hidden');
             document.getElementById('log-content').textContent = '';
         }
+
+        // Tab switching
+        function showTab(tab) {
+            document.getElementById('sessions-tab').classList.toggle('hidden', tab !== 'sessions');
+            document.getElementById('inbox-tab').classList.toggle('hidden', tab !== 'inbox');
+            
+            if (tab === 'inbox') {
+                loadInbox();
+            }
+        }
+
+        // Inbox functionality
+        let currentMessage = null;
+
+        async function updateInboxBadge() {
+            try {
+                const response = await fetch('/api/inbox/count');
+                const data = await response.json();
+                const badge = document.getElementById('inbox-badge');
+                if (data.count > 0) {
+                    badge.textContent = data.count > 9 ? '9+' : data.count;
+                    badge.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Failed to update inbox badge:', error);
+            }
+        }
+
+        async function loadInbox() {
+            try {
+                const response = await fetch('/api/inbox');
+                const messages = await response.json();
+                renderInbox(messages);
+                updateInboxBadge();
+            } catch (error) {
+                console.error('Failed to load inbox:', error);
+            }
+        }
+
+        function renderInbox(messages) {
+            messages.sort((a, b) => b.timestamp - a.timestamp);
+            
+            const container = document.getElementById('inbox-container');
+            if (messages.length === 0) {
+                container.innerHTML = '<p>No messages</p>';
+                return;
+            }
+
+            let html = '<table><thead><tr><th>Date</th><th>From</th><th>Type</th><th>Subject</th><th>Actions</th></tr></thead><tbody>';
+            
+            for (const msg of messages) {
+                const date = new Date(msg.timestamp * 1000).toLocaleString();
+                html += `<tr>
+                    <td>${escapeHtml(date)}</td>
+                    <td>${escapeHtml(msg.from || '-')}</td>
+                    <td>${escapeHtml(msg.type)}</td>
+                    <td>${escapeHtml(msg.subject)}</td>
+                    <td>
+                        <button onclick='viewMessage(${JSON.stringify(msg)})'>View</button>
+                        <button onclick='archiveMessage(${JSON.stringify(msg.id)})' class="secondary">Archive</button>
+                    </td>
+                </tr>`;
+            }
+            
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        function viewMessage(msg) {
+            currentMessage = msg;
+            const date = new Date(msg.timestamp * 1000).toLocaleString();
+            const content = `From: ${msg.from || '-'}
+To: ${msg.to || '-'}
+Type: ${msg.type}
+Subject: ${msg.subject}
+Date: ${date}
+
+${msg.body}`;
+            
+            document.getElementById('message-content').textContent = content;
+            document.getElementById('message-dialog').showModal();
+        }
+
+        function closeMessageDialog() {
+            document.getElementById('message-dialog').close();
+            currentMessage = null;
+        }
+
+        function getReplyType(msgType) {
+            const replyMap = {
+                'QUERY_REQUEST': 'QUERY_RESPONSE',
+                'REVIEW_REQUEST': 'REVIEW_RESPONSE',
+                'APPROVAL_REQUEST': 'APPROVAL_RESPONSE'
+            };
+            return replyMap[msgType] || 'PROMPT';
+        }
+
+        function replyToMessage() {
+            if (!currentMessage) return;
+            
+            const replyType = getReplyType(currentMessage.type);
+            const replySubject = `Re: ${currentMessage.subject}`;
+            
+            document.getElementById('reply-to').value = currentMessage.from;
+            document.getElementById('reply-type').value = replyType;
+            document.getElementById('reply-subject').value = replySubject;
+            document.getElementById('reply-body').value = '';
+            
+            closeMessageDialog();
+            document.getElementById('reply-dialog').showModal();
+        }
+
+        function closeReplyDialog() {
+            document.getElementById('reply-dialog').close();
+        }
+
+        async function archiveMessage(msgId) {
+            try {
+                const response = await fetch('/api/inbox/archive', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: msgId })
+                });
+
+                if (response.ok) {
+                    await loadInbox();
+                } else {
+                    alert('Failed to archive message');
+                }
+            } catch (error) {
+                console.error('Failed to archive message:', error);
+                alert('Failed to archive message');
+            }
+        }
+
+        function archiveCurrentMessage() {
+            if (!currentMessage) return;
+            archiveMessage(currentMessage.id);
+            closeMessageDialog();
+        }
+
+        document.getElementById('reply-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = {
+                to: formData.get('to'),
+                type: formData.get('type'),
+                subject: formData.get('subject'),
+                body: formData.get('body')
+            };
+
+            try {
+                const response = await fetch('/api/inbox/reply', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    closeReplyDialog();
+                    loadInbox();
+                } else {
+                    alert('Failed to send reply');
+                }
+            } catch (error) {
+                console.error('Failed to send reply:', error);
+                alert('Failed to send reply');
+            }
+        });
     </script>
 </body>
 </html>

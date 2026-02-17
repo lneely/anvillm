@@ -68,6 +68,7 @@ const (
 	qidUserInbox                 // user/inbox
 	qidUserOutbox                // user/outbox
 	qidUserCompleted             // user/completed
+	qidUserCtl                   // user/ctl
 	qidSessionBase   = 1000
 	qidPeersBase     = 0x10000000 // peers/{id}/file
 	qidInboxBase     = 0x20000000 // session/{id}/inbox
@@ -281,6 +282,9 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			case "completed":
 				qid = plan9.Qid{Type: QTDir, Path: qidUserCompleted}
 				newPath = "/user/completed"
+			case "ctl":
+				qid = plan9.Qid{Type: QTFile, Path: qidUserCtl}
+				newPath = "/user/ctl"
 			default:
 				return errFcall(fc, "not found")
 			}
@@ -506,6 +510,28 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 
 	// /{id}/ctl - session control
 	if len(parts) == 2 && parts[1] == "ctl" {
+		// Handle user/ctl specially
+		if parts[0] == "user" {
+			args := strings.Fields(input)
+			if len(args) == 0 {
+				return errFcall(fc, "usage: complete <msg-id>")
+			}
+			switch args[0] {
+			case "complete":
+				if len(args) < 2 {
+					return errFcall(fc, "usage: complete <msg-id>")
+				}
+				msgID := args[1]
+				mailMgr := s.mgr.GetMailManager()
+				if err := mailMgr.CompleteMessage("user", msgID); err != nil {
+					return errFcall(fc, err.Error())
+				}
+			default:
+				return errFcall(fc, "unknown command")
+			}
+			return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
+		}
+		
 		sess := s.mgr.Get(parts[0])
 		if sess == nil {
 			return errFcall(fc, "session not found")
@@ -811,6 +837,10 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 		dirs = append(dirs, plan9.Dir{
 			Qid:  plan9.Qid{Type: QTDir, Path: qidUserCompleted},
 			Mode: plan9.DMDIR | 0555, Name: "completed", Uid: "q", Gid: "q", Muid: "q",
+		})
+		dirs = append(dirs, plan9.Dir{
+			Qid:  plan9.Qid{Type: QTFile, Path: qidUserCtl},
+			Mode: 0222, Name: "ctl", Uid: "q", Gid: "q", Muid: "q",
 		})
 	} else if strings.HasPrefix(path, "/user/") && strings.Count(path, "/") == 2 {
 		// User mailbox directory (inbox/outbox/completed)

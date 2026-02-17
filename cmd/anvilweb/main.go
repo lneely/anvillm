@@ -53,6 +53,10 @@ func main() {
 	http.HandleFunc("/api/sessions", handleSessions)
 	http.HandleFunc("/api/session/", handleSession)
 	http.HandleFunc("/api/log/", handleLogStream)
+	http.HandleFunc("/api/inbox", handleInbox)
+	http.HandleFunc("/api/inbox/count", handleInboxCount)
+	http.HandleFunc("/api/inbox/reply", handleInboxReply)
+	http.HandleFunc("/api/inbox/archive", handleInboxArchive)
 
 	log.Printf("Starting web server on %s", *addr)
 	log.Printf("Using namespace: %s", *namespace)
@@ -354,19 +358,19 @@ func sendPrompt(w http.ResponseWriter, r *http.Request, id string) {
 		http.Error(w, fmt.Sprintf("failed to marshal message: %v", err), http.StatusInternalServerError)
 		return
 	}
-	
+
 	// Write to user outbox
 	timestamp := time.Now().Unix()
 	filename := fmt.Sprintf("msg-%d.json", timestamp)
 	path := filepath.Join("user/outbox", filename)
-	
+
 	fid, err := fs.Create(path, plan9.OWRITE, 0644)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create message file: %v", err), http.StatusInternalServerError)
 		return
 	}
 	defer fid.Close()
-	
+
 	if _, err := fid.Write(msgJSON); err != nil {
 		http.Error(w, fmt.Sprintf("failed to write message: %v", err), http.StatusInternalServerError)
 		return
@@ -563,4 +567,213 @@ func handleLogStream(w http.ResponseWriter, r *http.Request) {
 		default:
 		}
 	}
+}
+
+type Message struct {
+	ID      string `json:"id"`
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Type    string `json:"type"`
+	Subject string `json:"subject"`
+	Body    string `json:"body"`
+}
+
+type InboxMessage struct {
+	Message
+	Filename  string `json:"filename"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+func handleInbox(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	fs, err := connect()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer fs.Close()
+
+	fid, err := fs.Open("user/inbox", plan9.OREAD)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer fid.Close()
+
+	messages := []InboxMessage{}
+	for {
+		dirs, err := fid.Dirread()
+		if err != nil || len(dirs) == 0 {
+			break
+		}
+		for _, d := range dirs {
+			if !strings.HasSuffix(d.Name, ".json") {
+				continue
+			}
+
+			msgFid, err := fs.Open(filepath.Join("user/inbox", d.Name), plan9.OREAD)
+			if err != nil {
+				continue
+			}
+			data, err := io.ReadAll(msgFid)
+			msgFid.Close()
+			if err != nil {
+				continue
+			}
+
+			var msg Message
+			if err := json.Unmarshal(data, &msg); err != nil {
+				continue
+			}
+
+			var ts int64
+			fmt.Sscanf(d.Name, "msg-%d.json", &ts)
+
+			messages = append(messages, InboxMessage{
+				Message:   msg,
+				Filename:  d.Name,
+				Timestamp: ts,
+			})
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(messages)
+}
+
+func handleInboxCount(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	fs, err := connect()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer fs.Close()
+
+	fid, err := fs.Open("user/inbox", plan9.OREAD)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer fid.Close()
+
+	count := 0
+	for {
+		dirs, err := fid.Dirread()
+		if err != nil || len(dirs) == 0 {
+			break
+		}
+		for _, d := range dirs {
+			if strings.HasSuffix(d.Name, ".json") {
+				count++
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"count": count})
+}
+
+func handleInboxReply(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		To      string `json:"to"`
+		Type    string `json:"type"`
+		Subject string `json:"subject"`
+		Body    string `json:"body"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	fs, err := connect()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer fs.Close()
+
+	msg := map[string]interface{}{
+		"to":      req.To,
+		"type":    req.Type,
+		"subject": req.Subject,
+		"body":    req.Body,
+	}
+	msgJSON, err := json.Marshal(msg)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	timestamp := time.Now().Unix()
+	filename := fmt.Sprintf("msg-%d.json", timestamp)
+	path := filepath.Join("user/outbox", filename)
+
+	fid, err := fs.Create(path, plan9.OWRITE, 0644)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer fid.Close()
+
+	if _, err := fid.Write(msgJSON); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
+}
+
+func handleInboxArchive(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Filename string `json:"filename"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	fs, err := connect()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer fs.Close()
+
+	ctlMsg := fmt.Sprintf("complete %s", req.Filename)
+	fid, err := fs.Open("user/ctl", plan9.OWRITE)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer fid.Close()
+
+	if _, err := fid.Write([]byte(ctlMsg)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "archived"})
 }
