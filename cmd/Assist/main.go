@@ -974,6 +974,7 @@ func stopDaemon(w *acme.Win) {
 }
 
 type Message struct {
+	ID      string `json:"id"`
 	From    string `json:"from"`
 	To      string `json:"to"`
 	Type    string `json:"type"`
@@ -1085,6 +1086,9 @@ func listInboxMessages() ([]Message, []string, error) {
 		if err := json.Unmarshal(data, &msg); err != nil {
 			continue
 		}
+		if msg.ID == "" {
+			msg.ID = filename
+		}
 		messages = append(messages, msg)
 	}
 
@@ -1127,7 +1131,7 @@ func openMessageWindow(idx int) error {
 	}
 
 	w.Name(fmt.Sprintf("/AnviLLM/inbox/%s", filename))
-	w.Write("tag", []byte("Reply "))
+	w.Write("tag", []byte("Reply Archive "))
 
 	var buf strings.Builder
 	buf.WriteString(fmt.Sprintf("From: %s\n", msg.From))
@@ -1141,16 +1145,22 @@ func openMessageWindow(idx int) error {
 	w.Write("body", []byte(buf.String()))
 	w.Ctl("clean")
 
-	go handleMessageWindow(w, &msg)
+	go handleMessageWindow(w, &msg, filename)
 	return nil
 }
 
-func handleMessageWindow(w *acme.Win, msg *Message) {
+func handleMessageWindow(w *acme.Win, msg *Message, filename string) {
 	defer w.CloseFiles()
 
 	for e := range w.EventChan() {
 		if (e.C2 == 'x' || e.C2 == 'X') && string(e.Text) == "Reply" {
 			openReplyWindow(msg)
+		} else if (e.C2 == 'x' || e.C2 == 'X') && string(e.Text) == "Archive" {
+			if err := archiveMessage(msg.ID); err != nil {
+				w.Fprintf("errors", "Archive failed: %v\n", err)
+			} else {
+				w.Ctl("delete")
+			}
 		} else {
 			w.WriteEvent(e)
 		}
@@ -1172,6 +1182,22 @@ func openReplyWindow(originalMsg *Message) error {
 
 	go handleReplyWindow(w, originalMsg.From, replyType, replySubject)
 	return nil
+}
+
+func archiveMessage(msgID string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
+	
+	fid, err := fs.Open("user/ctl", plan9.OWRITE)
+	if err != nil {
+		return err
+	}
+	defer fid.Close()
+
+	ctlMsg := fmt.Sprintf("complete %s", msgID)
+	_, err = fid.Write([]byte(ctlMsg))
+	return err
 }
 
 func getReplyType(msgType string) string {
