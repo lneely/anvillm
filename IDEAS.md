@@ -375,19 +375,3 @@ No persistent interaction. Bot receives prompt, executes, writes result to `out`
 Flag in session creation: `echo 'new claude /project ephemeral' | 9p write agent/ctl`
 
 Daemon marks session as ephemeral. When backend exits cleanly (not crash), transition to `stopped` or `exited` instead of auto-restart. Optionally auto-cleanup after N seconds.
-
-
-## State Transitions via Hooks for Claude Code Backend
-
-We've successfully implemented state transitions using hooks for the kiro-cli backend:
-- userPromptSubmit hook: transitions agent to "running" state
-- stop hook: transitions agent back to "idle" state
-- Uses session ID file mapping kiro-cli PID to agent session ID
-- Hooks use $PPID's parent to find kiro-cli PID
-
-Claude Code has equivalent hook support (UserPromptSubmit and Stop hooks), so we can implement the same mechanism for the claude-code backend. This would enable:
-- Reliable state tracking for multi-agent workflows
-- Proper busy/idle detection for mail delivery
-- Consistent behavior across both backends
-
-Implementation would be similar but use Claude Code's hook configuration format and context passing mechanism.
