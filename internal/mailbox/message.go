@@ -2,6 +2,7 @@ package mailbox
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -59,11 +60,5 @@ func FromJSON(data []byte) (*Message, error) {
 }
 
 func generateID() string {
-	// Simple ID generation - reuse existing ID generation logic
-	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
-	b := make([]byte, 8)
-	for i := range b {
-		b[i] = chars[time.Now().UnixNano()%int64(len(chars))]
-	}
-	return "msg-" + string(b)
+	return fmt.Sprintf("msg-%d", time.Now().Unix())
 }

@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -816,6 +817,11 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 				messages = mailMgr.GetCompleted("user")
 			}
 			
+			// Sort messages by ID (which is now timestamp-based)
+			sort.Slice(messages, func(i, j int) bool {
+				return messages[i].ID < messages[j].ID
+			})
+			
 			for _, msg := range messages {
 				data, _ := msg.ToJSON()
 				dirs = append(dirs, plan9.Dir{
@@ -890,6 +896,11 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 		} else if mailboxType == "completed" {
 			messages = mailMgr.GetCompleted(sessID)
 		}
+		
+		// Sort messages by ID (which is now timestamp-based)
+		sort.Slice(messages, func(i, j int) bool {
+			return messages[i].ID < messages[j].ID
+		})
 		
 		for _, msg := range messages {
 			data, _ := msg.ToJSON()
