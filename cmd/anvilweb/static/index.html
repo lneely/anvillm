@@ -839,7 +839,7 @@ ${msg.body}`;
                 'REVIEW_REQUEST': 'REVIEW_RESPONSE',
                 'APPROVAL_REQUEST': 'APPROVAL_RESPONSE'
             };
-            return replyMap[msgType] || 'PROMPT';
+            return replyMap[msgType] || 'PROMPT_REQUEST';
         }
 
         function replyToMessage() {

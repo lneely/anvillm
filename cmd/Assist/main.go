@@ -358,7 +358,7 @@ func sendPrompt(id, prompt string) error {
 	// Create message JSON
 	msg := map[string]interface{}{
 		"to":      id,
-		"type":    "PROMPT",
+		"type":    "PROMPT_REQUEST",
 		"subject": "User prompt",
 		"body":    prompt,
 	}
@@ -1081,7 +1081,7 @@ func getReplyType(msgType string) string {
 	case "APPROVAL_REQUEST":
 		return "APPROVAL_RESPONSE"
 	default:
-		return "PROMPT"
+		return "PROMPT_REQUEST"
 	}
 }
 

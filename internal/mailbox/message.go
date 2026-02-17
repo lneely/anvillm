@@ -11,11 +11,11 @@ type MessageType string
 
 const (
 	// Ephemeral message types (log only, auto-complete)
-	MessageTypeLogInfo  MessageType = "LOG_INFO"  // Status updates, progress
-	MessageTypeLogError MessageType = "LOG_ERROR" // Errors
+	MessageTypePromptResponse MessageType = "PROMPT_RESPONSE" // Bot response to user prompt
+	MessageTypeLogError       MessageType = "LOG_ERROR"       // Errors
 
 	// Persistent message types (inbox only)
-	MessageTypePrompt           MessageType = "PROMPT"            // User instructions to bot
+	MessageTypePromptRequest    MessageType = "PROMPT_REQUEST"    // User instructions to bot
 	MessageTypeQueryRequest     MessageType = "QUERY_REQUEST"     // Request information
 	MessageTypeQueryResponse    MessageType = "QUERY_RESPONSE"    // Provide information
 	MessageTypeReviewRequest    MessageType = "REVIEW_REQUEST"    // Request code review
@@ -24,9 +24,11 @@ const (
 	MessageTypeApprovalResponse MessageType = "APPROVAL_RESPONSE" // Provide test results
 
 	// Deprecated types (for backward compatibility)
+	MessageTypeLogInfo      MessageType = "LOG_INFO"      // Deprecated: use PROMPT_RESPONSE
+	MessageTypePrompt       MessageType = "PROMPT"        // Deprecated: use PROMPT_REQUEST
 	MessageTypeQuestion     MessageType = "QUESTION"      // Deprecated: use QUERY_REQUEST
 	MessageTypeAnswer       MessageType = "ANSWER"        // Deprecated: use QUERY_RESPONSE
-	MessageTypeStatusUpdate MessageType = "STATUS_UPDATE" // Deprecated: use LOG_INFO
+	MessageTypeStatusUpdate MessageType = "STATUS_UPDATE" // Deprecated: use PROMPT_RESPONSE
 	MessageTypeErrorReport  MessageType = "ERROR_REPORT"  // Deprecated: use LOG_ERROR
 )
 
@@ -77,23 +79,27 @@ func generateID() string {
 func ValidateMessageType(msgType MessageType) error {
 	switch msgType {
 	// Valid ephemeral types
-	case MessageTypeLogInfo, MessageTypeLogError:
+	case MessageTypePromptResponse, MessageTypeLogError:
 		return nil
 	// Valid persistent types
-	case MessageTypePrompt, MessageTypeQueryRequest, MessageTypeQueryResponse,
+	case MessageTypePromptRequest, MessageTypeQueryRequest, MessageTypeQueryResponse,
 		MessageTypeReviewRequest, MessageTypeReviewResponse,
 		MessageTypeApprovalRequest, MessageTypeApprovalResponse:
 		return nil
 	// Deprecated types
+	case MessageTypeLogInfo:
+		return fmt.Errorf("deprecated type: use PROMPT_RESPONSE instead")
+	case MessageTypePrompt:
+		return fmt.Errorf("deprecated type: use PROMPT_REQUEST instead")
 	case MessageTypeQuestion:
 		return fmt.Errorf("deprecated type: use QUERY_REQUEST instead")
 	case MessageTypeAnswer:
 		return fmt.Errorf("deprecated type: use QUERY_RESPONSE instead")
 	case MessageTypeStatusUpdate:
-		return fmt.Errorf("deprecated type: use LOG_INFO instead")
+		return fmt.Errorf("deprecated type: use PROMPT_RESPONSE instead")
 	case MessageTypeErrorReport:
 		return fmt.Errorf("deprecated type: use LOG_ERROR instead")
 	default:
-		return fmt.Errorf("invalid message type. valid types are: LOG_INFO, LOG_ERROR, PROMPT, QUERY_REQUEST, QUERY_RESPONSE, REVIEW_REQUEST, REVIEW_RESPONSE, APPROVAL_REQUEST, APPROVAL_RESPONSE")
+		return fmt.Errorf("invalid message type. valid types are: PROMPT_RESPONSE, LOG_ERROR, PROMPT_REQUEST, QUERY_REQUEST, QUERY_RESPONSE, REVIEW_REQUEST, REVIEW_RESPONSE, APPROVAL_REQUEST, APPROVAL_RESPONSE")
 	}
 }

@@ -546,7 +546,7 @@ Backends:
         (when (> (length prompt) 0)
           (condition-case err
               (let ((msg (json-encode `((to . ,session-id)
-                                       (type . "PROMPT")
+                                       (type . "PROMPT_REQUEST")
                                        (subject . "User prompt")
                                        (body . ,prompt)))))
                 (anvillm--9p-write (concat anvillm-agent-path "/user/mail") msg)
@@ -583,7 +583,7 @@ Backends:
         (message "Empty prompt, not sending")
       (condition-case err
           (let ((msg (json-encode `((to . ,anvillm--prompt-session-id)
-                                   (type . "PROMPT")
+                                   (type . "PROMPT_REQUEST")
                                    (subject . "User prompt")
                                    (body . ,prompt)))))
             (anvillm--9p-write (concat anvillm-agent-path "/user/mail") msg)

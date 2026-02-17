@@ -349,7 +349,7 @@ func sendPrompt(id, prompt string) error {
 	// Create message JSON
 	msg := map[string]interface{}{
 		"to":      id,
-		"type":    "PROMPT",
+		"type":    "PROMPT_REQUEST",
 		"subject": "User prompt",
 		"body":    prompt,
 	}

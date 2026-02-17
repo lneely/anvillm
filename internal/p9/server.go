@@ -84,8 +84,6 @@ const (
 // File indices within a session directory
 const (
 	fileCtl = iota
-	fileIn
-	fileOut
 	fileState
 	filePid
 	fileCwd
@@ -99,7 +97,7 @@ const (
 	fileCount
 )
 
-var fileNames = []string{"ctl", "in", "out", "state", "pid", "cwd", "alias", "backend", "context", "role", "tasks", "tmux", "mail"}
+var fileNames = []string{"ctl", "state", "pid", "cwd", "alias", "backend", "context", "role", "tasks", "tmux", "mail"}
 
 // Directory names in session
 var dirNames = []string{"inbox", "outbox", "completed"}
@@ -540,21 +538,6 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
-	// /{id}/in - send prompt (async, non-blocking)
-	if len(parts) == 2 && parts[1] == "in" {
-		sessID := parts[0]
-		sess := s.mgr.Get(sessID)
-		if sess == nil {
-			return errFcall(fc, "session not found")
-		}
-		
-		ctx := context.Background()
-		if _, err := sess.Send(ctx, input); err != nil {
-			return errFcall(fc, err.Error())
-		}
-		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
-	}
-
 	// /{id}/alias - set session alias
 	if len(parts) == 2 && parts[1] == "alias" {
 		sess := s.mgr.Get(parts[0])
@@ -581,20 +564,6 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		}
 		if tmuxSess, ok := sess.(*tmux.Session); ok {
 			tmuxSess.SetContext(input)
-		}
-		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
-	}
-
-	// /{id}/out - bot writes final response summary here (appends to chat log)
-	if len(parts) == 2 && parts[1] == "out" {
-		sess := s.mgr.Get(parts[0])
-		if sess == nil {
-			return errFcall(fc, "session not found")
-		}
-
-		if tmuxSess, ok := sess.(*tmux.Session); ok {
-			// Append assistant response to chat log
-			tmuxSess.AppendToChatLog("ASSISTANT", input)
 		}
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
@@ -1130,10 +1099,6 @@ func (s *Server) getSessionFile(sess backend.Session, idx int) string {
 	meta := sess.Metadata()
 
 	switch idx {
-	case fileOut:
-		// Output from last command - not currently exposed
-		// Bots write to this via 9P, which appends to chat log
-		return ""
 	case fileState:
 		return sess.State()
 	case filePid:

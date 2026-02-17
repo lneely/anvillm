@@ -45,11 +45,35 @@ From the agent list output, the first field is the session ID you need for commu
 
 All communication uses the mailbox system. Write JSON messages via the mail file.
 
+### Choosing the Right Message Type
+
+**When responding to the user:**
+1. **Just answering or providing status?** → Use `PROMPT_RESPONSE`
+   - "I've completed the task"
+   - "Here's the information you requested"
+   - "I've made the changes"
+
+2. **Need information from user?** → Use `QUERY_REQUEST`
+   - "What should the timeout value be?"
+   - "Which environment should I deploy to?"
+
+3. **Need user approval?** → Use `APPROVAL_REQUEST`
+   - "Ready to deploy to production. Approve?"
+   - "Should I proceed with deleting these files?"
+
+4. **Need user to review something?** → Use `REVIEW_REQUEST`
+   - "Please review the changes in commit abc123"
+   - "Can you verify this implementation?"
+
+**When working with other agents:**
+- Use `PROMPT_REQUEST` to send work requests
+- Use `*_REQUEST` / `*_RESPONSE` pairs for structured workflows
+
 ### To Another Agent
 
 ```bash
 cat > /tmp/msg.json <<'EOF'
-{"to":"{session_id}","type":"PROMPT","subject":"Brief subject","body":"Your message here"}
+{"to":"{session_id}","type":"PROMPT_REQUEST","subject":"Brief subject","body":"Your message here"}
 EOF
 9p write agent/{your_id}/mail < /tmp/msg.json
 ```
@@ -58,27 +82,56 @@ EOF
 
 The special recipient `"user"` sends messages to the human operator.
 
+**For simple responses (auto-completed, doesn't clutter inbox):**
 ```bash
 cat > /tmp/msg.json <<'EOF'
-{"to":"user","type":"LOG_INFO","subject":"Task complete","body":"Summary of what was done"}
+{"to":"user","type":"PROMPT_RESPONSE","subject":"Task complete","body":"Summary of what was done"}
+EOF
+9p write agent/{your_id}/mail < /tmp/msg.json
+```
+
+**When you need user input (stays in inbox until answered):**
+```bash
+# Ask a question
+cat > /tmp/msg.json <<'EOF'
+{"to":"user","type":"QUERY_REQUEST","subject":"Need information","body":"What is the target deployment environment?"}
+EOF
+9p write agent/{your_id}/mail < /tmp/msg.json
+
+# Request approval
+cat > /tmp/msg.json <<'EOF'
+{"to":"user","type":"APPROVAL_REQUEST","subject":"Approve deployment","body":"Ready to deploy to production. Approve?"}
+EOF
+9p write agent/{your_id}/mail < /tmp/msg.json
+
+# Request review
+cat > /tmp/msg.json <<'EOF'
+{"to":"user","type":"REVIEW_REQUEST","subject":"Review changes","body":"Please review the implementation in commit abc123"}
 EOF
 9p write agent/{your_id}/mail < /tmp/msg.json
 ```
 
 ### Message Types
 
-**Ephemeral (logged, auto-completed):**
-- `LOG_INFO` - Status updates, progress notices
-- `LOG_ERROR` - Error reports
+**When responding to user prompts:**
+- `PROMPT_RESPONSE` - Your answer/status update to user (auto-completed, doesn't clutter inbox)
+- `QUERY_REQUEST` - You need information from user (stays in inbox until answered)
+- `APPROVAL_REQUEST` - You need user approval for an action (stays in inbox until answered)
+- `REVIEW_REQUEST` - You need user to review something (stays in inbox until answered)
 
-**Persistent (inbox only):**
-- `PROMPT` - User instructions to bot, or agent-to-agent work requests
-- `QUERY_REQUEST` / `QUERY_RESPONSE` - Research bot workflows (asking research questions)
-- `REVIEW_REQUEST` / `REVIEW_RESPONSE` - Code review workflow
-- `APPROVAL_REQUEST` / `APPROVAL_RESPONSE` - QA testing workflow
+**When working with other agents:**
+- `PROMPT_REQUEST` - Send work request to another agent
+- `QUERY_REQUEST` / `QUERY_RESPONSE` - Ask/answer questions
+- `REVIEW_REQUEST` / `REVIEW_RESPONSE` - Request/provide code reviews
+- `APPROVAL_REQUEST` / `APPROVAL_RESPONSE` - Request/provide testing approval
+
+**Error reporting:**
+- `LOG_ERROR` - Report errors (auto-completed)
 
 **Deprecated (use new types):**
-- `STATUS_UPDATE` → use `LOG_INFO`
+- `LOG_INFO` → use `PROMPT_RESPONSE`
+- `PROMPT` → use `PROMPT_REQUEST`
+- `STATUS_UPDATE` → use `PROMPT_RESPONSE`
 - `ERROR_REPORT` → use `LOG_ERROR`
 - `QUESTION` → use `QUERY_REQUEST`
 - `ANSWER` → use `QUERY_RESPONSE`
@@ -174,7 +227,7 @@ A_ID=$(9p read agent/list | grep agent-a | awk '{print $1}')
 
 # A sends request to B
 cat > /tmp/msg.json <<'EOF'
-{"to":"$B_ID","type":"PROMPT","subject":"Work request","body":"Please do X"}
+{"to":"$B_ID","type":"PROMPT_REQUEST","subject":"Work request","body":"Please do X"}
 EOF
 9p write agent/$A_ID/mail < /tmp/msg.json
 
@@ -197,16 +250,22 @@ EOF
 
 ### Signaling to User (MANDATORY)
 
-**You MUST send LOG_INFO to user at the end of EVERY interaction**, not just when the overall task is complete. This keeps the user informed of progress at each step.
+**You MUST send PROMPT_RESPONSE to user at the end of EVERY interaction**, not just when the overall task is complete. This keeps the user informed of progress at each step.
 
+**Use PROMPT_RESPONSE for status updates and responses:**
 ```bash
 cat > /tmp/msg.json <<'EOF'
-{"to":"user","type":"LOG_INFO","subject":"Response","body":"Summary of what was done in THIS interaction"}
+{"to":"user","type":"PROMPT_RESPONSE","subject":"Response","body":"Summary of what was done in THIS interaction"}
 EOF
 9p write agent/{your_id}/mail < /tmp/msg.json
 ```
 
-Examples of when to send LOG_INFO to user:
+**Use request types when you need user input:**
+- `QUERY_REQUEST` - When you need information from the user
+- `APPROVAL_REQUEST` - When you need user approval for an action
+- `REVIEW_REQUEST` - When you need user to review something
+
+Examples of when to send PROMPT_RESPONSE to user:
 - After implementing changes and sending a review request (before waiting for reviewer)
 - After receiving reviewer feedback and making requested changes
 - After completing the final step of a task
@@ -229,7 +288,7 @@ The body should summarize the key actions taken in that specific interaction.
 3. **Clear Instructions**: Include reply address in your message
 4. **Error Handling**: Check that grep finds exactly one agent when expecting a specific peer
 5. **Aliases**: Use meaningful aliases to identify agents by role
-6. **Status Updates**: Send LOG_INFO to user at the end of EVERY interaction (not just task completion)
+6. **Prompt Responses**: Send PROMPT_RESPONSE to user at the end of EVERY interaction (not just task completion)
 
 ## Troubleshooting
 

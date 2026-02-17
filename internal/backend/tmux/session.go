@@ -36,11 +36,6 @@ type Session struct {
 	stopCh   chan struct{}
 	output   bytes.Buffer
 
-	// Chat log: persistent conversation history (USER/ASSISTANT)
-	chatLog     bytes.Buffer
-	chatLogSize int64 // tracks size to enforce 2MB limit
-	logWaiters  []chan struct{} // notify when new log data arrives
-
 	commands       backend.CommandHandler
 	startupHandler StartupHandler
 	stateInspector StateInspector
@@ -159,95 +154,6 @@ func (s *Session) SetAlias(alias string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.alias = alias
-}
-
-// appendToChatLogLocked appends a message to the chat log with role prefix and separator.
-// Enforces 2MB size limit by truncating oldest messages if needed.
-// Caller must hold s.mu.
-func (s *Session) appendToChatLogLocked(role, content string) {
-	const maxLogSize = 2 * 1024 * 1024 // 2MB
-
-	// Format: ROLE:\ncontent\n---\n
-	msg := fmt.Sprintf("%s:\n%s\n---\n", role, content)
-	msgSize := int64(len(msg))
-
-	// If adding this message would exceed limit, truncate from beginning
-	if s.chatLogSize+msgSize > maxLogSize {
-		// Calculate how much to truncate
-		excessSize := (s.chatLogSize + msgSize) - maxLogSize
-
-		// Get current log content
-		logBytes := s.chatLog.Bytes()
-
-		// Find a good truncation point (after a separator to keep messages intact)
-		truncateAt := int64(0)
-		separatorSize := int64(len("\n---\n"))
-
-		// Search for separator after excess size
-		for i := excessSize; i < int64(len(logBytes))-separatorSize; i++ {
-			if string(logBytes[i:i+separatorSize]) == "\n---\n" {
-				truncateAt = i + separatorSize
-				break
-			}
-		}
-
-		// If no separator found, truncate at excess size (edge case)
-		if truncateAt == 0 {
-			truncateAt = excessSize
-		}
-
-		// Reset buffer with truncated content
-		s.chatLog.Reset()
-		s.chatLog.Write(logBytes[truncateAt:])
-		s.chatLogSize = int64(s.chatLog.Len())
-	}
-
-	// Append new message
-	s.chatLog.WriteString(msg)
-	s.chatLogSize += msgSize
-
-	// Notify all waiting readers
-	for _, ch := range s.logWaiters {
-		close(ch)
-	}
-	s.logWaiters = nil
-}
-
-// AppendToChatLog appends a message to the chat log with role prefix and separator.
-// Enforces 2MB size limit by truncating oldest messages if needed.
-func (s *Session) AppendToChatLog(role, content string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.appendToChatLogLocked(role, content)
-}
-
-// GetChatLog returns the full chat log contents
-func (s *Session) GetChatLog() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.chatLog.String()
-}
-
-// GetChatLogFrom returns chat log data starting from offset.
-// Returns (data, hasMore) where hasMore indicates if there's more data available.
-func (s *Session) GetChatLogFrom(offset int64) (string, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	logData := s.chatLog.String()
-	if offset >= int64(len(logData)) {
-		return "", false
-	}
-	return logData[offset:], true
-}
-
-// WaitForLogData returns a channel that will be closed when new log data arrives.
-// The caller should check the current log size before waiting.
-func (s *Session) WaitForLogData() <-chan struct{} {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	ch := make(chan struct{})
-	s.logWaiters = append(s.logWaiters, ch)
-	return ch
 }
 
 func (s *Session) Metadata() backend.SessionMetadata {
@@ -507,11 +413,8 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 		}
 	}
 
-	// Save original prompt for chat log (before modification)
-	originalPrompt := prompt
-
 	// Instruction to send response to user via mailbox (triggers idle transition)
-	outInstruction := fmt.Sprintf("IMPORTANT: When done, write your response summary to user by running:\ncat > /tmp/msg.json <<'MSGEOF'\n{\"to\":\"user\",\"type\":\"LOG_INFO\",\"subject\":\"Response\",\"body\":\"YOUR_SUMMARY_HERE\"}\nMSGEOF\n9p write agent/%s/mail < /tmp/msg.json\n\nThe summary MUST include your actual response and key actions taken.\n", s.id)
+	outInstruction := fmt.Sprintf("IMPORTANT: When done, write your response summary to user by running:\ncat > /tmp/msg.json <<'MSGEOF'\n{\"to\":\"user\",\"type\":\"PROMPT_RESPONSE\",\"subject\":\"Response\",\"body\":\"YOUR_SUMMARY_HERE\"}\nMSGEOF\n9p write agent/%s/mail < /tmp/msg.json\n\nThe summary MUST include your actual response and key actions taken.\n", s.id)
 
 	// Prepend context if set (skip for slash commands)
 	if s.context != "" && !strings.HasPrefix(prompt, "/") {
@@ -519,9 +422,6 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	} else if !strings.HasPrefix(prompt, "/") {
 		prompt = outInstruction + "\n" + prompt
 	}
-
-	// Log user prompt to chat log (already holding lock)
-	s.appendToChatLogLocked("USER", originalPrompt)
 
 	// Reset stopCh for this request
 	select {

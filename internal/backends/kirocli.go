@@ -208,9 +208,3 @@ func contains(slice []string, item string) bool {
 	}
 	return false
 }
-
-// SendCtl is a helper to send a control command to kiro-cli
-func SendCtl(sess backend.Session, cmd string) error {
-	_, err := sess.Send(context.Background(), cmd)
-	return err
-}

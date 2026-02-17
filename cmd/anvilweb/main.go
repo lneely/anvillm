@@ -348,7 +348,7 @@ func sendPrompt(w http.ResponseWriter, r *http.Request, id string) {
 	// Create message JSON
 	msg := map[string]interface{}{
 		"to":      id,
-		"type":    "PROMPT",
+		"type":    "PROMPT_REQUEST",
 		"subject": "User prompt",
 		"body":    req.Prompt,
 	}

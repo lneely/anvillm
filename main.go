@@ -111,12 +111,13 @@ func main() {
 			cmd := string(e.Text)
 			arg := strings.TrimSpace(string(e.Arg))
 
-			// Fire-and-forget: B2 on session ID sends selected text as prompt
+			// Fire-and-forget: B2 on session ID sends selected text as prompt via mailbox
 			// In a 2-1 chord, the selection comes through as e.Arg
 			if matched, _ := regexp.MatchString(`^[a-f0-9]{8}$`, cmd); matched {
 				if sess := mgr.Get(cmd); sess != nil {
 					if len(e.Arg) > 0 {
-						go sess.Send(context.Background(), string(e.Arg))
+						msg := mgr.GetMailManager().NewMessage("user", cmd, "PROMPT_REQUEST", "User prompt", string(e.Arg))
+						mgr.GetMailManager().SendToOutbox("user", msg)
 					}
 				}
 				continue
@@ -318,10 +319,10 @@ func main() {
 						aw.Ctl("show")
 						aw.CloseFiles()
 					} else {
-						openPromptWindow(sess)
+						openPromptWindow(sess, mgr)
 					}
 				} else {
-					openPromptWindow(sess)
+					openPromptWindow(sess, mgr)
 				}
 			} else {
 				w.WriteEvent(e)
@@ -379,7 +380,7 @@ func refreshList(w *acme.Win, mgr *session.Manager) {
 	w.Ctl("clean")
 }
 
-func openPromptWindow(sess backend.Session) (*acme.Win, error) {
+func openPromptWindow(sess backend.Session, mgr *session.Manager) (*acme.Win, error) {
 	meta := sess.Metadata()
 	displayName := meta.Alias
 	if displayName == "" {
@@ -399,11 +400,11 @@ func openPromptWindow(sess backend.Session) (*acme.Win, error) {
 		tmuxSess.SetWinID(w.ID())
 	}
 
-	go handlePromptWindow(w, sess)
+	go handlePromptWindow(w, sess, mgr)
 	return w, nil
 }
 
-func handlePromptWindow(w *acme.Win, sess backend.Session) {
+func handlePromptWindow(w *acme.Win, sess backend.Session, mgr *session.Manager) {
 	defer w.CloseFiles()
 
 	for e := range w.EventChan() {
@@ -414,7 +415,8 @@ func handlePromptWindow(w *acme.Win, sess backend.Session) {
 			}
 			prompt := strings.TrimSpace(string(body))
 			if prompt != "" {
-				go sess.Send(context.Background(), prompt)
+				msg := mgr.GetMailManager().NewMessage("user", sess.ID(), "PROMPT_REQUEST", "User prompt", prompt)
+				mgr.GetMailManager().SendToOutbox("user", msg)
 				w.Ctl("delete")
 				return
 			}
