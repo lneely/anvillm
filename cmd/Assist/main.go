@@ -387,21 +387,6 @@ func sendPrompt(id, prompt string) error {
 	return nil
 }
 
-func sendPromptDirect(id, prompt string) error {
-	if !isConnected() {
-		return fmt.Errorf("not connected to anvilsrv")
-	}
-	path := filepath.Join(id, "in")
-	fid, err := fs.Open(path, plan9.OWRITE)
-	if err != nil {
-		return err
-	}
-	defer fid.Close()
-
-	_, err = fid.Write([]byte(prompt))
-	return err
-}
-
 func setAlias(id, alias string) error {
 	if !isConnected() {
 		return fmt.Errorf("not connected to anvilsrv")
@@ -578,7 +563,7 @@ func openPromptWindow(sess *SessionInfo) (*acme.Win, error) {
 		return nil, err
 	}
 	w.Name(name)
-	w.Write("tag", []byte("Prompt Message "))
+	w.Write("tag", []byte("Send "))
 	w.Ctl("clean")
 
 	// Track window ID client-side
@@ -600,21 +585,15 @@ func handlePromptWindow(w *acme.Win, sess *SessionInfo) {
 
 	for e := range w.EventChan() {
 		cmd := string(e.Text)
-		if (e.C2 == 'x' || e.C2 == 'X') && (cmd == "Prompt" || cmd == "Message") {
+		if (e.C2 == 'x' || e.C2 == 'X') && cmd == "Send" {
 			body, err := w.ReadAll("body")
 			if err != nil {
 				continue
 			}
 			prompt := strings.TrimSpace(string(body))
 			if prompt != "" {
-				var sendErr error
-				if cmd == "Prompt" {
-					sendErr = sendPromptDirect(sess.ID, prompt)
-				} else {
-					sendErr = sendPrompt(sess.ID, prompt)
-				}
-				if sendErr != nil {
-					fmt.Fprintf(os.Stderr, "Failed to send %s: %v\n", strings.ToLower(cmd), sendErr)
+				if err := sendPrompt(sess.ID, prompt); err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to send: %v\n", err)
 					continue
 				}
 				w.Ctl("delete")
