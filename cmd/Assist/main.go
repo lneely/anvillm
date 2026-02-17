@@ -93,7 +93,7 @@ func main() {
 	defer w.CloseFiles()
 
 	w.Name(windowName)
-	w.Write("tag", []byte("Get Attach Stop Restart Kill Alias Context Daemon Sandbox "))
+	w.Write("tag", []byte("Get Attach Stop Restart Kill Alias Context Daemon Sandbox Inbox "))
 	refreshList(w)
 	w.Ctl("clean")
 
@@ -234,6 +234,10 @@ func main() {
 			case "Daemon":
 				if err := openDaemonWindow(); err != nil {
 					fmt.Fprintf(os.Stderr, "Error opening daemon window: %v\n", err)
+				}
+			case "Inbox":
+				if err := openInboxWindow(); err != nil {
+					fmt.Fprintf(os.Stderr, "Error opening inbox window: %v\n", err)
 				}
 
 			default:
@@ -967,4 +971,184 @@ func stopDaemon(w *acme.Win) {
 			fs = nil
 		}
 	}
+}
+
+type Message struct {
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Type    string `json:"type"`
+	Subject string `json:"subject"`
+	Body    string `json:"body"`
+}
+
+func openInboxWindow() error {
+	w, err := acme.New()
+	if err != nil {
+		return err
+	}
+
+	w.Name("/AnviLLM/inbox")
+	w.Write("tag", []byte("Get "))
+
+	go handleInboxWindow(w)
+	return nil
+}
+
+func handleInboxWindow(w *acme.Win) {
+	defer w.CloseFiles()
+
+	refreshInboxWindow(w)
+
+	for e := range w.EventChan() {
+		switch e.C2 {
+		case 'x', 'X':
+			cmd := string(e.Text)
+			if cmd == "Get" {
+				refreshInboxWindow(w)
+			} else {
+				w.WriteEvent(e)
+			}
+		case 'l', 'L':
+			text := strings.TrimSpace(string(e.Text))
+			if idx := parseIndex(text); idx > 0 {
+				openMessageWindow(idx)
+			} else {
+				w.WriteEvent(e)
+			}
+		default:
+			w.WriteEvent(e)
+		}
+	}
+}
+
+func refreshInboxWindow(w *acme.Win) {
+	messages, filenames, err := listInboxMessages()
+	if err != nil {
+		w.Addr(",")
+		w.Write("data", []byte(fmt.Sprintf("Error reading inbox: %v\n", err)))
+		w.Ctl("clean")
+		return
+	}
+
+	var buf strings.Builder
+	buf.WriteString("User Inbox\n")
+	buf.WriteString(strings.Repeat("=", 120) + "\n\n")
+	buf.WriteString(fmt.Sprintf("%-4s %-20s %-12s %-18s %s\n", "Idx", "Date", "From", "Type", "Subject"))
+	buf.WriteString(fmt.Sprintf("%-4s %-20s %-12s %-18s %s\n", "----", "--------------------", "------------", "------------------", strings.Repeat("-", 50)))
+
+	for i, msg := range messages {
+		timestamp := extractTimestamp(filenames[i])
+		dateStr := formatTimestamp(timestamp)
+		from := msg.From
+		if from == "" {
+			from = "-"
+		}
+		buf.WriteString(fmt.Sprintf("%-4d %-20s %-12s %-18s %s\n", i+1, dateStr, from, msg.Type, msg.Subject))
+	}
+
+	w.Addr(",")
+	w.Write("data", []byte(buf.String()))
+	w.Ctl("clean")
+}
+
+func listInboxMessages() ([]Message, []string, error) {
+	if !isConnected() {
+		return nil, nil, fmt.Errorf("not connected to anvilsrv")
+	}
+
+	fid, err := fs.Open("user/inbox", plan9.OREAD)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer fid.Close()
+
+	var filenames []string
+	for {
+		dirs, err := fid.Dirread()
+		if err != nil || len(dirs) == 0 {
+			break
+		}
+		for _, d := range dirs {
+			if strings.HasSuffix(d.Name, ".json") {
+				filenames = append(filenames, d.Name)
+			}
+		}
+	}
+
+	var messages []Message
+	for _, filename := range filenames {
+		data, err := readFile(filepath.Join("user/inbox", filename))
+		if err != nil {
+			continue
+		}
+		var msg Message
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+		messages = append(messages, msg)
+	}
+
+	return messages, filenames, nil
+}
+
+func extractTimestamp(filename string) int64 {
+	var ts int64
+	fmt.Sscanf(filename, "msg-%d.json", &ts)
+	return ts
+}
+
+func formatTimestamp(ts int64) string {
+	t := time.Unix(ts, 0)
+	return t.Format("02-Jan-2006 15:04:05")
+}
+
+func parseIndex(s string) int {
+	var idx int
+	fmt.Sscanf(s, "%d", &idx)
+	return idx
+}
+
+func openMessageWindow(idx int) error {
+	messages, filenames, err := listInboxMessages()
+	if err != nil {
+		return err
+	}
+
+	if idx < 1 || idx > len(messages) {
+		return fmt.Errorf("invalid index: %d", idx)
+	}
+
+	filename := filenames[idx-1]
+	w, err := acme.New()
+	if err != nil {
+		return err
+	}
+
+	w.Name(fmt.Sprintf("/AnviLLM/inbox/%s", filename))
+
+	data, err := readFile(filepath.Join("user/inbox", filename))
+	if err != nil {
+		w.CloseFiles()
+		return err
+	}
+
+	var msg Message
+	if err := json.Unmarshal(data, &msg); err != nil {
+		w.CloseFiles()
+		return err
+	}
+
+	var buf strings.Builder
+	buf.WriteString(fmt.Sprintf("From: %s\n", msg.From))
+	buf.WriteString(fmt.Sprintf("To: %s\n", msg.To))
+	buf.WriteString(fmt.Sprintf("Type: %s\n", msg.Type))
+	buf.WriteString(fmt.Sprintf("Subject: %s\n", msg.Subject))
+	buf.WriteString(fmt.Sprintf("Date: %s\n", formatTimestamp(extractTimestamp(filename))))
+	buf.WriteString("\n")
+	buf.WriteString(msg.Body)
+
+	w.Write("body", []byte(buf.String()))
+	w.Ctl("clean")
+
+	return nil
 }

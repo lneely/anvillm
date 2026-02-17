@@ -662,6 +662,11 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			return errFcall(fc, fmt.Sprintf("invalid message JSON: %v", err))
 		}
 		
+		// Validate message type
+		if err := mailbox.ValidateMessageType(msg.Type); err != nil {
+			return errFcall(fc, err.Error())
+		}
+		
 		// Add to outbox
 		mailMgr := s.mgr.GetMailManager()
 		if mailMgr == nil {
@@ -689,6 +694,11 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		msg, err := mailbox.FromJSON(fc.Data)
 		if err != nil {
 			return errFcall(fc, fmt.Sprintf("invalid message JSON: %v", err))
+		}
+		
+		// Validate message type
+		if err := mailbox.ValidateMessageType(msg.Type); err != nil {
+			return errFcall(fc, err.Error())
 		}
 		
 		// Set from field to "user"

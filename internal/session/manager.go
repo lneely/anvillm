@@ -192,7 +192,7 @@ func (m *Manager) processMailboxes() {
 		
 		// Prompt agent to check inbox
 		ctx := context.Background()
-		sess.Send(ctx, "check your inbox with 9p-read-inbox")
+		sess.Send(ctx, "check inbox by running the EXACT command: 9p-read-inbox")
 	}
 }
 

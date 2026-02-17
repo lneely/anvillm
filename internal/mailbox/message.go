@@ -72,3 +72,28 @@ func FromJSON(data []byte) (*Message, error) {
 func generateID() string {
 	return fmt.Sprintf("msg-%d", time.Now().Unix())
 }
+
+// ValidateMessageType checks if the message type is valid and returns an error if deprecated or invalid
+func ValidateMessageType(msgType MessageType) error {
+	switch msgType {
+	// Valid ephemeral types
+	case MessageTypeLogInfo, MessageTypeLogError:
+		return nil
+	// Valid persistent types
+	case MessageTypePrompt, MessageTypeQueryRequest, MessageTypeQueryResponse,
+		MessageTypeReviewRequest, MessageTypeReviewResponse,
+		MessageTypeApprovalRequest, MessageTypeApprovalResponse:
+		return nil
+	// Deprecated types
+	case MessageTypeQuestion:
+		return fmt.Errorf("deprecated type: use QUERY_REQUEST instead")
+	case MessageTypeAnswer:
+		return fmt.Errorf("deprecated type: use QUERY_RESPONSE instead")
+	case MessageTypeStatusUpdate:
+		return fmt.Errorf("deprecated type: use LOG_INFO instead")
+	case MessageTypeErrorReport:
+		return fmt.Errorf("deprecated type: use LOG_ERROR instead")
+	default:
+		return fmt.Errorf("invalid message type. valid types are: LOG_INFO, LOG_ERROR, PROMPT, QUERY_REQUEST, QUERY_RESPONSE, REVIEW_REQUEST, REVIEW_RESPONSE, APPROVAL_REQUEST, APPROVAL_RESPONSE")
+	}
+}
