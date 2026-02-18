@@ -114,6 +114,18 @@ func main() {
 							Properties: map[string]Property{},
 						},
 					},
+					{
+						Name:        "set_state",
+						Description: "Set agent state (idle, running, stopped, etc.)",
+						InputSchema: InputSchema{
+							Type: "object",
+							Properties: map[string]Property{
+								"agent_id": {Type: "string", Description: "Agent session ID"},
+								"state":    {Type: "string", Description: "State value", Enum: []string{"idle", "running", "stopped", "starting", "error", "exited"}},
+							},
+							Required: []string{"agent_id", "state"},
+						},
+					},
 				},
 			})
 		case "tools/call":
@@ -186,6 +198,23 @@ func handleToolCall(req MCPRequest) {
 				{"type": "text", "text": result},
 			},
 		})
+	case "set_state":
+		agentID, _ := params.Arguments["agent_id"].(string)
+		state, _ := params.Arguments["state"].(string)
+		
+		fmt.Fprintf(os.Stderr, "[anvilmcp] Setting state for %s to %s\n", agentID, state)
+		err := setState(agentID, state)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[anvilmcp] Error: %v\n", err)
+			sendError(req.ID, -32000, err.Error())
+			return
+		}
+		fmt.Fprintf(os.Stderr, "[anvilmcp] State set successfully\n")
+		sendResponse(req.ID, map[string]interface{}{
+			"content": []map[string]string{
+				{"type": "text", "text": "State set"},
+			},
+		})
 	default:
 		sendError(req.ID, -32601, "Tool not found")
 	}
@@ -254,6 +283,13 @@ func listSessions() (string, error) {
 	}
 	
 	return string(output), nil
+}
+
+func setState(agentID, state string) error {
+	statePath := fmt.Sprintf("agent/%s/state", agentID)
+	cmd := exec.Command("9p", "write", statePath)
+	cmd.Stdin = strings.NewReader(state)
+	return cmd.Run()
 }
 
 func sendResponse(id interface{}, result interface{}) {
