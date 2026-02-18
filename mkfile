@@ -12,6 +12,8 @@ build:V:
 	chmod 0755 $INSTALL_PATH/Alog
 	cp scripts/anvillm-skills $INSTALL_PATH/anvillm-skills
 	chmod 0755 $INSTALL_PATH/anvillm-skills
+	cp scripts/agent-hook $INSTALL_PATH/agent-hook
+	chmod 0755 $INSTALL_PATH/agent-hook
 	cp scripts/9p-read-inbox $INSTALL_PATH/9p-read-inbox
 	chmod 0755 $INSTALL_PATH/9p-read-inbox
 	mkdir -p $INSTALL_PATH/Workflows
@@ -23,6 +25,7 @@ build:V:
 	mkdir -p $HOME/.claude/agents
 	mkdir -p $HOME/.claude/hooks
 	cp kiro-cli/agent/* $HOME/.kiro/agents/
+	cp kiro-cli/SKILLS_PROMPT.md $HOME/.kiro/
 	cp claude/agent/* $HOME/.claude/agents/
 	cp claude/hooks/* $HOME/.claude/hooks/
 	chmod +x $HOME/.claude/hooks/*.sh

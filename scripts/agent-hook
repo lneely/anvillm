@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Kiro (and many other agents) pass JSON payload to hook on stdin
+TIMEOUT=$(command -v gtimeout 2>/dev/null || command -v timeout 2>/dev/null || :)
+payload=$(${TIMEOUT:+"$TIMEOUT" 3} jq -c . 2>/dev/null || :)
+
+# Debug: log what we received
+echo "[agent-hook] Received payload: $payload" >> /tmp/agent-hook.log
+
+[[ $payload ]] || exit 0 # Just exit
+
+event=''
+cwd=$PWD
+IFS=$'\t' read -r _event _cwd < <(jq -r '"\(.hook_event_name // "")\t\(.cwd // "")"' <<<"$payload") || :
+[[ ${_event:-} ]] && event=$_event
+[[ ${_cwd:-} ]] && cwd=$_cwd
+
+echo "[agent-hook] Parsed event: $event, cwd: $cwd" >> /tmp/agent-hook.log
+
+# Helper for anvillm state transitions
+anvillm_set_state() {
+    local agent_id=${AGENT_ID:-}
+    [[ $agent_id ]] && echo "$1" | 9p write "agent/$agent_id/state" 2>/dev/null || true
+}
+
+case "$event" in
+    agentSpawn)
+        cat ~/.kiro/SKILLS_PROMPT.md
+        ;;
+    userPromptSubmit)
+        anvillm_set_state running
+        ;;
+    preToolUse)
+        ;;
+    postToolUse)
+        ;;
+    stop)
+        anvillm_set_state idle
+        ;;
+    *)
+        ;;
+esac
