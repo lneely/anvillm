@@ -285,7 +285,17 @@ func sendMessage(from, to, msgType, subject, body string) error {
 	mailPath := fmt.Sprintf("agent/%s/mail", from)
 	cmd := exec.Command("9p", "write", mailPath)
 	cmd.Stdin = strings.NewReader(string(data))
-	return cmd.Run()
+	
+	// Capture both stdout and stderr to get error messages
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// Return the actual error message from 9p
+		if len(output) > 0 {
+			return fmt.Errorf("%s", strings.TrimSpace(string(output)))
+		}
+		return err
+	}
+	return nil
 }
 
 func listSessions() (string, error) {
