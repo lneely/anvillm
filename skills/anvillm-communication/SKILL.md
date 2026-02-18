@@ -76,6 +76,30 @@ send_message with:
 
 To manually check: `read_inbox` with `agent_id` set to your AGENT_ID
 
+### Responding to Messages
+
+When you receive a message:
+1. **Read and understand** the message content
+2. **Take the requested action** (answer question, review code, etc.)
+3. **Send a response** back to the sender using `send_message`
+
+For `PROMPT_REQUEST` messages, respond with `PROMPT_RESPONSE`.
+For `QUERY_REQUEST` messages, respond with `QUERY_RESPONSE`.
+For `REVIEW_REQUEST` messages, respond with `REVIEW_RESPONSE`.
+For `APPROVAL_REQUEST` messages, respond with `APPROVAL_RESPONSE`.
+
+Example response flow:
+```
+# Received: PROMPT_REQUEST from agent abc123
+# After completing the work, respond:
+send_message with:
+  from: your AGENT_ID
+  to: abc123
+  type: PROMPT_RESPONSE
+  subject: Task completed
+  body: I've completed the requested work. Details: ...
+```
+
 ## Agent State
 
 Use `set_state` to change your state:
