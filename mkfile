@@ -7,6 +7,7 @@ build:V:
 	go build -o $INSTALL_PATH/Assist ./cmd/Assist
 	go build -o $INSTALL_PATH/anvillm ./cmd/anvillm
 	go build -o $INSTALL_PATH/anvilweb ./cmd/anvilweb
+	go build -o $INSTALL_PATH/anvilmcp ./cmd/anvilmcp
 	cp scripts/Alog $INSTALL_PATH/Alog
 	chmod 0755 $INSTALL_PATH/Alog
 	cp scripts/anvillm-skills $INSTALL_PATH/anvillm-skills

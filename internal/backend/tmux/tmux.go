@@ -363,17 +363,6 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 	}
 	sess.idleCond = sync.NewCond(&sess.mu)
 
-	// Write session ID to file for hook access (if kiro-cli or claude backend)
-	if (b.cfg.Name == "kiro-cli" || b.cfg.Name == "claude") && pid != 0 {
-		ns := client.Namespace()
-		sessionIDFile := filepath.Join(ns, fmt.Sprintf("anvillm-session-id-%d", pid))
-		if err := os.WriteFile(sessionIDFile, []byte(id), 0644); err != nil {
-			debug.Log("[session %s] failed to write session ID file: %v", id, err)
-		} else {
-			debug.Log("[session %s] wrote session ID file: %s", id, sessionIDFile)
-		}
-	}
-
 	// 10. Start reader goroutine
 	go sess.reader()
 
