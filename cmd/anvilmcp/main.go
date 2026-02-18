@@ -237,26 +237,36 @@ func readInbox(agentID string) (string, error) {
 		return "No messages", nil
 	}
 	
-	var messages []string
+	// Read first message only
+	var firstFile string
 	for _, file := range files {
-		if !strings.HasSuffix(file, ".json") {
-			continue
+		if strings.HasSuffix(file, ".json") {
+			firstFile = file
+			break
 		}
-		
-		msgPath := fmt.Sprintf("%s/%s", inboxPath, file)
-		cmd := exec.Command("9p", "read", msgPath)
-		data, err := cmd.Output()
-		if err != nil {
-			continue
-		}
-		messages = append(messages, string(data))
 	}
 	
-	if len(messages) == 0 {
+	if firstFile == "" {
 		return "No messages", nil
 	}
 	
-	return strings.Join(messages, "\n---\n"), nil
+	msgPath := fmt.Sprintf("%s/%s", inboxPath, firstFile)
+	cmd = exec.Command("9p", "read", msgPath)
+	data, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to read message: %v", err)
+	}
+	
+	// Mark as complete (strip .json extension)
+	msgID := strings.TrimSuffix(firstFile, ".json")
+	ctlPath := fmt.Sprintf("agent/%s/ctl", agentID)
+	cmd = exec.Command("9p", "write", ctlPath)
+	cmd.Stdin = strings.NewReader(fmt.Sprintf("complete %s", msgID))
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "[anvilmcp] Warning: Failed to mark message as complete: %v\n", err)
+	}
+	
+	return string(data), nil
 }
 
 func sendMessage(from, to, msgType, subject, body string) error {
