@@ -103,15 +103,20 @@ func main() {
 			cmd := string(e.Text)
 			arg := strings.TrimSpace(string(e.Arg))
 
-			// Fire-and-forget: B2 on session ID sends selected text as prompt
-			// In a 2-1 chord, the selection comes through as e.Arg
+			// Handle session ID clicks
 			if sessionIDRegex.MatchString(cmd) {
 				if len(e.Arg) > 0 {
+					// Fire-and-forget: B2 on session ID with selected text sends prompt
 					go func(id, prompt string) {
 						if err := sendPrompt(id, prompt); err != nil {
 							fmt.Fprintf(os.Stderr, "Failed to send prompt: %v\n", err)
 						}
 					}(cmd, string(e.Arg))
+				} else {
+					// Middle-click on session ID without selection attaches to tmux
+					if err := attachSession(cmd); err != nil {
+						fmt.Fprintf(os.Stderr, "Failed to attach: %v\n", err)
+					}
 				}
 				continue
 			}
