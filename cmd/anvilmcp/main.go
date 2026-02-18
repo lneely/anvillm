@@ -266,7 +266,21 @@ func readInbox(agentID string) (string, error) {
 		fmt.Fprintf(os.Stderr, "[anvilmcp] Warning: Failed to mark message as complete: %v\n", err)
 	}
 	
-	return string(data), nil
+	// Parse and format the message like 9p-read-inbox does
+	var msg map[string]interface{}
+	if err := json.Unmarshal(data, &msg); err != nil {
+		// If parsing fails, return raw JSON
+		return string(data), nil
+	}
+	
+	// Format: [Message from {from}]\nType: {type}\nSubject: {subject}\n\n{body}
+	from, _ := msg["from"].(string)
+	msgType, _ := msg["type"].(string)
+	subject, _ := msg["subject"].(string)
+	body, _ := msg["body"].(string)
+	
+	formatted := fmt.Sprintf("[Message from %s]\nType: %s\nSubject: %s\n\n%s", from, msgType, subject, body)
+	return formatted, nil
 }
 
 func sendMessage(from, to, msgType, subject, body string) error {
