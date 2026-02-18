@@ -12,6 +12,8 @@ build:V:
 	chmod 0755 $INSTALL_PATH/Alog
 	cp scripts/anvillm-skills $INSTALL_PATH/anvillm-skills
 	chmod 0755 $INSTALL_PATH/anvillm-skills
+	cp scripts/9p-read-inbox $INSTALL_PATH/9p-read-inbox
+	chmod 0755 $INSTALL_PATH/9p-read-inbox
 	mkdir -p $INSTALL_PATH/Workflows
 	cp workflows/* $INSTALL_PATH/Workflows
 	chmod 0755 $INSTALL_PATH/Workflows/*
