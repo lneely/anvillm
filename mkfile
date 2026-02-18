@@ -27,6 +27,7 @@ build:V:
 	cp claude/hooks/* $HOME/.claude/hooks/
 	chmod +x $HOME/.claude/hooks/*.sh
 	bash claude/install-hooks.sh
+	bash kiro-cli/install-mcp.sh
 
 install:V: build
 
