@@ -207,7 +207,7 @@ func (m *Manager) processMailboxes() {
 		
 		// Prompt agent to check inbox
 		ctx := context.Background()
-		sess.Send(ctx, "check inbox by running the EXACT command: 9p-read-inbox")
+		sess.Send(ctx, fmt.Sprintf("check inbox using: read_inbox with agent_id=%s", sess.ID()))
 	}
 }
 

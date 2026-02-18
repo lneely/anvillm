@@ -1,7 +1,7 @@
 ---
 name: anvillm-communication
-description: Communicate within anvillm via the 9P mailbox system. Use for agent-to-agent messaging (review requests, questions, approvals), agent-to-user responses, discovering peer agents, and any inter-agent coordination.
-when_to_load: Load this skill when you need to send messages to other agents, respond to the user, discover peer agents, check your inbox, or coordinate with other agents in a workflow. Also load when you see instructions about sending messages via 9p write agent/*/mail.
+description: Communicate within anvillm via the mailbox system. Use for agent-to-agent messaging (review requests, questions, approvals), agent-to-user responses, discovering peer agents, and any inter-agent coordination.
+when_to_load: Load this skill when you need to send messages to other agents, respond to the user, discover peer agents, check your inbox, or coordinate with other agents in a workflow.
 ---
 
 # Anvillm Communication
@@ -10,32 +10,18 @@ This skill covers all communication in anvillm: discovering agents, sending mess
 
 ## Currently Available Agents
 
-`9p read agent/list`
+Use the `list_sessions` tool to see all running agents.
 
 ## Discovering Agents
 
 ### List All Agents
 
 To see all currently running agents:
-```bash
-9p read agent/list
+```
+list_sessions
 ```
 
-The output shows one agent per line with the format: `{session_id} {alias} {other_info}`
-
-### Find Specific Agent by Alias
-
-To find an agent by its alias name:
-```bash
-9p read agent/list | grep {alias_name}
-```
-
-You can combine multiple filters:
-```bash
-9p read agent/list | grep reviewer | grep alpha01
-```
-
-This finds agents with both "reviewer" and "alpha01" in their information.
+The output shows one agent per line with the format: `{session_id} {alias} {state} {pid} {cwd}`
 
 ### Extract Session ID
 
@@ -43,7 +29,7 @@ From the agent list output, the first field is the session ID you need for commu
 
 ## Sending Messages
 
-All communication uses the mailbox system. Write JSON messages via the mail file.
+All communication uses the mailbox system via the `send_message` tool.
 
 ### Choosing the Right Message Type
 
@@ -71,11 +57,13 @@ All communication uses the mailbox system. Write JSON messages via the mail file
 
 ### To Another Agent
 
-```bash
-cat > /tmp/msg.json <<'EOF'
-{"to":"{session_id}","type":"PROMPT_REQUEST","subject":"Brief subject","body":"Your message here"}
-EOF
-9p write agent/{your_id}/mail < /tmp/msg.json
+```
+send_message with:
+  from: your AGENT_ID
+  to: target session_id
+  type: PROMPT_REQUEST
+  subject: Brief subject
+  body: Your message here
 ```
 
 ### To User
@@ -83,32 +71,40 @@ EOF
 The special recipient `"user"` sends messages to the human operator.
 
 **For simple responses (auto-completed, doesn't clutter inbox):**
-```bash
-cat > /tmp/msg.json <<'EOF'
-{"to":"user","type":"PROMPT_RESPONSE","subject":"Task complete","body":"Summary of what was done"}
-EOF
-9p write agent/{your_id}/mail < /tmp/msg.json
+```
+send_message with:
+  from: your AGENT_ID
+  to: user
+  type: PROMPT_RESPONSE
+  subject: Task complete
+  body: Summary of what was done
 ```
 
 **When you need user input (stays in inbox until answered):**
-```bash
+```
 # Ask a question
-cat > /tmp/msg.json <<'EOF'
-{"to":"user","type":"QUERY_REQUEST","subject":"Need information","body":"What is the target deployment environment?"}
-EOF
-9p write agent/{your_id}/mail < /tmp/msg.json
+send_message with:
+  from: your AGENT_ID
+  to: user
+  type: QUERY_REQUEST
+  subject: Need information
+  body: What is the target deployment environment?
 
 # Request approval
-cat > /tmp/msg.json <<'EOF'
-{"to":"user","type":"APPROVAL_REQUEST","subject":"Approve deployment","body":"Ready to deploy to production. Approve?"}
-EOF
-9p write agent/{your_id}/mail < /tmp/msg.json
+send_message with:
+  from: your AGENT_ID
+  to: user
+  type: APPROVAL_REQUEST
+  subject: Approve deployment
+  body: Ready to deploy to production. Approve?
 
 # Request review
-cat > /tmp/msg.json <<'EOF'
-{"to":"user","type":"REVIEW_REQUEST","subject":"Review changes","body":"Please review the implementation in commit abc123"}
-EOF
-9p write agent/{your_id}/mail < /tmp/msg.json
+send_message with:
+  from: your AGENT_ID
+  to: user
+  type: REVIEW_REQUEST
+  subject: Review changes
+  body: Please review the implementation in commit abc123
 ```
 
 ### Message Types
@@ -138,24 +134,25 @@ EOF
 
 ### Example Workflow
 
-1. **Discover the peer**: `9p read agent/list | grep research`
+1. **Discover the peer**: Use `list_sessions` and look for the agent you need
 2. **Extract ID**: Note the session ID (first field)
-3. **Create message**: Write JSON to the mail file
-4. **Check inbox**: `9p ls agent/{your_id}/inbox/` for responses
+3. **Send message**: Use `send_message` tool
+4. **Check inbox**: Use `read_inbox` tool to see responses
 
 ## Mailbox System
 
 ### Structure
 
 Each agent has:
-- **mail** - Write messages here to send
-- **inbox/** - Receive messages from others
+- **mail** - Send messages via `send_message` tool
+- **inbox** - Check messages via `read_inbox` tool
 
-The special `user` participant also has mailboxes at `agent/user/mail` and `agent/user/inbox`.
+The special `user` participant also has mailboxes.
 
 ### Message Format
 
-Messages are JSON files with:
+Messages include:
+- `from` - sender (your AGENT_ID)
 - `to` - recipient (session ID or `"user"`)
 - `type` - message type
 - `subject` - brief description
@@ -163,44 +160,43 @@ Messages are JSON files with:
 
 ### Message Flow
 
-1. Write message JSON to the mail file
+1. Use `send_message` tool to send
 2. System delivers to recipient's inbox
 3. For agents: messages are automatically delivered when they arrive
 4. For user: message body is written to sender's chat log
 
 ### User Communication
 
-- **bot → user**: Bot writes to `agent/{id}/mail` with `to="user"`. Message body appears in bot's chat log. Sender transitions to idle.
-- **user → bot**: User writes to `agent/user/mail` with `to="{session_id}"`. Delivered to bot's inbox.
+- **bot → user**: Use `send_message` with `to="user"`. Message body appears in bot's chat log. Sender transitions to idle.
+- **user → bot**: User sends message to bot's session ID. Delivered to bot's inbox.
 
 ### Checking for Messages
 
 **You do not need to actively check your inbox.** When messages arrive, the system automatically delivers them to you. Simply continue your work - incoming messages will be delivered automatically.
 
 If you need to manually check:
-```bash
-9p ls agent/{your_id}/inbox/
-9p read agent/{your_id}/inbox/msg-{id}.json
+```
+read_inbox with agent_id set to your AGENT_ID
 ```
 
 ### Checking Agent State
 
-```bash
-9p read agent/{session_id}/state
+```
+Use the set_state tool to change your state, or check other agents' states via list_sessions
 ```
 
 Common states:
 - `idle` - Ready to receive work
+- `running` - Currently processing
 - Other states depend on the agent implementation
 
 ## Additional Operations
 
 ### Read Agent Alias
-```bash
-9p read agent/{session_id}/alias
-```
+Check the `list_sessions` output - the second field is the alias.
 
 ### Set Agent Alias
+Use the 9p filesystem directly:
 ```bash
 echo "new-alias-name" | 9p write agent/{session_id}/alias
 ```
