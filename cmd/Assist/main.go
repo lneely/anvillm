@@ -663,12 +663,26 @@ func attachSession(id string) error {
 		return fmt.Errorf("session does not support attach")
 	}
 
-	go func() {
-		cmd := exec.Command(terminalCommand, "-e", "tmux", "attach", "-t", target)
-		if err := cmd.Start(); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to launch terminal: %v\n", err)
-		}
-	}()
+	// Check if there's already a tmux client running
+	clientsCmd := exec.Command("tmux", "list-clients")
+	clientsOutput, err := clientsCmd.Output()
+	if err == nil && len(clientsOutput) > 0 {
+		// There's an existing tmux client, switch to the target session/window
+		go func() {
+			cmd := exec.Command("tmux", "switch-client", "-t", target)
+			if err := cmd.Run(); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to switch tmux client: %v\n", err)
+			}
+		}()
+	} else {
+		// No existing client, launch new terminal
+		go func() {
+			cmd := exec.Command(terminalCommand, "-e", "tmux", "attach", "-t", target)
+			if err := cmd.Start(); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to launch terminal: %v\n", err)
+			}
+		}()
+	}
 
 	return nil
 }
