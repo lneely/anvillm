@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Kiro (and many other agents) pass JSON payload to hook on stdin
-TIMEOUT=$(command -v gtimeout 2>/dev/null || command -v timeout 2>/dev/null || :)
-payload=$(${TIMEOUT:+"$TIMEOUT" 3} jq -c . 2>/dev/null || :)
+# Support two modes:
+# 1. JSON on stdin (for wrapper scripts)
+# 2. Event name as first argument (for direct invocation)
 
-# Debug: log what we received
-echo "[agent-hook] Received payload: $payload" >> /tmp/agent-hook.log
-
-[[ $payload ]] || exit 0 # Just exit
-
-event=''
-cwd=$PWD
-IFS=$'\t' read -r _event _cwd < <(jq -r '"\(.hook_event_name // "")\t\(.cwd // "")"' <<<"$payload") || :
-[[ ${_event:-} ]] && event=$_event
-[[ ${_cwd:-} ]] && cwd=$_cwd
-
-echo "[agent-hook] Parsed event: $event, cwd: $cwd" >> /tmp/agent-hook.log
+if [[ $# -gt 0 ]]; then
+    # Direct invocation: event name passed as argument
+    event="$1"
+    cwd="${2:-$PWD}"
+else
+    # JSON mode: parse from stdin
+    TIMEOUT=$(command -v gtimeout 2>/dev/null || command -v timeout 2>/dev/null || :)
+    payload=$(${TIMEOUT:+"$TIMEOUT" 3} jq -c . 2>/dev/null || :)
+    [[ $payload ]] || exit 0
+    
+    event=''
+    cwd=$PWD
+    IFS=$'\t' read -r _event _cwd < <(jq -r '"\(.hook_event_name // "")\t\(.cwd // "")"' <<<"$payload") || :
+    [[ ${_event:-} ]] && event=$_event
+    [[ ${_cwd:-} ]] && cwd=$_cwd
+fi
 
 # Helper for anvillm state transitions
 anvillm_set_state() {

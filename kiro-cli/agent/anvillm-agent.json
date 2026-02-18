@@ -7,17 +7,17 @@
   "hooks": {
     "agentSpawn": [
       {
-        "command": "cat ~/.kiro/SKILLS_PROMPT.md"
+        "command": "agent-hook agentSpawn"
       }
     ],
     "userPromptSubmit": [
       {
-        "command": "echo running | 9p write agent/$AGENT_ID/state 2>/dev/null || true"
+        "command": "agent-hook userPromptSubmit"
       }
     ],
     "stop": [
       {
-        "command": "echo idle | 9p write agent/$AGENT_ID/state 2>/dev/null || true"
+        "command": "agent-hook stop"
       }
     ]
   }
