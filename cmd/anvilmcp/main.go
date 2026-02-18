@@ -77,6 +77,9 @@ func main() {
 					"version": "0.1.0",
 				},
 			})
+		case "notifications/initialized":
+			// Notification - no response needed
+			fmt.Fprintln(os.Stderr, "[anvilmcp] Initialized notification received")
 		case "tools/list":
 			sendResponse(req.ID, map[string]interface{}{
 				"tools": []Tool{
