@@ -22,7 +22,7 @@ build:V:
 	mkdir -p $HOME/.kiro/agents/kiro-cli
 	mkdir -p $HOME/.claude/agents
 	mkdir -p $HOME/.claude/hooks
-	cp kiro-cli/agent/* $HOME/.kiro/agents/kiro-cli/
+	cp kiro-cli/agent/* $HOME/.kiro/agents/
 	cp claude/agent/* $HOME/.claude/agents/
 	cp claude/hooks/* $HOME/.claude/hooks/
 	chmod +x $HOME/.claude/hooks/*.sh
