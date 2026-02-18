@@ -3,6 +3,9 @@
   "description": "Agent for AnviLLM multi-agent workflows with mailbox communication",
   "tools": ["*"],
   "allowedTools": ["*"],
+  "mcpTools": {
+    "anvilmcp": ["read_inbox", "send_message", "list_sessions", "set_state"]
+  },
   "hooks": {
     "agentSpawn": [
       {
