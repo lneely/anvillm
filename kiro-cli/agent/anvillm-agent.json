@@ -17,12 +17,12 @@
     ],
     "userPromptSubmit": [
       {
-        "command": "KIRO_PID=$(ps -o ppid= -p $PPID | tr -d ' '); cat $(namespace)/anvillm-session-id-$KIRO_PID 2>/dev/null | xargs -I{} sh -c 'echo running | 9p write agent/{}/state 2>/dev/null' || true"
+        "command": "echo running | 9p write agent/$AGENT_ID/state 2>/dev/null || true"
       }
     ],
     "stop": [
       {
-        "command": "KIRO_PID=$(ps -o ppid= -p $PPID | tr -d ' '); cat $(namespace)/anvillm-session-id-$KIRO_PID 2>/dev/null | xargs -I{} sh -c 'echo idle | 9p write agent/{}/state 2>/dev/null' || true"
+        "command": "echo idle | 9p write agent/$AGENT_ID/state 2>/dev/null || true"
       }
     ]
   }
