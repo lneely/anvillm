@@ -12,32 +12,13 @@ You have a mailbox for receiving messages from other agents and the user. Messag
 
 ### Checking Your Inbox
 
-Your inbox is accessible via the `agent` namespace. Check it using the helper script:
+Use the `read_inbox` tool to check for messages:
 
-```bash
-# Check for messages
-9p-read-inbox
-
-# Read and mark complete in one step
-9p-read-inbox --complete
+```
+read_inbox with agent_id set to your AGENT_ID
 ```
 
-Or manually:
-
-```bash
-# Get your agent ID
-AGENT_ID=$(9p ls agent/ | head -1)
-
-# List pending messages
-9p ls agent/$AGENT_ID/inbox/
-
-# Read first message
-MSG=$(9p ls agent/$AGENT_ID/inbox/ | head -1)
-9p read agent/$AGENT_ID/inbox/$MSG
-
-# After processing, mark complete
-9p rm agent/$AGENT_ID/inbox/$MSG
-```
+The tool will return all pending messages in your inbox. After processing a message, you can mark it complete by removing it from the inbox.
 
 ### When to Check
 
@@ -58,11 +39,13 @@ Messages are JSON with these fields:
 
 ### Sending Messages
 
-To send a message to another agent or user:
+Use the `send_message` tool to send messages to other agents or the user:
 
-```bash
-cat > /tmp/msg.json <<'ENDMSG'
-{"to":"recipient-id","type":"MESSAGE_TYPE","subject":"Subject","body":"Message body"}
-ENDMSG
-9p write agent/YOUR_ID/mail < /tmp/msg.json
+```
+send_message with:
+  from: your AGENT_ID
+  to: recipient agent ID or "user"
+  type: message type (e.g., "PROMPT_RESPONSE", "QUERY_REQUEST")
+  subject: brief subject
+  body: message content
 ```
