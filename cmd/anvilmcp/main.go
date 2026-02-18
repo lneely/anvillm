@@ -300,6 +300,7 @@ func sendResponse(id interface{}, result interface{}) {
 	}
 	data, _ := json.Marshal(resp)
 	fmt.Println(string(data))
+	os.Stdout.Sync()
 }
 
 func sendError(id interface{}, code int, message string) {
@@ -310,4 +311,5 @@ func sendError(id interface{}, code int, message string) {
 	}
 	data, _ := json.Marshal(resp)
 	fmt.Println(string(data))
+	os.Stdout.Sync()
 }
