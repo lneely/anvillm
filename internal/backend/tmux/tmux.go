@@ -10,13 +10,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
-
-	"9fans.net/go/plan9/client"
 )
 
 // TmuxSize defines terminal dimensions
@@ -128,7 +125,7 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 	if err != nil {
 		return nil, fmt.Errorf("failed to load global config: %w", err)
 	}
-	
+
 	// Convert base config to layered format
 	baseLayer := sandbox.LayeredConfig{
 		Filesystem: baseCfg.Filesystem,
@@ -136,13 +133,13 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 		Env:        baseCfg.Env,
 	}
 	layers := []sandbox.LayeredConfig{baseLayer}
-	
+
 	backendLayer, err := sandbox.LoadBackend(b.cfg.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load backend config %q: %w", b.cfg.Name, err)
 	}
 	layers = append(layers, backendLayer)
-	
+
 	// Add role layer if specified, otherwise use "default" role
 	role := opts.Role
 	if role == "" {
@@ -153,7 +150,7 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 		return nil, fmt.Errorf("failed to load role %q: %w", role, err)
 	}
 	layers = append(layers, roleLayer)
-	
+
 	// Add task layers
 	for _, taskName := range opts.Tasks {
 		taskLayer, err := sandbox.LoadTask(taskName)
@@ -162,7 +159,7 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 		}
 		layers = append(layers, taskLayer)
 	}
-	
+
 	// Merge layers into final config
 	general := sandbox.GeneralConfig{
 		BestEffort: false,
@@ -195,7 +192,7 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 		killWindow(b.tmuxSession, windowName)
 		return nil, fmt.Errorf("failed to set AGENT_ID: %w", err)
 	}
-	
+
 	for k, v := range b.cfg.Environment {
 		if err := setEnvironment(target, k, v); err != nil {
 			killWindow(b.tmuxSession, windowName)
@@ -321,7 +318,7 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 				debug.Log("[session %s] pane IS kiro-cli (PID: %d)", id, pid)
 			}
 		}
-		
+
 		// Otherwise, try to find backend as child of bash
 		if pid == 0 {
 			for i := 0; i < 10; i++ {
