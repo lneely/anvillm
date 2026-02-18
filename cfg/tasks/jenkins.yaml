@@ -11,3 +11,4 @@ network:
 env:
   - JENKINS_USER_ID
   - JENKINS_API_TOKEN
+  - JENKINS_MCP_AUTH

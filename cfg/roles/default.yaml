@@ -18,11 +18,19 @@ filesystem:
     - "{HOME}/.git-credentials"
     - "{XDG_CONFIG_HOME}/git/credentials"
     - "{XDG_RUNTIME_DIR}/git/"
+    - "{HOME}/.mcpt"
+    - "{HOME}/doc/agent-skills"
   rwx:
     - "{CWD}"
     - "{PLAN9}/bin"
   rox:
     - "{HOME}/bin"
     - "{HOME}/.local/bin"
+env:
+    - AGENT_SKILLS_PATH
+    - NAMESPACE
+    - HOME
+    - TMPDIR
+    - AGENT_ID
 network:
   unrestricted: true

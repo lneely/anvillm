@@ -35,6 +35,8 @@ filesystem:
         - /sys
         - '{XDG_CONFIG_HOME}/anvillm'
         - '{HOME}/env'
+        - '{HOME}/prj'
+        - '{HOME}/src'
     rox:
         - /usr
         - /lib
@@ -65,6 +67,7 @@ env:
     - NAMESPACE
     - DISPLAY
     - WAYLAND_DISPLAY
+    - AGENT_ID
 advanced:
     ldd: false
     add_exec: true

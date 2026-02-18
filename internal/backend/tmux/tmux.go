@@ -190,6 +190,12 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 	target := windowTarget(b.tmuxSession, windowName)
 
 	// 3. Set environment variables for this window
+	// Set AGENT_ID first
+	if err := setEnvironment(target, "AGENT_ID", id); err != nil {
+		killWindow(b.tmuxSession, windowName)
+		return nil, fmt.Errorf("failed to set AGENT_ID: %w", err)
+	}
+	
 	for k, v := range b.cfg.Environment {
 		if err := setEnvironment(target, k, v); err != nil {
 			killWindow(b.tmuxSession, windowName)
@@ -264,6 +270,13 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 		os.Remove(fifoPath)
 		killWindow(b.tmuxSession, windowName)
 		return nil, fmt.Errorf("failed to change directory: %w", err)
+	}
+
+	// Export AGENT_ID to shell environment
+	if err := sendKeys(target, fmt.Sprintf("export AGENT_ID=%s", id), "C-m"); err != nil {
+		os.Remove(fifoPath)
+		killWindow(b.tmuxSession, windowName)
+		return nil, fmt.Errorf("failed to export AGENT_ID: %w", err)
 	}
 
 	// Send the command
