@@ -99,6 +99,9 @@ Available in sandbox YAML files (`~/.config/anvillm/`):
 | `{XDG_DATA_HOME}` | XDG data | `$XDG_DATA_HOME` or `~/.local/share` |
 | `{XDG_CACHE_HOME}` | XDG cache | `$XDG_CACHE_HOME` or `~/.cache` |
 | `{XDG_STATE_HOME}` | XDG state | `$XDG_STATE_HOME` or `~/.local/state` |
+| `{ANY_ENV_VAR}` | Environment variable | Any `$ENV_VAR` from the environment |
+
+**Note:** Templates use `{VARNAME}` syntax. Any environment variable can be referenced.
 
 ## Backends & Sandboxing
 
