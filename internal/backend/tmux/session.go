@@ -133,7 +133,7 @@ func (s *Session) transitionToLocked(newState string) error {
 	case s.state == "error" && newState == "starting":
 		// Restart from error state
 		s.state = newState
-	case newState == "stopped" || newState == "exited":
+	case newState == "stopped" || newState == "killed":
 		// Allow transition to stopped/exited from any state
 		s.state = newState
 		s.idleCond.Broadcast()
@@ -241,7 +241,7 @@ func (s *Session) reader() {
 			// Handle EOF/error with single lock acquisition to avoid races
 			s.mu.Lock()
 			superseded := s.readerGeneration != myGeneration
-			exited := s.state == "exited"
+			exited := s.state == "killed"
 
 			// Only update state if we're still the current reader
 			if !superseded && !exited {
@@ -267,7 +267,7 @@ func (s *Session) reader() {
 				time.Sleep(100 * time.Millisecond)
 				s.mu.Lock()
 				superseded := s.readerGeneration != myGeneration
-				exited := s.state == "exited"
+				exited := s.state == "killed"
 				s.mu.Unlock()
 
 				if superseded || exited {
@@ -469,7 +469,7 @@ func (s *Session) SendStream(ctx context.Context, prompt string) (io.ReadCloser,
 // This method will unlock s.mu while performing stop operations.
 func (s *Session) stopInternal(ctx context.Context) error {
 	// Lock is held by caller
-	if s.state == "stopped" || s.state == "exited" {
+	if s.state == "stopped" || s.state == "killed" {
 		return nil // Already stopped
 	}
 
@@ -541,7 +541,7 @@ func (s *Session) stopInternal(ctx context.Context) error {
 	if !windowExists(tmuxSession, windowName) {
 		debug.Log("[session %s] tmux window was unexpectedly destroyed", sessionID)
 		s.mu.Lock()
-		s.transitionToLocked("exited")
+		s.transitionToLocked("killed")
 		s.pid = 0
 		return fmt.Errorf("tmux window was unexpectedly destroyed")
 	}
@@ -564,7 +564,7 @@ func (s *Session) stopInternal(ctx context.Context) error {
 func (s *Session) Stop(ctx context.Context) error {
 	s.mu.Lock()
 
-	if s.state == "stopped" || s.state == "exited" {
+	if s.state == "stopped" || s.state == "killed" {
 		s.mu.Unlock()
 		return nil // Already stopped
 	}
@@ -593,7 +593,7 @@ func (s *Session) Restart(ctx context.Context) error {
 	s.mu.Lock()
 
 	// Check if we can restart from this state
-	if s.state == "exited" {
+	if s.state == "killed" {
 		s.mu.Unlock()
 		return fmt.Errorf("cannot restart exited session (tmux window destroyed)")
 	}
@@ -851,7 +851,7 @@ func (s *Session) Close() error {
 	}
 
 	s.pid = 0
-	s.transitionToLocked("exited")
+	s.transitionToLocked("killed")
 	return nil
 }
 
@@ -860,7 +860,7 @@ func (s *Session) Refresh(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.state == "exited" {
+	if s.state == "killed" {
 		// Cannot refresh exited sessions
 		return nil
 	}

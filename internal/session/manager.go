@@ -40,6 +40,16 @@ func NewManager(backends map[string]backend.Backend) *Manager {
 	// Set session getter for alias lookup
 	mailMgr.SetSessionGetter(m)
 	
+	// Set state change callback
+	m.OnStateChange = func(sessionID, oldState, newState string) {
+		if m.eventQueue != nil {
+			m.eventQueue.Push(sessionID, events.EventStateChange, map[string]string{
+				"old_state": oldState,
+				"new_state": newState,
+			})
+		}
+	}
+	
 	// Wire up mailbox event callbacks
 	mailMgr.SetEventCallbacks(
 		func(senderID string, msg *mailbox.Message) {
@@ -85,16 +95,11 @@ func (m *Manager) New(opts backend.SessionOptions, backendName string) (backend.
 	}
 
 	// Wire up state change callback
-	if tmuxSess, ok := sess.(*tmux.Session); ok && m.OnStateChange != nil {
-		tmuxSess.OnStateChange = func(sessionID, oldState, newState string) {
-			m.OnStateChange(sessionID, oldState, newState)
-			// Emit state change event
-			if m.eventQueue != nil {
-				m.eventQueue.Push(sessionID, events.EventStateChange, map[string]string{
-					"old_state": oldState,
-					"new_state": newState,
-				})
-			}
+	if tmuxSess, ok := sess.(*tmux.Session); ok {
+		tmuxSess.OnStateChange = m.OnStateChange
+		// Emit initial state change event
+		if m.OnStateChange != nil {
+			m.OnStateChange(sess.ID(), "stopped", sess.State())
 		}
 	}
 
