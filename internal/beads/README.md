@@ -136,4 +136,3 @@ Implementation: MCP tool calls `9p write agent/beads/ctl`.
 
 - [steveyegge/beads](https://github.com/steveyegge/beads)
 - [Dolt](https://github.com/dolthub/dolt)
-- [IDEAS.md](../../IDEAS.md) - Original beads concept
