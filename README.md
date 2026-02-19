@@ -82,7 +82,7 @@ NAMESPACE=/tmp/ns.$USER.:1 Assist          # connect
 | `NAMESPACE` | `/tmp/ns.$USER.:0` | 9P namespace for server/client communication |
 | `ANVILLM_BEADS_PATH` | `~/.beads` | Beads database location (shared across namespaces) |
 | `ANVILLM_TERMINAL` | `foot` | Terminal command for tmux attach (Assist) |
-| `ANTHROPIC_API_KEY` | — | Claude API key (required for Claude backend) |
+| `ANTHROPIC_API_KEY` | — | Claude API key (optional if using `claude /login`) |
 | `CLAUDE_AGENT_NAME` | `anvillm-agent` | Claude agent configuration name |
 | `KIRO_API_KEY` | — | Kiro API key (required for Kiro backend) |
 
