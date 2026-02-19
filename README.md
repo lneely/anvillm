@@ -56,16 +56,16 @@ NAMESPACE=/tmp/ns.$USER.:1 Assist          # connect
 
 **Web:** `anvilweb` (port :8080) — ⚠️ NO auth, localhost only — Remote: `ssh -L 8080:localhost:8080 user@remote`
 
-**Acme:** Type `Assist` and middle-click — Tag: `Get Attach Stop Restart Kill Alias Context Log Daemon Inbox Archive` — Right-click ID for prompt window, 2-1 chord for fire-and-forget
+**Acme:** Type `Assist` and middle-click — Tag: `Get Attach Stop Restart Kill Alias Context Daemon Inbox Archive` — Right-click ID for prompt window, 2-1 chord for fire-and-forget
 
 | Command | Action |
 |---------|--------|
+| `Get` | Refresh session list |
 | `Kiro <dir>` / `Claude <dir>` | Start session |
-| `Stop <id>` / `Restart <id>` / `Kill <id>` | Control session |
 | `Attach <id>` | Open tmux |
+| `Stop <id>` / `Restart <id>` / `Kill <id>` | Control session |
 | `Alias <id> <name>` | Name session |
 | `Context <id>` | Edit context |
-| `Log <id>` | View log |
 | `Daemon` | Manage daemon |
 | `Inbox [id]` / `Archive [id]` | View messages |
 
@@ -99,7 +99,9 @@ agent/
     ├── cwd         # Working directory
     ├── backend     # Backend name
     ├── inbox       # Incoming messages (JSON)
-    └── archive     # Archived messages (JSON)
+    ├── outbox      # Outgoing messages (JSON)
+    ├── completed   # Archived messages (JSON, "Archive" in Assist)
+    └── mail        # Write messages (convenience)
 ```
 
 ### Beads
@@ -126,7 +128,7 @@ Config: `~/.beads/` (override: `ANVILLM_BEADS_PATH`) — Shared across namespace
 # Mailbox
 echo '{"to":"a3f2b9d1","type":"REVIEW_REQUEST","subject":"...","body":"..."}' | 9p write agent/b4e3c8f2/mail
 9p read agent/a3f2b9d1/inbox
-9p read agent/a3f2b9d1/archive
+9p read agent/a3f2b9d1/completed
 ```
 
 ### Example
@@ -141,7 +143,7 @@ See `SECURITY.md`
 
 ## Backends & Sandboxing
 
-**Backends:** Claude (`npm install -g @anthropic-ai/claude-code`), Kiro ([kiro.dev](https://kiro.dev)) — Both run with full permissions
+**Backends:** Claude (`npm install -g @anthropic-ai/claude-code`), Kiro ([kiro.dev](https://kiro.dev)) — Sandboxed with network access
 
 **Add:** Implement `CommandHandler`/`StateInspector` in `internal/backends/yourbackend.go`, register in `main.go`
 
