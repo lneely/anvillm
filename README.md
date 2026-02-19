@@ -32,26 +32,21 @@
 ```sh
 git clone https://github.com/lneely/anvillm
 cd anvillm
-mk  # installs anvilsrv and Assist to $HOME/bin
+mk  # installs to $HOME/bin
 ```
 
-### Service Integration
+**Optional service integration:**
 
-Install as system service (optional):
-
-**systemd**:
 ```sh
-# User service (recommended)
+# systemd (user service, recommended)
 cp services/systemd/anvilsrv-user.service ~/.config/systemd/user/
 systemctl --user enable --now anvilsrv
 
-# System service
+# systemd (system service)
 sudo cp services/systemd/anvilsrv.service /etc/systemd/system/
 sudo systemctl enable --now anvilsrv
-```
 
-**runit**:
-```sh
+# runit
 sudo cp -r services/runit /etc/sv/anvilsrv
 sudo ln -s /etc/sv/anvilsrv /var/service/
 ```
@@ -60,101 +55,56 @@ See `services/*/README.md` for details.
 
 ## Usage
 
-### Starting the Server
-
-**Automatic**: `Assist` auto-starts `anvilsrv` if not running.
-
-**Manual**:
+**Start server:**
 ```sh
-anvilsrv start       # Daemonize (background)
-anvilsrv fgstart     # Foreground (for debugging)
-anvilsrv status      # Check if running
-anvilsrv stop        # Shutdown
+anvilsrv start       # background
+anvilsrv fgstart     # foreground (debugging)
+anvilsrv status
+anvilsrv stop
 ```
+
+`Assist` auto-starts `anvilsrv` if not running.
 
 ### Multiple Namespaces
 
-Run multiple independent instances using `$NAMESPACE` (similar to `acme -a`).
-
-**Default:** `/tmp/ns.$USER.:0`
-
-**Example:**
+Run independent instances via `$NAMESPACE` (like `acme -a`). Default: `/tmp/ns.$USER.:0`
 ```sh
-# Start default instance (:0)
-anvilsrv start
-
-# Start second instance (:1)
-NAMESPACE=/tmp/ns.$USER.:1 anvilsrv start
-
-# Check status
-anvilsrv status                           # :0
-NAMESPACE=/tmp/ns.$USER.:1 anvilsrv status  # :1
-
-# Connect Assist to specific instance
-NAMESPACE=/tmp/ns.$USER.:1 Assist
+anvilsrv start                            # :0
+NAMESPACE=/tmp/ns.$USER.:1 anvilsrv start  # :1
+NAMESPACE=/tmp/ns.$USER.:1 Assist          # connect to :1
 ```
 
-Each instance has isolated PID file, 9P socket, and session list.
+### Clients
 
-### Terminal UI (anvillm)
-
-Curses-based interface (no Acme required):
-
+**Terminal UI:**
 ```sh
 anvillm
 ```
+Keys: `s` start | `p` prompt | `t` stop | `R` restart | `K` kill | `a` alias | `r` refresh | `d` daemon | `?` help | `q` quit  
+Navigation: arrows, vim (`j`/`k`), emacs (`C-n`/`C-p`)  
+Attach: `tmux attach`
 
-**Keys:** `s` start | `p` prompt | `t` stop | `R` restart | `K` kill | `a` alias | `r` refresh | `d` daemon | `?` help | `q` quit
-
-**Navigation:** Arrow keys, vim (`j`/`k`), or emacs (`C-n`/`C-p`)
-
-Attach to tmux session from another terminal with `tmux attach`.
-
-### Emacs Interface (anvillm.el)
-
-**Installation:**
+**Emacs:**
 ```elisp
 (add-to-list 'load-path "/path/to/anvillm.el/")
 (require 'anvillm)
 ```
+Usage: `M-x anvillm`  
+Keys: `s` start | `p` prompt | `P` prompt (minibuffer) | `t` stop | `R` restart | `K` kill | `a` alias | `r`/`g` refresh | `d` daemon | `q` quit | `?` help
 
-**Usage:** `M-x anvillm`
-
-**Keys:** `s` start | `p` prompt | `P` prompt (minibuffer) | `t` stop | `R` restart | `K` kill | `a` alias | `r`/`g` refresh | `d` daemon | `q` quit | `?` help
-
-**Navigation:** Standard Emacs (`n`, `p`, `C-n`, `C-p`). Click column headers to sort.
-
-### Web Interface (anvilweb)
-
+**Web:**
 ```sh
-anvilweb              # starts on :8080
+anvilweb              # :8080
 anvilweb -addr :3000  # custom port
 ```
+⚠️ **NO authentication** — localhost/trusted networks only. For remote: `ssh -L 8080:localhost:8080 user@remote`
 
-**Features:** Start sessions, send prompts, edit context/aliases, stop/restart/kill. Auto-refreshes every 5 seconds.
+**Acme:**  
+Type `Assist` and middle-click.
 
-**⚠️ Security Warning:**
+### Acme Commands
 
-**NO authentication.** Anyone with network access can control all sessions.
-
-**Only run on localhost or trusted networks.** For remote access, use SSH port forwarding:
-
-```sh
-# Remote machine
-anvilweb -addr localhost:8080
-
-# Local machine
-ssh -L 8080:localhost:8080 user@remote
-# Browse to http://localhost:8080
-```
-
-Or use a reverse proxy with authentication (nginx, caddy).
-
-### Acme Interface (Assist)
-
-Type `Assist` in Acme and middle-click to open `/AnviLLM/` session manager.
-
-**Main window tag:** `Get Attach Stop Restart Kill Alias Context Log Daemon Inbox Archive`
+Tag: `Get Attach Stop Restart Kill Alias Context Log Daemon Inbox Archive`
 
 | Command | Description |
 |---------|-------------|
@@ -168,16 +118,14 @@ Type `Assist` in Acme and middle-click to open `/AnviLLM/` session manager.
 | `Context <id>` | Edit context (prepended to prompts) |
 | `Log <id>` | View session log |
 | `Daemon` | Manage anvilsrv daemon (start/stop/status) |
-| `Inbox [id]` | View inbox messages (default: user) |
-| `Archive [id]` | View archived messages (default: user) |
+| `Inbox [id]` | View inbox (default: user) |
+| `Archive [id]` | View archive (default: user) |
 
-Right-click session ID to open prompt window. Select text and 2-1 chord on session ID for fire-and-forget prompts.
-
-**Prompt window tag:** `Send`
+Right-click session ID for prompt window. 2-1 chord on ID for fire-and-forget prompts.
 
 ## 9P Filesystem
 
-`anvilsrv` exposes sessions at `$NAMESPACE/agent` (typically `/tmp/ns.$USER/agent`):
+Sessions exposed at `$NAMESPACE/agent`:
 
 ```
 agent/
@@ -208,228 +156,154 @@ agent/
     └── archive     # Archived messages (JSON)
 ```
 
-**Path Validation:** Session creation validates paths (e.g., `/../../../etc` → `/etc`) and rejects nonexistent directories.
+Path validation: `/../../../etc` → `/etc`, rejects nonexistent dirs.
 
-### Task Tracking with Beads
+### Beads Task Tracking
 
-Persistent, crash-resilient task tracking via [beads](https://github.com/steveyegge/beads). Provides dependency-aware task graph for multi-agent workflows.
+Persistent, crash-resilient tasks via [beads](https://github.com/steveyegge/beads). Dependency-aware graph for multi-agent workflows.
 
-**Initialize beads database:**
 ```sh
-echo 'init' | 9p write agent/beads/ctl  # Uses prefix "bd" by default
-```
+# Initialize
+echo 'init' | 9p write agent/beads/ctl
 
-**Create tasks:**
-```sh
-echo 'new "Implement login" "Add JWT authentication"' | 9p write agent/beads/ctl
-```
+# Create, claim, complete
+echo 'new "Implement login" "Add JWT auth"' | 9p write agent/beads/ctl
+echo 'claim bd-a1b2' | 9p write agent/beads/ctl
+echo 'complete bd-a1b2' | 9p write agent/beads/ctl
 
-**List ready tasks (no blockers):**
-```sh
+# Dependencies (child blocks parent)
+echo 'dep bd-child bd-parent' | 9p write agent/beads/ctl
+
+# List ready tasks
 9p read agent/beads/ready | jq -r '.[] | "\(.id): \(.title)"'
 ```
 
-**Claim and complete:**
-```sh
-echo 'claim bd-a1b2' | 9p write agent/beads/ctl
-echo 'complete bd-a1b2' | 9p write agent/beads/ctl
-```
+Config: `~/.beads/` (override: `ANVILLM_BEADS_PATH`). Shared across namespaces. See `internal/beads/README.md`.
 
-**Add dependencies:**
-```sh
-echo 'dep bd-child bd-parent' | 9p write agent/beads/ctl  # child blocks parent
-```
+### Events & Mailbox
 
-**Configuration:**
-- Default: `~/.beads/`
-- Override: `ANVILLM_BEADS_PATH=/custom/path`
-- Shared across all namespaces
-
-See `internal/beads/README.md` for details.
-
-### Event Stream
-
-Real-time session events at `/agent/events`:
-
+**Events** (`/agent/events`):
 ```sh
 9p read agent/events
-# {"type":"state_change","session_id":"a3f2b9d1","state":"running","timestamp":"2026-02-19T22:00:00Z"}
-# {"type":"message_received","session_id":"a3f2b9d1","from":"b4e3c8f2","timestamp":"2026-02-19T22:01:00Z"}
+# {"type":"state_change","session_id":"a3f2b9d1","state":"running",...}
 ```
 
-### Mailbox System
-
-Inter-session messaging:
-
-**Send message:**
+**Mailbox** (inter-session messaging):
 ```sh
+# Send
 cat > /tmp/msg.json <<'EOF'
-{"to":"a3f2b9d1","type":"REVIEW_REQUEST","subject":"Review PR","body":"Please review..."}
+{"to":"a3f2b9d1","type":"REVIEW_REQUEST","subject":"Review PR","body":"..."}
 EOF
 9p write agent/b4e3c8f2/mail < /tmp/msg.json
-```
 
-**Read inbox:**
-```sh
+# Read
 9p read agent/a3f2b9d1/inbox
-```
-
-**Archive:**
-```sh
 9p read agent/a3f2b9d1/archive
 ```
 
-### Example Usage
+### Basic Usage
 
 ```sh
 echo 'new claude /home/user/project' | 9p write agent/ctl
 echo 'Hello' | 9p write agent/a3f2b9d1/in
-9p read agent/a3f2b9d1/state  # → "running"
+9p read agent/a3f2b9d1/state  # "running"
 echo 'stop' | 9p write agent/a3f2b9d1/ctl
-9p read agent/a3f2b9d1/state  # → "stopped"
 ```
 
-See `SECURITY.md` for 9P socket authentication details.
+See `SECURITY.md` for authentication details.
 
-## Backends
+## Backends & Sandboxing
 
-| Backend | Install |
-|---------|---------|
-| Claude | `npm install -g @anthropic-ai/claude-code` |
-| Kiro | [Kiro CLI](https://kiro.dev) |
+**Backends:**
+- Claude: `npm install -g @anthropic-ai/claude-code`
+- Kiro: [kiro.dev](https://kiro.dev)
 
 Both run with full permissions (`--dangerously-skip-permissions`, `--trust-all-tools`).
 
-**Adding backends:** Implement `CommandHandler` and `StateInspector` interfaces in `internal/backends/yourbackend.go`, register in `main.go`. See existing backends for examples.
+**Add backends:** Implement `CommandHandler`/`StateInspector` in `internal/backends/yourbackend.go`, register in `main.go`.
 
-## Self-Healing
+**Sandboxing:** [landrun](https://github.com/zouuup/landrun) sandboxes (cannot disable). Defaults: CWD/`/tmp`/config (rw), `/usr`/`/lib`/`/bin` (ro+exec), no network, strict mode.
 
-`anvilsrv` monitors sessions every 5 seconds and auto-restarts crashed sessions (preserves context, alias, working directory). Rate-limited to prevent restart loops (minimum 5 seconds between attempts). Does not restart sessions stopped via `Stop` command.
-
-Check logs with `anvilsrv fgstart` to see auto-restart activity.
-
-## Sandboxing
-
-Backends run in [landrun](https://github.com/zouuup/landrun) sandboxes. **Cannot be disabled** — it's the only safety layer.
-
-**Defaults:**
-- Filesystem: CWD, `/tmp`, config dirs (rw); `/usr`, `/lib`, `/bin` (ro+exec)
-- Network: disabled
-- Mode: strict (`best_effort: false`) — fails if sandbox unavailable
-
-### Configuration
-
-Sandbox configuration is stored in `~/.config/anvillm/sandbox.yaml`. Edit this file to customize sandbox behavior.
-
-Path templates: `{CWD}`, `{HOME}`, `{TMPDIR}`
+**Config** (`~/.config/anvillm/sandbox.yaml`):
 
 ```yaml
-# Enable network
 network:
   enabled: true
   unrestricted: true
-
-# Add paths
 filesystem:
   rw:
     - "{CWD}"
     - "{HOME}/.npm"
 ```
 
-Changes apply to new sessions. Use `Restart` command to reload configuration for existing sessions.
+Templates: `{CWD}`, `{HOME}`, `{TMPDIR}`. Changes apply to new sessions; use `Restart` to reload.
 
-### Kernel Requirements
+**Kernel requirements:**
+- 5.13+: Landlock v1 (filesystem)
+- 6.7+: v4 (improved FS)
+- 6.10+: v5 (network)
 
-| Kernel | Landlock ABI | Features |
-|--------|--------------|----------|
-| 5.13+ | v1 | Filesystem |
-| 6.7+ | v4 | Improved FS |
-| 6.10+ | v5 | Network |
+**Best-effort mode:** Set `best_effort: true` for older kernels. ⚠️ Runs **unsandboxed** if landrun missing or no Landlock.
 
-### Best-Effort Mode
+**Self-healing:** Auto-restarts crashed sessions every 5s (preserves context/alias/cwd). Rate-limited, skips intentional stops. Check: `anvilsrv fgstart`
 
-Set `best_effort: true` for graceful degradation on older kernels.
+## Workflows
 
-**⚠️ Warning:** If landrun is missing or kernel lacks Landlock, sessions run **completely unsandboxed**.
+Script multi-agent workflows via 9P.
 
-## Reproducible Workflows
-
-Script multi-agent workflows via 9P filesystem.
-
-### Skills System
-
-Extend agent capabilities on-demand:
-
+**Skills:**
 ```sh
-anvillm-skills list                        # List available skills
-anvillm-skills load anvillm-communication  # Load communication skill
+anvillm-skills list
+anvillm-skills load anvillm-communication
 ```
 
-See `kiro-cli/SKILLS_PROMPT.md` for details.
+**Examples:**
 
-### Example: Developer-Reviewer
-
-Two-agent code review workflow:
-
+*Developer-Reviewer* (two agents):
 ```sh
 ./workflows/DevReview claude /path/to/project
 ```
+Developer implements/stages, sends review request. Reviewer examines diff, sends feedback/"LGTM". Loop until approved.
 
-Developer implements and stages changes, sends review request via mailbox. Reviewer examines diff, sends feedback or "LGTM". Loop until approved.
-
-### Example: Planning
-
-Three-agent documentation workflow:
-
+*Planning* (three agents):
 ```sh
 ./workflows/Planning kiro /path/to/docs
 ```
+Research queries codebase, Engineering writes docs (queries research), Tech-editor reviews/requests changes.
 
-**Research** queries codebase, **Engineering** writes docs (queries research when needed), **Tech-editor** reviews and requests changes.
-
-### Writing Your Own
-
-Key patterns:
+**Writing workflows:**
 
 ```sh
-# Create session, capture ID
+# Create session
 echo "new claude /project" | 9p write agent/ctl
 ID=$(9p read agent/list | tail -1 | awk '{print $1}')
 
-# Set context (defines agent behavior)
-cat <<EOF | 9p write agent/$ID/context
-You are a code reviewer. When you receive code...
-EOF
+# Set context
+echo "You are a code reviewer..." | 9p write agent/$ID/context
 
-# Agents communicate via mailboxes
-cat > /tmp/msg.json <<'EOF'
-{"to":"$PEER_ID","type":"REVIEW_REQUEST","subject":"Review","body":"Please review staged changes"}
-EOF
-9p write agent/$ID/mail < /tmp/msg.json
+# Send message
+echo '{"to":"$PEER","type":"REVIEW_REQUEST","subject":"Review","body":"..."}' | 9p write agent/$ID/mail
 
-# Track work with beads
+# Track with beads
 echo 'new "Review PR #123"' | 9p write agent/beads/ctl
-BEAD_ID=$(9p read agent/beads/list | jq -r '.[-1].id')
-echo "claim $BEAD_ID" | 9p write agent/beads/ctl
+echo "claim $(9p read agent/beads/list | jq -r '.[-1].id')" | 9p write agent/beads/ctl
 ```
 
-See `workflows/DevReview` and `workflows/Planning` for complete examples.
+See `workflows/DevReview` and `workflows/Planning`. Details: `kiro-cli/SKILLS_PROMPT.md`.
 
 ## Troubleshooting
 
 | Problem | Solution |
 |---------|----------|
-| "Failed to connect to anvilsrv" | Check `anvilsrv status`; try `anvilsrv start` |
-| Session won't start | Check stderr; verify `which claude` or `which kiro-cli` |
+| Can't connect | `anvilsrv status`; try `anvilsrv start` |
+| Session won't start | Check stderr; verify backend installed |
 | Landlock ABI error | Set `best_effort: true` or upgrade kernel |
-| Permission denied | Add paths to sandbox config |
-| Orphaned tmux | `tmux kill-session -t anvillm-0` (or anvillm-N for namespace :N) |
-| 9P not working | Verify plan9port: `9p ls agent` |
-| Stale PID file | `anvilsrv stop` cleans up automatically |
-| Daemon won't stop | Check logs with `anvilsrv fgstart` |
-| anvilweb can't connect | Ensure anvilsrv is running; check namespace matches |
-| anvilweb port in use | Use `-addr :PORT` to specify different port |
+| Permission denied | Add paths to `sandbox.yaml` |
+| Orphaned tmux | `tmux kill-session -t anvillm-0` |
+| 9P not working | `9p ls agent` |
+| Stale PID | `anvilsrv stop` auto-cleans |
+| Daemon won't stop | `anvilsrv fgstart` for logs |
+| anvilweb issues | Check anvilsrv running, namespace matches |
 
-**Debugging:** Run `anvilsrv fgstart` for foreground logs.
-
-**Terminal:** `Attach` uses `$ANVILLM_TERMINAL` (defaults to `foot`).
+Debug: `anvilsrv fgstart`  
+Terminal: `$ANVILLM_TERMINAL` (default: `foot`)
