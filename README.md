@@ -186,8 +186,12 @@ echo '{"to":"a3f2b9d1","type":"REVIEW_REQUEST","subject":"...","body":"..."}' | 
 # Create session
 echo 'new claude /home/user/project' | 9p write agent/ctl
 
-# Get session ID (last created)
-ID=$(9p read agent/list | tail -1 | awk '{print $1}')
+# List sessions (order is non-deterministic)
+9p read agent/list
+# Output: <id> <backend> <state> <alias> <cwd>
+
+# Use a specific session ID
+ID="a1b2c3d4"  # Replace with actual ID from list
 
 # Send prompt via mailbox
 echo '{"to":"'$ID'","type":"PROMPT_REQUEST","subject":"User prompt","body":"Hello"}' | 9p write user/mail
