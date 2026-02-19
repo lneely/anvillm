@@ -183,6 +183,19 @@ echo 'new "Task"' | 9p write agent/beads/ctl
 
 See `workflows/`, `kiro-cli/SKILLS_PROMPT.md`.
 
+## MCP Integration
+
+`anvilmcp` exposes AnviLLM via Model Context Protocol for Claude Desktop, Cline, etc.
+
+**Install:**
+```sh
+./kiro-cli/install-mcp.sh  # Adds to ~/.kiro/settings/cli.json
+```
+
+**Tools:** `read_inbox`, `send_message`, `list_sessions`, `set_state`
+
+Enables LLM clients to control AnviLLM sessions and communicate with agents.
+
 ## Troubleshooting
 
 | Problem | Solution |
