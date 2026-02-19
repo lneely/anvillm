@@ -7,6 +7,7 @@
 AnviLLM consists of:
 
 - **anvilsrv**: Background daemon managing sessions via 9P
+- **anvilmcp**: MCP server exposing AnviLLM via Model Context Protocol
 - **Assist**: Acme UI client (auto-starts daemon if needed)
 - **anvillm.el**: For our emacs friends ;)
 - **anvillm**: Terminal UI (curses-based) for everyone else
@@ -18,6 +19,7 @@ This separation allows:
 - Scriptable workflows via 9P without UI dependencies
 - Service management (systemd/runit integration)
 - Choice of interface: Acme, terminal, Emacs, or web browser
+- Integration with MCP-compatible tools (Claude Desktop, Cline, etc.)
 
 ## Requirements
 
@@ -237,6 +239,17 @@ The `anvilsrv` daemon exposes sessions via a 9P filesystem at `$NAMESPACE/agent`
 agent/
 ├── ctl             # "new <backend> <cwd>" creates session
 ├── list            # id, alias, state, pid, cwd
+├── events          # Event stream (state changes, messages)
+├── beads/          # Task tracking (persistent across namespaces)
+│   ├── ctl         # Commands: init, new, claim, complete, fail, dep
+│   ├── list        # All beads as JSON
+│   ├── ready       # Ready beads (no blockers) as JSON
+│   └── <bead-id>/
+│       ├── status
+│       ├── title
+│       ├── description
+│       ├── assignee
+│       └── json
 └── <id>/
     ├── in          # Write prompts
     ├── out         # Read responses
@@ -246,10 +259,87 @@ agent/
     ├── alias       # Session name (r/w)
     ├── pid         # Process ID
     ├── cwd         # Working directory
-    └── backend     # Backend name
+    ├── backend     # Backend name
+    ├── inbox       # Incoming messages (JSON)
+    └── archive     # Archived messages (JSON)
 ```
 
 **Path Validation**: Session creation validates and cleans paths (e.g., `/../../../etc` → `/etc`), and rejects nonexistent directories.
+
+### Task Tracking with Beads
+
+AnviLLM integrates [beads](https://github.com/steveyegge/beads) for persistent, crash-resilient task tracking. Beads provides a dependency-aware graph that agents can use for long-horizon work.
+
+**Initialize beads database:**
+```sh
+echo 'init' | 9p write agent/beads/ctl  # Uses prefix "bd" by default
+```
+
+**Create tasks:**
+```sh
+echo 'new "Implement login" "Add JWT authentication"' | 9p write agent/beads/ctl
+```
+
+**List ready tasks (no blockers):**
+```sh
+9p read agent/beads/ready | jq -r '.[] | "\(.id): \(.title)"'
+```
+
+**Claim and complete:**
+```sh
+echo 'claim bd-a1b2' | 9p write agent/beads/ctl
+echo 'complete bd-a1b2' | 9p write agent/beads/ctl
+```
+
+**Add dependencies:**
+```sh
+echo 'dep bd-child bd-parent' | 9p write agent/beads/ctl  # child blocks parent
+```
+
+**Configuration:**
+- Default location: `~/.beads/`
+- Override with: `ANVILLM_BEADS_PATH=/custom/path`
+- Beads database is **shared across all namespaces** (tasks exist independently of sessions)
+
+See `internal/beads/README.md` for details.
+
+### Event Stream
+
+The `/agent/events` file provides a real-time stream of session events:
+
+```sh
+9p read agent/events
+# {"type":"state_change","session_id":"a3f2b9d1","state":"running","timestamp":"2026-02-19T22:00:00Z"}
+# {"type":"message_received","session_id":"a3f2b9d1","from":"b4e3c8f2","timestamp":"2026-02-19T22:01:00Z"}
+```
+
+Clients can monitor this stream to react to session state changes and inter-agent messages.
+
+### Mailbox System
+
+Sessions can send messages to each other via the mailbox system:
+
+**Send message:**
+```sh
+cat > /tmp/msg.json <<'EOF'
+{"to":"a3f2b9d1","type":"REVIEW_REQUEST","subject":"Review PR","body":"Please review..."}
+EOF
+9p write agent/b4e3c8f2/mail < /tmp/msg.json
+```
+
+**Read inbox:**
+```sh
+9p read agent/a3f2b9d1/inbox
+```
+
+**Archive messages:**
+```sh
+9p read agent/a3f2b9d1/archive
+```
+
+Messages are delivered asynchronously and persist until archived.
+
+### Example Usage
 
 Example:
 ```sh
@@ -337,17 +427,28 @@ Set `best_effort: true` for graceful degradation on older kernels.
 
 The 9P filesystem enables scripted multi-agent workflows. Create sessions, set contexts, and wire agents together programmatically.
 
+### Skills System
+
+AnviLLM includes a skills system for extending agent capabilities. Skills are loaded on-demand via the `anvillm-skills` command:
+
+```sh
+anvillm-skills list                    # List available skills
+anvillm-skills load anvillm-communication  # Load communication skill
+```
+
+Agents can discover and load skills automatically when needed. See `kiro-cli/SKILLS_PROMPT.md` for details.
+
 ### Example: Developer-Reviewer
 
 Two agents collaborate on code changes — one implements, one reviews:
 
 ```sh
-./scripts/DevReview claude /path/to/project
+./workflows/DevReview claude /path/to/project
 ```
 
 Creates paired sessions with contexts that instruct agents to:
 1. Developer implements and stages changes
-2. Developer sends review request via `agent/{reviewer-id}/in`
+2. Developer sends review request via mailbox
 3. Reviewer examines diff, sends feedback or "LGTM"
 4. Loop until approved
 
@@ -356,7 +457,7 @@ Creates paired sessions with contexts that instruct agents to:
 Three-agent workflow for documentation tasks:
 
 ```sh
-./scripts/Planning kiro /path/to/docs
+./workflows/Planning kiro /path/to/docs
 ```
 
 - **Research**: Queries codebase and knowledge base
@@ -382,6 +483,11 @@ cat > /tmp/msg.json <<'EOF'
 {"to":"$PEER_ID","type":"REVIEW_REQUEST","subject":"Review","body":"Please review staged changes"}
 EOF
 9p write agent/$ID/mail < /tmp/msg.json
+
+# Track work with beads
+echo 'new "Review PR #123"' | 9p write agent/beads/ctl
+BEAD_ID=$(9p read agent/beads/list | jq -r '.[-1].id')
+echo "claim $BEAD_ID" | 9p write agent/beads/ctl
 ```
 
 See `workflows/DevReview` and `workflows/Planning` for complete examples.
