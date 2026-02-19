@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -236,11 +237,19 @@ func main() {
 					fmt.Fprintf(os.Stderr, "Error opening daemon window: %v\n", err)
 				}
 			case "Inbox":
-				if err := openInboxWindow(); err != nil {
+				owner := "user"
+				if arg != "" {
+					owner = arg
+				}
+				if err := openInboxWindow(owner); err != nil {
 					fmt.Fprintf(os.Stderr, "Error opening inbox window: %v\n", err)
 				}
 			case "Archive":
-				if err := openArchiveWindow(); err != nil {
+				owner := "user"
+				if arg != "" {
+					owner = arg
+				}
+				if err := openArchiveWindow(owner); err != nil {
 					fmt.Fprintf(os.Stderr, "Error opening archive window: %v\n", err)
 				}
 
@@ -850,112 +859,50 @@ func stopDaemon(w *acme.Win) {
 }
 
 type Message struct {
-	ID      string `json:"id"`
-	From    string `json:"from"`
-	To      string `json:"to"`
-	Type    string `json:"type"`
-	Subject string `json:"subject"`
-	Body    string `json:"body"`
+	ID        string `json:"id"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Type      string `json:"type"`
+	Subject   string `json:"subject"`
+	Body      string `json:"body"`
+	Timestamp int64  `json:"timestamp"`
 }
 
-func openInboxWindow() error {
+func openInboxWindow(owner string) error {
 	w, err := acme.New()
 	if err != nil {
 		return err
 	}
 
-	w.Name("/AnviLLM/inbox")
+	if owner == "user" {
+		w.Name("/AnviLLM/inbox")
+	} else {
+		w.Name(fmt.Sprintf("/AnviLLM/%s/inbox", owner))
+	}
 	w.Write("tag", []byte("Get "))
 
-	go handleInboxWindow(w)
+	go handleInboxWindow(w, owner)
 	return nil
 }
 
-func handleInboxWindow(w *acme.Win) {
+func handleInboxWindow(w *acme.Win, owner string) {
 	defer w.CloseFiles()
 
-	refreshInboxWindow(w)
-
-	for e := range w.EventChan() {
-		switch e.C2 {
-		case 'x', 'X':
-			cmd := string(e.Text)
-			if cmd == "Get" {
-				refreshInboxWindow(w)
-			} else {
-				w.WriteEvent(e)
-			}
-		case 'l', 'L':
-			text := strings.TrimSpace(string(e.Text))
-			if isUUID(text) {
-				openMessageWindowByID(text, "user/inbox")
-			} else {
-				w.WriteEvent(e)
-			}
-		default:
-			w.WriteEvent(e)
-		}
-	}
-}
-
-func refreshInboxWindow(w *acme.Win) {
-	messages, _, err := listInboxMessages()
-	if err != nil {
-		w.Addr(",")
-		w.Write("data", []byte(fmt.Sprintf("Error reading inbox: %v\n", err)))
-		w.Ctl("clean")
-		return
-	}
-
-	var buf strings.Builder
-	buf.WriteString("User Inbox\n")
-	buf.WriteString(strings.Repeat("=", 120) + "\n\n")
-	buf.WriteString(fmt.Sprintf("%-38s %-12s %-18s %s\n", "ID", "From", "Type", "Subject"))
-	buf.WriteString(fmt.Sprintf("%-38s %-12s %-18s %s\n", strings.Repeat("-", 36), "------------", "------------------", strings.Repeat("-", 50)))
-
-	for _, msg := range messages {
-		from := msg.From
-		if from == "" {
-			from = "-"
-		}
-		buf.WriteString(fmt.Sprintf("%-38s %-12s %-18s %s\n", msg.ID, from, msg.Type, msg.Subject))
-	}
-
-	w.Addr(",")
-	w.Write("data", []byte(buf.String()))
-	w.Ctl("clean")
-}
-
-func openArchiveWindow() error {
-	w, err := acme.New()
-	if err != nil {
-		return err
-	}
-
-	w.Name("/AnviLLM/archive")
-	w.Write("tag", []byte("Get "))
-
-	go handleArchiveWindow(w)
-	return nil
-}
-
-func handleArchiveWindow(w *acme.Win) {
-	defer w.CloseFiles()
-
-	refreshArchiveWindow(w)
+	folder := owner + "/inbox"
+	refreshMailboxWindow(w, folder, "Inbox")
 
 	for e := range w.EventChan() {
 		switch e.C2 {
 		case 'x', 'X':
 			if string(e.Text) == "Get" {
-				refreshArchiveWindow(w)
+				refreshMailboxWindow(w, folder, "Inbox")
 			} else {
 				w.WriteEvent(e)
 			}
 		case 'l', 'L':
 			text := strings.TrimSpace(string(e.Text))
-			if isUUID(text) {
-				openMessageWindowByID(text, "user/completed")
+			if isHexString(text) {
+				openMessageWindowByPrefix(text, folder)
 			} else {
 				w.WriteEvent(e)
 			}
@@ -965,32 +912,99 @@ func handleArchiveWindow(w *acme.Win) {
 	}
 }
 
-func refreshArchiveWindow(w *acme.Win) {
-	messages, _, err := listArchiveMessages()
+func refreshMailboxWindow(w *acme.Win, folder, title string) {
+	messages, _, err := listMessages(folder)
 	if err != nil {
 		w.Addr(",")
-		w.Write("data", []byte(fmt.Sprintf("Error reading archive: %v\n", err)))
+		w.Write("data", []byte(fmt.Sprintf("Error reading %s: %v\n", title, err)))
 		w.Ctl("clean")
 		return
 	}
 
+	// Sort by timestamp, newest first
+	sort.Slice(messages, func(i, j int) bool {
+		return messages[i].Timestamp > messages[j].Timestamp
+	})
+
 	var buf strings.Builder
-	buf.WriteString("User Archive\n")
+	buf.WriteString(fmt.Sprintf("%s %s\n", folder, title))
 	buf.WriteString(strings.Repeat("=", 120) + "\n\n")
-	buf.WriteString(fmt.Sprintf("%-38s %-12s %-18s %s\n", "ID", "From", "Type", "Subject"))
-	buf.WriteString(fmt.Sprintf("%-38s %-12s %-18s %s\n", strings.Repeat("-", 36), "------------", "------------------", strings.Repeat("-", 50)))
+	buf.WriteString(fmt.Sprintf("%-10s %-20s %-12s %-18s %s\n", "ID", "Date", "From", "Type", "Subject"))
+	buf.WriteString(fmt.Sprintf("%-10s %-20s %-12s %-18s %s\n", "----------", "--------------------", "------------", "------------------", strings.Repeat("-", 40)))
 
 	for _, msg := range messages {
 		from := msg.From
 		if from == "" {
 			from = "-"
 		}
-		buf.WriteString(fmt.Sprintf("%-38s %-12s %-18s %s\n", msg.ID, from, msg.Type, msg.Subject))
+		shortID := shortUUID(msg.ID)
+		dateStr := formatTimestamp(msg.Timestamp)
+		buf.WriteString(fmt.Sprintf("%-10s %-20s %-12s %-18s %s\n", shortID, dateStr, from, msg.Type, msg.Subject))
 	}
 
 	w.Addr(",")
 	w.Write("data", []byte(buf.String()))
 	w.Ctl("clean")
+}
+
+func shortUUID(id string) string {
+	if idx := strings.Index(id, "-"); idx > 0 {
+		return id[:idx]
+	}
+	return id
+}
+
+func expandUUID(shortID string, messages []Message) string {
+	for _, msg := range messages {
+		if strings.HasPrefix(msg.ID, shortID) {
+			return msg.ID
+		}
+	}
+	return shortID
+}
+
+func openArchiveWindow(owner string) error {
+	w, err := acme.New()
+	if err != nil {
+		return err
+	}
+
+	if owner == "user" {
+		w.Name("/AnviLLM/archive")
+	} else {
+		w.Name(fmt.Sprintf("/AnviLLM/%s/archive", owner))
+	}
+	w.Write("tag", []byte("Get "))
+
+	go handleArchiveWindow(w, owner)
+	return nil
+}
+
+func handleArchiveWindow(w *acme.Win, owner string) {
+	defer w.CloseFiles()
+
+	folder := owner + "/completed"
+	refreshMailboxWindow(w, folder, "Archive")
+
+	for e := range w.EventChan() {
+		switch e.C2 {
+		case 'x', 'X':
+			if string(e.Text) == "Get" {
+				refreshMailboxWindow(w, folder, "Archive")
+			} else {
+				w.WriteEvent(e)
+			}
+		case 'l', 'L':
+			text := strings.TrimSpace(string(e.Text))
+			if isHexString(text) {
+				openMessageWindowByPrefix(text, folder)
+			} else {
+				w.WriteEvent(e)
+			}
+		default:
+			w.WriteEvent(e)
+		}
+	}
 }
 
 func listInboxMessages() ([]Message, []string, error) {
@@ -1076,6 +1090,32 @@ func isUUID(s string) bool {
 		}
 	}
 	return true
+}
+
+func isHexString(s string) bool {
+	if len(s) < 4 || len(s) > 36 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+func openMessageWindowByPrefix(prefix, folder string) error {
+	messages, _, err := listMessages(folder)
+	if err != nil {
+		return err
+	}
+
+	for _, m := range messages {
+		if strings.HasPrefix(m.ID, prefix) {
+			return openMessageWindowByID(m.ID, folder)
+		}
+	}
+	return fmt.Errorf("message not found: %s", prefix)
 }
 
 func openMessageWindowByID(msgID, folder string) error {
@@ -1209,7 +1249,7 @@ func refreshInboxWindowByName() {
 			if err != nil {
 				continue
 			}
-			refreshInboxWindow(w)
+			refreshMailboxWindow(w, "user/inbox", "Inbox")
 			w.CloseFiles()
 			return
 		}
