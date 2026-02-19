@@ -1,31 +1,31 @@
 # AnviLLM
 
-9P-based LLM orchestrator. Front-ends for Acme, Emacs, TUI, and web.
+9P-based LLM orchestrator with multiple front-ends: Acme, Emacs, TUI, and web.
 
 ## Architecture
 
-AnviLLM consists of:
+**Core:**
+- **anvilsrv** - Background daemon exposing sessions via 9P filesystem
+- **anvilmcp** - MCP server for Model Context Protocol integration
 
-- **anvilsrv**: Background daemon managing sessions via 9P
-- **anvilmcp**: MCP server exposing AnviLLM via Model Context Protocol
-- **Assist**: Acme UI client (auto-starts daemon if needed)
-- **anvillm.el**: For our emacs friends ;)
-- **anvillm**: Terminal UI (curses-based) for everyone else
-- **anvilweb**: Web interface for browser-based access
+**Clients:**
+- **Assist** - Acme UI (auto-starts daemon)
+- **anvillm.el** - Emacs interface
+- **anvillm** - Terminal UI (curses)
+- **anvilweb** - Web interface
 
-This separation allows:
-- Multiple clients to connect to the same sessions
-- Server survives client crashes/restarts
-- Scriptable workflows via 9P without UI dependencies
-- Service management (systemd/runit integration)
-- Choice of interface: Acme, terminal, Emacs, or web browser
-- Integration with MCP-compatible tools (Claude Desktop, Cline, etc.)
+**Benefits:**
+- Multiple clients share sessions
+- Sessions survive client crashes
+- Scriptable workflows via 9P
+- Service management (systemd/runit)
+- MCP integration (Claude Desktop, Cline, etc.)
 
 ## Requirements
 
 - Go 1.21+, plan9port, tmux
-- [landrun](https://github.com/zouuup/landrun) (sandboxing, Linux kernel 5.13+)
-- Backend CLI: [Claude Code](https://github.com/anthropics/claude-code) or [Kiro CLI](https://kiro.dev)
+- [landrun](https://github.com/zouuup/landrun) for sandboxing (Linux kernel 5.13+)
+- Backend: [Claude Code](https://github.com/anthropics/claude-code) or [Kiro CLI](https://kiro.dev)
 
 ## Installation
 
@@ -74,140 +74,87 @@ anvilsrv stop        # Shutdown
 
 ### Multiple Namespaces
 
-`anvilsrv` respects the `$NAMESPACE` environment variable, allowing multiple independent instances for different Acme sessions (similar to running multiple Acme instances with `acme -a`).
+Run multiple independent instances using `$NAMESPACE` (similar to `acme -a`).
 
-**Default namespace**: `/tmp/ns.$USER.:0`
+**Default:** `/tmp/ns.$USER.:0`
 
-**Example: Running multiple instances**
+**Example:**
 ```sh
-# Start default instance (namespace :0)
+# Start default instance (:0)
 anvilsrv start
 
-# Start second instance (namespace :1)
+# Start second instance (:1)
 NAMESPACE=/tmp/ns.$USER.:1 anvilsrv start
 
-# Check status of each instance
+# Check status
 anvilsrv status                           # :0
 NAMESPACE=/tmp/ns.$USER.:1 anvilsrv status  # :1
-
-# Each instance has isolated:
-# - PID file: $NAMESPACE/anvilsrv.pid
-# - 9P socket: $NAMESPACE/agent
-# - Session list (completely independent)
 
 # Connect Assist to specific instance
 NAMESPACE=/tmp/ns.$USER.:1 Assist
 ```
 
-This enables running separate AnviLLM environments for different projects or Acme workspaces.
+Each instance has isolated PID file, 9P socket, and session list.
 
 ### Terminal UI (anvillm)
 
-Run `anvillm` for a curses-based interface (no Acme required):
+Curses-based interface (no Acme required):
 
 ```sh
 anvillm
 ```
 
-**Keyboard shortcuts:**
-- `s` - Start new session (shows backend menu)
-- `p` - Send prompt to selected session
-- `t` - Stop selected session
-- `R` - Restart selected session
-- `K` - Kill selected session
-- `a` - Set session alias
-- `r` - Refresh session list
-- `d` - Daemon status
-- `?` - Help
-- `q` - Quit
+**Keys:** `s` start | `p` prompt | `t` stop | `R` restart | `K` kill | `a` alias | `r` refresh | `d` daemon | `?` help | `q` quit
 
-To attach to the anvillm session, simply open a different terminal and use `tmux attach`.
+**Navigation:** Arrow keys, vim (`j`/`k`), or emacs (`C-n`/`C-p`)
 
-**Navigation:**
-- Arrow keys (`↑`/`↓`)
-- Vim-style (`j`/`k`)
-- Emacs-style (`C-n`/`C-p`)
-
-Like Assist, the TUI reads/writes the 9P filesystem for all operations.
+Attach to tmux session from another terminal with `tmux attach`.
 
 ### Emacs Interface (anvillm.el)
 
-Run `M-x anvillm` in Emacs for a native Emacs interface:
-
 **Installation:**
-
-Copy anvillm.el to ~/.emacs.d/lisp/ or wherever your elisp files live. Then, add to your emacs init:
-
 ```elisp
 (add-to-list 'load-path "/path/to/anvillm.el/")
 (require 'anvillm)
 ```
 
-**Keybindings:**
+**Usage:** `M-x anvillm`
 
-- s - Start new session (select backend)
-- p - Send prompt to selected session
-- P - Send prompt to selected session using minibuffer
-- t - Stop selected session
-- R - Restart selected session
-- K - Kill selected session
-- a - Set alias for selected session
-- r - Refresh session list
-- g - Refresh session list (standard Emacs binding)
-- d - Daemon status
-- q - Quit
-- ? - Help
+**Keys:** `s` start | `p` prompt | `P` prompt (minibuffer) | `t` stop | `R` restart | `K` kill | `a` alias | `r`/`g` refresh | `d` daemon | `q` quit | `?` help
 
-**Navigation:**
-- Standard Emacs navigation (`n`, `p`, `C-n`, `C-p`)
-- Sessions displayed in a sortable table (click column headers)
-
-The Emacs interface uses the `9p` command from plan9port to interact with the filesystem.
+**Navigation:** Standard Emacs (`n`, `p`, `C-n`, `C-p`). Click column headers to sort.
 
 ### Web Interface (anvilweb)
-
-Run `anvilweb` for a browser-based interface:
 
 ```sh
 anvilweb              # starts on :8080
 anvilweb -addr :3000  # custom port
 ```
 
-**Features:**
-- Start new sessions (Kiro/Claude)
-- View all sessions with live state updates
-- Send prompts, edit context and aliases
-- Stop/restart/kill sessions
-- Auto-refreshes every 5 seconds
+**Features:** Start sessions, send prompts, edit context/aliases, stop/restart/kill. Auto-refreshes every 5 seconds.
 
-**Security Warning:**
+**⚠️ Security Warning:**
 
-⚠️ **The web interface has NO authentication.** Anyone who can reach the server port can:
-- View all sessions
-- Send prompts to any session
-- Start/stop/kill sessions
-- Modify session contexts
+**NO authentication.** Anyone with network access can control all sessions.
 
-**Only run anvilweb on localhost or trusted networks.** For remote access, use SSH port forwarding:
+**Only run on localhost or trusted networks.** For remote access, use SSH port forwarding:
 
 ```sh
-# On remote machine
+# Remote machine
 anvilweb -addr localhost:8080
 
-# On local machine
+# Local machine
 ssh -L 8080:localhost:8080 user@remote
-# Then browse to http://localhost:8080
+# Browse to http://localhost:8080
 ```
 
-Or use a reverse proxy with authentication (nginx, caddy, etc.).
+Or use a reverse proxy with authentication (nginx, caddy).
 
 ### Acme Interface (Assist)
 
-Type `Assist` in Acme and middle-click to open the `/AnviLLM/` session manager.
+Type `Assist` in Acme and middle-click to open `/AnviLLM/` session manager.
 
-### Commands
-
-**Main window** (`/AnviLLM/`) tag: `Get Attach Stop Restart Kill Alias Context Log Daemon Inbox Archive`
+**Main window tag:** `Get Attach Stop Restart Kill Alias Context Log Daemon Inbox Archive`
 
 | Command | Description |
 |---------|-------------|
@@ -224,17 +171,13 @@ Type `Assist` in Acme and middle-click to open the `/AnviLLM/` session manager.
 | `Inbox [id]` | View inbox messages (default: user) |
 | `Archive [id]` | View archived messages (default: user) |
 
-Right-click a session ID to open its prompt window. Select text anywhere and 2-1 chord on a session ID for fire-and-forget prompts.
+Right-click session ID to open prompt window. Select text and 2-1 chord on session ID for fire-and-forget prompts.
 
-**Note**: Assist reconnects to the running `anvilsrv` daemon, so sessions persist across Assist restarts.
-
-**Prompt window** (`+Prompt.<id>`) tag: `Send`
-
-Type prompt, click `Send`.
+**Prompt window tag:** `Send`
 
 ## 9P Filesystem
 
-The `anvilsrv` daemon exposes sessions via a 9P filesystem at `$NAMESPACE/agent` (typically `/tmp/ns.$USER/agent`).
+`anvilsrv` exposes sessions at `$NAMESPACE/agent` (typically `/tmp/ns.$USER/agent`):
 
 ```
 agent/
@@ -265,11 +208,11 @@ agent/
     └── archive     # Archived messages (JSON)
 ```
 
-**Path Validation**: Session creation validates and cleans paths (e.g., `/../../../etc` → `/etc`), and rejects nonexistent directories.
+**Path Validation:** Session creation validates paths (e.g., `/../../../etc` → `/etc`) and rejects nonexistent directories.
 
 ### Task Tracking with Beads
 
-AnviLLM integrates [beads](https://github.com/steveyegge/beads) for persistent, crash-resilient task tracking. Beads provides a dependency-aware graph that agents can use for long-horizon work.
+Persistent, crash-resilient task tracking via [beads](https://github.com/steveyegge/beads). Provides dependency-aware task graph for multi-agent workflows.
 
 **Initialize beads database:**
 ```sh
@@ -298,15 +241,15 @@ echo 'dep bd-child bd-parent' | 9p write agent/beads/ctl  # child blocks parent
 ```
 
 **Configuration:**
-- Default location: `~/.beads/`
-- Override with: `ANVILLM_BEADS_PATH=/custom/path`
-- Beads database is **shared across all namespaces** (tasks exist independently of sessions)
+- Default: `~/.beads/`
+- Override: `ANVILLM_BEADS_PATH=/custom/path`
+- Shared across all namespaces
 
 See `internal/beads/README.md` for details.
 
 ### Event Stream
 
-The `/agent/events` file provides a real-time stream of session events:
+Real-time session events at `/agent/events`:
 
 ```sh
 9p read agent/events
@@ -314,11 +257,9 @@ The `/agent/events` file provides a real-time stream of session events:
 # {"type":"message_received","session_id":"a3f2b9d1","from":"b4e3c8f2","timestamp":"2026-02-19T22:01:00Z"}
 ```
 
-Clients can monitor this stream to react to session state changes and inter-agent messages.
-
 ### Mailbox System
 
-Sessions can send messages to each other via the mailbox system:
+Inter-session messaging:
 
 **Send message:**
 ```sh
@@ -333,16 +274,13 @@ EOF
 9p read agent/a3f2b9d1/inbox
 ```
 
-**Archive messages:**
+**Archive:**
 ```sh
 9p read agent/a3f2b9d1/archive
 ```
 
-Messages are delivered asynchronously and persist until archived.
-
 ### Example Usage
 
-Example:
 ```sh
 echo 'new claude /home/user/project' | 9p write agent/ctl
 echo 'Hello' | 9p write agent/a3f2b9d1/in
@@ -351,7 +289,7 @@ echo 'stop' | 9p write agent/a3f2b9d1/ctl
 9p read agent/a3f2b9d1/state  # → "stopped"
 ```
 
-**Security**: See `SECURITY.md` for 9P socket authentication limitations.
+See `SECURITY.md` for 9P socket authentication details.
 
 ## Backends
 
@@ -360,34 +298,24 @@ echo 'stop' | 9p write agent/a3f2b9d1/ctl
 | Claude | `npm install -g @anthropic-ai/claude-code` |
 | Kiro | [Kiro CLI](https://kiro.dev) |
 
-Both run with full permissions inside the sandbox (`--dangerously-skip-permissions`, `--trust-all-tools`).
+Both run with full permissions (`--dangerously-skip-permissions`, `--trust-all-tools`).
 
-### Adding Backends
-
-Create `internal/backends/yourbackend.go`, implement `CommandHandler` and `StateInspector` interfaces, register in `main.go`. See existing backends for examples.
+**Adding backends:** Implement `CommandHandler` and `StateInspector` interfaces in `internal/backends/yourbackend.go`, register in `main.go`. See existing backends for examples.
 
 ## Self-Healing
 
-The `anvilsrv` daemon monitors all sessions every 5 seconds and automatically restarts sessions that crash unexpectedly. This ensures long-running workflows remain resilient to backend failures.
+`anvilsrv` monitors sessions every 5 seconds and auto-restarts crashed sessions (preserves context, alias, working directory). Rate-limited to prevent restart loops (minimum 5 seconds between attempts). Does not restart sessions stopped via `Stop` command.
 
-**Behavior:**
-- Detects when a session process terminates without explicit `Stop` command
-- Automatically restarts the session in the same working directory
-- Preserves session context and alias
-- Rate-limited to prevent restart loops (minimum 5 seconds between attempts)
-- Does not restart sessions stopped intentionally via `Stop` command
-
-Sessions that crash are transparently restarted without user intervention. Check logs with `anvilsrv fgstart` to see auto-restart activity.
+Check logs with `anvilsrv fgstart` to see auto-restart activity.
 
 ## Sandboxing
 
-Backends run inside [landrun](https://github.com/zouuup/landrun) sandboxes. **Sandboxing cannot be disabled** — it's the only safety layer.
+Backends run in [landrun](https://github.com/zouuup/landrun) sandboxes. **Cannot be disabled** — it's the only safety layer.
 
-### Defaults
-
+**Defaults:**
 - Filesystem: CWD, `/tmp`, config dirs (rw); `/usr`, `/lib`, `/bin` (ro+exec)
 - Network: disabled
-- Mode: strict (`best_effort: false`) — sessions fail if sandbox unavailable
+- Mode: strict (`best_effort: false`) — fails if sandbox unavailable
 
 ### Configuration
 
@@ -422,52 +350,46 @@ Changes apply to new sessions. Use `Restart` command to reload configuration for
 
 Set `best_effort: true` for graceful degradation on older kernels.
 
-**Warning**: If landrun is missing or kernel lacks Landlock, sessions run **completely unsandboxed**. Only enable if you accept this risk.
+**⚠️ Warning:** If landrun is missing or kernel lacks Landlock, sessions run **completely unsandboxed**.
 
 ## Reproducible Workflows
 
-The 9P filesystem enables scripted multi-agent workflows. Create sessions, set contexts, and wire agents together programmatically.
+Script multi-agent workflows via 9P filesystem.
 
 ### Skills System
 
-AnviLLM includes a skills system for extending agent capabilities. Skills are loaded on-demand via the `anvillm-skills` command:
+Extend agent capabilities on-demand:
 
 ```sh
-anvillm-skills list                    # List available skills
+anvillm-skills list                        # List available skills
 anvillm-skills load anvillm-communication  # Load communication skill
 ```
 
-Agents can discover and load skills automatically when needed. See `kiro-cli/SKILLS_PROMPT.md` for details.
+See `kiro-cli/SKILLS_PROMPT.md` for details.
 
 ### Example: Developer-Reviewer
 
-Two agents collaborate on code changes — one implements, one reviews:
+Two-agent code review workflow:
 
 ```sh
 ./workflows/DevReview claude /path/to/project
 ```
 
-Creates paired sessions with contexts that instruct agents to:
-1. Developer implements and stages changes
-2. Developer sends review request via mailbox
-3. Reviewer examines diff, sends feedback or "LGTM"
-4. Loop until approved
+Developer implements and stages changes, sends review request via mailbox. Reviewer examines diff, sends feedback or "LGTM". Loop until approved.
 
 ### Example: Planning
 
-Three-agent workflow for documentation tasks:
+Three-agent documentation workflow:
 
 ```sh
 ./workflows/Planning kiro /path/to/docs
 ```
 
-- **Research**: Queries codebase and knowledge base
-- **Engineering**: Writes/updates documentation, queries research when needed
-- **Tech-editor**: Reviews for quality, requests changes from engineering
+**Research** queries codebase, **Engineering** writes docs (queries research when needed), **Tech-editor** reviews and requests changes.
 
 ### Writing Your Own
 
-Key patterns from the example scripts:
+Key patterns:
 
 ```sh
 # Create session, capture ID
@@ -508,6 +430,6 @@ See `workflows/DevReview` and `workflows/Planning` for complete examples.
 | anvilweb can't connect | Ensure anvilsrv is running; check namespace matches |
 | anvilweb port in use | Use `-addr :PORT` to specify different port |
 
-**Debugging**: Run `anvilsrv fgstart` to see daemon logs in foreground.
+**Debugging:** Run `anvilsrv fgstart` for foreground logs.
 
-**Terminal**: `Attach` command uses `$ANVILLM_TERMINAL` or defaults to `foot`. Configure in environment or see `cmd/Assist/main.go`.
+**Terminal:** `Attach` uses `$ANVILLM_TERMINAL` (defaults to `foot`).
