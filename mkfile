@@ -12,8 +12,8 @@ build:V:
 	chmod 0755 $INSTALL_PATH/Alog
 	cp scripts/anvillm-skills $INSTALL_PATH/anvillm-skills
 	chmod 0755 $INSTALL_PATH/anvillm-skills
-	cp scripts/agent-hook $INSTALL_PATH/agent-hook
-	chmod 0755 $INSTALL_PATH/agent-hook
+	cp scripts/anvillm-hook $INSTALL_PATH/anvillm-hook
+	chmod 0755 $INSTALL_PATH/anvillm-hook
 	cp scripts/9p-read-inbox $INSTALL_PATH/9p-read-inbox
 	chmod 0755 $INSTALL_PATH/9p-read-inbox
 	mkdir -p $INSTALL_PATH/Workflows

@@ -30,7 +30,13 @@ anvillm_set_state() {
 
 case "$event" in
     agentSpawn)
-        cat ~/.kiro/SKILLS_PROMPT.md
+        cd "$cwd" 2>/dev/null || :
+        if command -v agent-prompt &>/dev/null; then
+            agent-prompt --harness=kiro
+        else
+            skills_cmd=$(command -v agent-skills 2>/dev/null || echo anvillm-skills)
+            sed "s/anvillm-skills/$skills_cmd/g" ~/.kiro/SKILLS_PROMPT.md
+        fi
         ;;
     userPromptSubmit)
         anvillm_set_state running

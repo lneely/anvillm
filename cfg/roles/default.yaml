@@ -1,5 +1,5 @@
-# Default role: permissive settings for ad-hoc usage
-# Equivalent to current global sandbox.yaml behavior
+# Default role: combined most-permissive settings from all tasks/roles
+# TODO: revisit role-based permissions later
 filesystem:
   ro:
     - "{HOME}/.gitconfig"
@@ -12,25 +12,86 @@ filesystem:
     - "/etc/gitattributes"
     - "/etc/ssh/ssh_config"
     - "/etc/ssh/ssh_known_hosts"
-    - "{HOME}/doc"
+    - "/etc/magic"
+    - "/var/log"
+    - "/run/systemd"
+    - "/var/log/journal"
+    - "/etc/systemd"
+    - "{HOME}/.jenkins"
+    - "{HOME}/.psqlrc"
+    - "{HOME}/.pgpass"
+    - "{HOME}/.aws"
+    - "{HOME}/.ansible"
+    - "{HOME}/.ansible.cfg"
+    - "{HOME}/.jira.d"
+    - "{HOME}/.my.cnf"
+    - "{HOME}/.mylogin.cnf"
+    - "{XDG_CONFIG_HOME}/gh"
+    - "{XDG_DATA_HOME}/gh/extensions"
   rw:
     - "{HOME}/.ssh/known_hosts"
     - "{HOME}/.git-credentials"
     - "{XDG_CONFIG_HOME}/git/credentials"
     - "{XDG_RUNTIME_DIR}/git/"
     - "{HOME}/.mcpt"
-    - "{HOME}/doc/agent-skills"
+    - "{HOME}/doc"
+    - "{HOME}/.gnupg"
+    - "{XDG_DOCUMENTS_DIR}"
+    - "{XDG_CONFIG_HOME}/.jira"
+    - "{HOME}/.m2"
+    - "{HOME}/.gradle"
+    - "/var/run/docker.sock"
+    - "{HOME}/.docker"
+    - "{HOME}/.npm"
+    - "{HOME}/.yarn"
+    - "{HOME}/.pnpm-store"
+    - "{XDG_CONFIG_HOME}/yarn"
+    - "{HOME}/.yarnrc.yml"
+    - "{HOME}/.npmrc"
+    - "{HOME}/.ansible/tmp"
+    - "{XDG_RUNTIME_DIR}/podman"
+    - "{XDG_DATA_HOME}/containers"
+    - "{XDG_CONFIG_HOME}/containers"
+    - "{XDG_CONFIG_HOME}/pip"
+    - "{HOME}/.pip"
+    - "{HOME}/.cargo"
+    - "{HOME}/.rustup"
+    - "{XDG_CONFIG_HOME}/nvim"
+    - "{XDG_CONFIG_HOME}/vim"
+    - "{XDG_DATA_HOME}/nvim"
+    - "{XDG_STATE_HOME}/nvim"
+    - "{HOME}/.vimrc"
+    - "{HOME}/.vim"
+    - "{HOME}/.emacs.d"
+    - "{HOME}/.config/emacs"
+    - "/etc"
+    - "/usr/local/etc"
+  rox:
+    - "{HOME}/go/bin"
+    - "{HOME}/env"
   rwx:
     - "{CWD}"
-    - "{PLAN9}/bin"
-  rox:
+    - "{PLAN9}"
     - "{HOME}/bin"
     - "{HOME}/.local/bin"
+    - "{HOME}/go"
+    - "{HOME}/opt"
+    - "{HOME}/src"
+    - "{HOME}/prj"
+    - "{HOME}/.nvm"
 env:
-    - AGENT_SKILLS_PATH
-    - NAMESPACE
-    - HOME
-    - TMPDIR
-    - AGENT_ID
+  - AGENT_SKILLS_PATH
+  - NAMESPACE
+  - HOME
+  - TMPDIR
+  - AGENT_ID
+  - PLAN9
+  - JENKINS_USER_ID
+  - JENKINS_API_TOKEN
+  - JENKINS_MCP_AUTH
+  - JIRA_API_TOKEN
+  - BITBUCKET_ACCESS_TOKEN
+  - BITBUCKET_TOKEN
+  - BITBUCKET_USERNAME
 network:
   unrestricted: true

@@ -7,17 +7,17 @@
   "hooks": {
     "agentSpawn": [
       {
-        "command": "agent-hook agentSpawn"
+        "command": "anvillm-hook agentSpawn"
       }
     ],
     "userPromptSubmit": [
       {
-        "command": "agent-hook userPromptSubmit"
+        "command": "anvillm-hook userPromptSubmit"
       }
     ],
     "stop": [
       {
-        "command": "agent-hook stop"
+        "command": "anvillm-hook stop"
       }
     ]
   }
