@@ -78,6 +78,9 @@ type Session interface {
 	
 	// Tasks returns the session tasks (empty if not specified)
 	Tasks() []string
+	
+	// CreatedAt returns when the session was created
+	CreatedAt() time.Time
 }
 
 // SessionMetadata provides information about a session

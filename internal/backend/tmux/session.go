@@ -193,6 +193,13 @@ func (s *Session) Tasks() []string {
 	return s.tasks
 }
 
+// CreatedAt returns when the session was created
+func (s *Session) CreatedAt() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.createdAt
+}
+
 // GetPid gets the process ID
 func (s *Session) GetPid() int {
 	s.mu.Lock()

@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"sync"
 	"time"
 )
@@ -133,14 +134,28 @@ func (m *Manager) GetAlias(id string) string {
 	return sess.Metadata().Alias
 }
 
-// List returns all session IDs
+// List returns all session IDs, sorted by creation time (newest first)
 func (m *Manager) List() []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	ids := make([]string, 0, len(m.sessions))
-	for id := range m.sessions {
-		ids = append(ids, id)
+	type entry struct {
+		id      string
+		created time.Time
+	}
+
+	entries := make([]entry, 0, len(m.sessions))
+	for id, sess := range m.sessions {
+		entries = append(entries, entry{id, sess.CreatedAt()})
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].created.After(entries[j].created) // newest first
+	})
+
+	ids := make([]string, len(entries))
+	for i, e := range entries {
+		ids[i] = e.id
 	}
 	return ids
 }
