@@ -74,11 +74,14 @@ filesystem:
     - "{PLAN9}"
     - "{HOME}/bin"
     - "{HOME}/.local/bin"
+    - "{HOME}/.sdkman"
     - "{HOME}/go"
+    - "{HOME}/.cache/go-build"
     - "{HOME}/opt"
     - "{HOME}/src"
     - "{HOME}/prj"
     - "{HOME}/.nvm"
+    - "{HOME}/.please"
 env:
   - AGENT_SKILLS_PATH
   - NAMESPACE

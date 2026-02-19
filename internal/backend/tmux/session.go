@@ -3,6 +3,7 @@ package tmux
 import (
 	"anvillm/internal/backend"
 	"anvillm/internal/debug"
+	"anvillm/internal/sandbox"
 	"bytes"
 	"context"
 	"fmt"
@@ -597,9 +598,9 @@ func (s *Session) Restart(ctx context.Context) error {
 		return fmt.Errorf("cannot restart exited session (tmux window destroyed)")
 	}
 
-	if s.originalCommandStr == "" {
+	if len(s.backendCommand) == 0 {
 		s.mu.Unlock()
-		return fmt.Errorf("original command not available for restart")
+		return fmt.Errorf("backend command not available for restart")
 	}
 
 	// Check if another operation is in progress
@@ -634,10 +635,67 @@ func (s *Session) Restart(ctx context.Context) error {
 	s.mu.Lock()
 	target := s.target()
 	cwd := s.cwd
-	cmdStr := s.originalCommandStr
 	fifoPath := s.fifoPath
 	environment := s.environment
+	backendName := s.backendName
+	backendCommand := s.backendCommand
+	role := s.role
+	tasks := s.tasks
 	s.mu.Unlock()
+
+	// Reload sandbox config from YAML (picks up any changes)
+	baseCfg, err := sandbox.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load global config: %w", err)
+	}
+	baseLayer := sandbox.LayeredConfig{
+		Filesystem: baseCfg.Filesystem,
+		Network:    baseCfg.Network,
+		Env:        baseCfg.Env,
+	}
+	layers := []sandbox.LayeredConfig{baseLayer}
+
+	backendLayer, err := sandbox.LoadBackend(backendName)
+	if err != nil {
+		return fmt.Errorf("failed to load backend config %q: %w", backendName, err)
+	}
+	layers = append(layers, backendLayer)
+
+	if role == "" {
+		role = sandbox.DefaultRole
+	}
+	roleLayer, err := sandbox.LoadRole(role)
+	if err != nil {
+		return fmt.Errorf("failed to load role %q: %w", role, err)
+	}
+	layers = append(layers, roleLayer)
+
+	for _, taskName := range tasks {
+		taskLayer, err := sandbox.LoadTask(taskName)
+		if err != nil {
+			return fmt.Errorf("failed to load task %q: %w", taskName, err)
+		}
+		layers = append(layers, taskLayer)
+	}
+
+	general := sandbox.GeneralConfig{BestEffort: false, LogLevel: "error"}
+	advanced := sandbox.AdvancedConfig{LDD: false, AddExec: true}
+	sandboxCfg := sandbox.Merge(general, advanced, layers...)
+
+	// Wrap command with updated sandbox config
+	command := sandbox.WrapCommand(sandboxCfg, backendCommand, cwd)
+	cmdStr := ""
+	for i, arg := range command {
+		if i > 0 {
+			cmdStr += " "
+		}
+		if containsSpace(arg) {
+			cmdStr += fmt.Sprintf("\"%s\"", arg)
+		} else {
+			cmdStr += arg
+		}
+	}
+	debug.Log("[session %s] restart with updated sandbox: %v", s.id, command)
 
 	// 2. Close old FIFO if still open
 	s.mu.Lock()
