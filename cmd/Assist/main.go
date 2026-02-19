@@ -92,7 +92,7 @@ func main() {
 	defer w.CloseFiles()
 
 	w.Name(windowName)
-	w.Write("tag", []byte("Get Attach Stop Restart Kill Alias Context Daemon Inbox "))
+	w.Write("tag", []byte("Get Attach Stop Restart Kill Alias Context Daemon Inbox Archive "))
 	refreshList(w)
 	w.Ctl("clean")
 
@@ -238,6 +238,10 @@ func main() {
 			case "Inbox":
 				if err := openInboxWindow(); err != nil {
 					fmt.Fprintf(os.Stderr, "Error opening inbox window: %v\n", err)
+				}
+			case "Archive":
+				if err := openArchiveWindow(); err != nil {
+					fmt.Fprintf(os.Stderr, "Error opening archive window: %v\n", err)
 				}
 
 			default:
@@ -883,8 +887,8 @@ func handleInboxWindow(w *acme.Win) {
 			}
 		case 'l', 'L':
 			text := strings.TrimSpace(string(e.Text))
-			if idx := parseIndex(text); idx > 0 {
-				openMessageWindow(idx)
+			if isUUID(text) {
+				openMessageWindowByID(text, "user/inbox")
 			} else {
 				w.WriteEvent(e)
 			}
@@ -895,7 +899,7 @@ func handleInboxWindow(w *acme.Win) {
 }
 
 func refreshInboxWindow(w *acme.Win) {
-	messages, filenames, err := listInboxMessages()
+	messages, _, err := listInboxMessages()
 	if err != nil {
 		w.Addr(",")
 		w.Write("data", []byte(fmt.Sprintf("Error reading inbox: %v\n", err)))
@@ -906,17 +910,82 @@ func refreshInboxWindow(w *acme.Win) {
 	var buf strings.Builder
 	buf.WriteString("User Inbox\n")
 	buf.WriteString(strings.Repeat("=", 120) + "\n\n")
-	buf.WriteString(fmt.Sprintf("%-4s %-20s %-12s %-18s %s\n", "Idx", "Date", "From", "Type", "Subject"))
-	buf.WriteString(fmt.Sprintf("%-4s %-20s %-12s %-18s %s\n", "----", "--------------------", "------------", "------------------", strings.Repeat("-", 50)))
+	buf.WriteString(fmt.Sprintf("%-38s %-12s %-18s %s\n", "ID", "From", "Type", "Subject"))
+	buf.WriteString(fmt.Sprintf("%-38s %-12s %-18s %s\n", strings.Repeat("-", 36), "------------", "------------------", strings.Repeat("-", 50)))
 
-	for i, msg := range messages {
-		timestamp := extractTimestamp(filenames[i])
-		dateStr := formatTimestamp(timestamp)
+	for _, msg := range messages {
 		from := msg.From
 		if from == "" {
 			from = "-"
 		}
-		buf.WriteString(fmt.Sprintf("%-4d %-20s %-12s %-18s %s\n", i+1, dateStr, from, msg.Type, msg.Subject))
+		buf.WriteString(fmt.Sprintf("%-38s %-12s %-18s %s\n", msg.ID, from, msg.Type, msg.Subject))
+	}
+
+	w.Addr(",")
+	w.Write("data", []byte(buf.String()))
+	w.Ctl("clean")
+}
+
+func openArchiveWindow() error {
+	w, err := acme.New()
+	if err != nil {
+		return err
+	}
+
+	w.Name("/AnviLLM/archive")
+	w.Write("tag", []byte("Get "))
+
+	go handleArchiveWindow(w)
+	return nil
+}
+
+func handleArchiveWindow(w *acme.Win) {
+	defer w.CloseFiles()
+
+	refreshArchiveWindow(w)
+
+	for e := range w.EventChan() {
+		switch e.C2 {
+		case 'x', 'X':
+			if string(e.Text) == "Get" {
+				refreshArchiveWindow(w)
+			} else {
+				w.WriteEvent(e)
+			}
+		case 'l', 'L':
+			text := strings.TrimSpace(string(e.Text))
+			if isUUID(text) {
+				openMessageWindowByID(text, "user/completed")
+			} else {
+				w.WriteEvent(e)
+			}
+		default:
+			w.WriteEvent(e)
+		}
+	}
+}
+
+func refreshArchiveWindow(w *acme.Win) {
+	messages, _, err := listArchiveMessages()
+	if err != nil {
+		w.Addr(",")
+		w.Write("data", []byte(fmt.Sprintf("Error reading archive: %v\n", err)))
+		w.Ctl("clean")
+		return
+	}
+
+	var buf strings.Builder
+	buf.WriteString("User Archive\n")
+	buf.WriteString(strings.Repeat("=", 120) + "\n\n")
+	buf.WriteString(fmt.Sprintf("%-38s %-12s %-18s %s\n", "ID", "From", "Type", "Subject"))
+	buf.WriteString(fmt.Sprintf("%-38s %-12s %-18s %s\n", strings.Repeat("-", 36), "------------", "------------------", strings.Repeat("-", 50)))
+
+	for _, msg := range messages {
+		from := msg.From
+		if from == "" {
+			from = "-"
+		}
+		buf.WriteString(fmt.Sprintf("%-38s %-12s %-18s %s\n", msg.ID, from, msg.Type, msg.Subject))
 	}
 
 	w.Addr(",")
@@ -925,11 +994,19 @@ func refreshInboxWindow(w *acme.Win) {
 }
 
 func listInboxMessages() ([]Message, []string, error) {
+	return listMessages("user/inbox")
+}
+
+func listArchiveMessages() ([]Message, []string, error) {
+	return listMessages("user/completed")
+}
+
+func listMessages(folder string) ([]Message, []string, error) {
 	if !isConnected() {
 		return nil, nil, fmt.Errorf("not connected to anvilsrv")
 	}
 
-	fid, err := fs.Open("user/inbox", plan9.OREAD)
+	fid, err := fs.Open(folder, plan9.OREAD)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -950,7 +1027,7 @@ func listInboxMessages() ([]Message, []string, error) {
 
 	var messages []Message
 	for _, filename := range filenames {
-		data, err := readFile(filepath.Join("user/inbox", filename))
+		data, err := readFile(filepath.Join(folder, filename))
 		if err != nil {
 			continue
 		}
@@ -982,6 +1059,70 @@ func parseIndex(s string) int {
 	var idx int
 	fmt.Sscanf(s, "%d", &idx)
 	return idx
+}
+
+func isUUID(s string) bool {
+	// Simple UUID check: 36 chars with hyphens at positions 8, 13, 18, 23
+	if len(s) != 36 {
+		return false
+	}
+	for i, c := range s {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if c != '-' {
+				return false
+			}
+		} else if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+func openMessageWindowByID(msgID, folder string) error {
+	messages, filenames, err := listMessages(folder)
+	if err != nil {
+		return err
+	}
+
+	var msg *Message
+	var filename string
+	for i, m := range messages {
+		if m.ID == msgID {
+			msg = &messages[i]
+			filename = filenames[i]
+			break
+		}
+	}
+	if msg == nil {
+		return fmt.Errorf("message not found: %s", msgID)
+	}
+
+	w, err := acme.New()
+	if err != nil {
+		return err
+	}
+
+	windowPath := "inbox"
+	if folder == "user/completed" {
+		windowPath = "archive"
+	}
+	w.Name(fmt.Sprintf("/AnviLLM/%s/%s", windowPath, filename))
+	w.Write("tag", []byte("Reply Archive "))
+
+	var buf strings.Builder
+	buf.WriteString(fmt.Sprintf("From: %s\n", msg.From))
+	buf.WriteString(fmt.Sprintf("To: %s\n", msg.To))
+	buf.WriteString(fmt.Sprintf("Type: %s\n", msg.Type))
+	buf.WriteString(fmt.Sprintf("Subject: %s\n", msg.Subject))
+	buf.WriteString(fmt.Sprintf("Date: %s\n", formatTimestamp(extractTimestamp(filename))))
+	buf.WriteString("\n")
+	buf.WriteString(msg.Body)
+
+	w.Write("body", []byte(buf.String()))
+	w.Ctl("clean")
+
+	go handleMessageWindow(w, msg, filename)
+	return nil
 }
 
 func openMessageWindow(idx int) error {
