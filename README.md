@@ -84,7 +84,7 @@ NAMESPACE=/tmp/ns.$USER.:1 Assist          # connect
 | `ANVILLM_TERMINAL` | `foot` | Terminal command for tmux attach (Assist) |
 | `ANTHROPIC_API_KEY` | — | Claude API key (optional if using `claude /login`) |
 | `CLAUDE_AGENT_NAME` | `anvillm-agent` | Claude agent configuration name |
-| `KIRO_API_KEY` | — | Kiro API key (required for Kiro backend) |
+| `KIRO_API_KEY` | — | Kiro API key (optional if using `kiro-cli login`) |
 
 ### Sandbox Config Templates
 
