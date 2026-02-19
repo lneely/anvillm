@@ -14,12 +14,13 @@ import (
 
 // Manager holds all active sessions
 type Manager struct {
-	backends    map[string]backend.Backend
-	sessions    map[string]backend.Session
-	mailManager *mailbox.Manager
-	mu          sync.RWMutex
-	stopCh      chan struct{}
-	wg          sync.WaitGroup
+	backends      map[string]backend.Backend
+	sessions      map[string]backend.Session
+	mailManager   *mailbox.Manager
+	OnStateChange func(sessionID, oldState, newState string)
+	mu            sync.RWMutex
+	stopCh        chan struct{}
+	wg            sync.WaitGroup
 }
 
 // NewManager creates a session manager with the given backends
@@ -56,6 +57,11 @@ func (m *Manager) New(opts backend.SessionOptions, backendName string) (backend.
 	sess, err := b.CreateSession(context.Background(), opts)
 	if err != nil {
 		return nil, err
+	}
+
+	// Wire up state change callback
+	if tmuxSess, ok := sess.(*tmux.Session); ok && m.OnStateChange != nil {
+		tmuxSess.OnStateChange = m.OnStateChange
 	}
 
 	m.mu.Lock()

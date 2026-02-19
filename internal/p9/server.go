@@ -4,6 +4,7 @@ package p9
 import (
 	"anvillm/internal/backend"
 	"anvillm/internal/backend/tmux"
+	"anvillm/internal/events"
 	"anvillm/internal/mailbox"
 	"anvillm/internal/session"
 	"context"
@@ -67,6 +68,7 @@ const (
 	qidList
 	qidStatus
 	qidAudit                     // agent/audit
+	qidEvents                    // agent/events
 	qidUser                      // user directory
 	qidUserInbox                 // user/inbox
 	qidUserOutbox                // user/outbox
@@ -106,6 +108,7 @@ type Server struct {
 	mgr           *session.Manager
 	listener      net.Listener
 	socketPath    string
+	events        *events.Queue
 	OnAliasChange func(backend.Session) // Called when session alias changes
 	mu            sync.RWMutex
 }
@@ -147,7 +150,7 @@ func NewServer(mgr *session.Manager) (*Server, error) {
 		return nil, err
 	}
 
-	s := &Server{mgr: mgr, listener: listener, socketPath: sockPath}
+	s := &Server{mgr: mgr, listener: listener, socketPath: sockPath, events: events.NewQueue()}
 	go s.acceptLoop()
 	return s, nil
 }
@@ -155,6 +158,11 @@ func NewServer(mgr *session.Manager) (*Server, error) {
 // SocketPath returns the path to the Unix socket
 func (s *Server) SocketPath() string {
 	return s.socketPath
+}
+
+// Events returns the event queue for pushing events.
+func (s *Server) Events() *events.Queue {
+	return s.events
 }
 
 func (s *Server) acceptLoop() {
@@ -263,6 +271,9 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			case "audit":
 				qid = plan9.Qid{Type: QTFile, Path: qidAudit}
 				newPath = "/audit"
+			case "events":
+				qid = plan9.Qid{Type: QTFile, Path: qidEvents}
+				newPath = "/events"
 			case "user":
 				qid = plan9.Qid{Type: QTDir, Path: qidUser}
 				newPath = "/user"
@@ -382,6 +393,9 @@ func (s *Server) read(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	} else if f.path == "/audit" {
 		// Streaming audit log (like tail -f)
 		data = s.readAuditLog(fc.Offset, fc.Count)
+	} else if f.path == "/events" {
+		// Event queue - return all pending events
+		data = s.events.Read()
 	} else {
 		content := s.readFile(f.path)
 		if fc.Offset < uint64(len(content)) {
@@ -405,6 +419,14 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	parts := strings.Split(strings.TrimPrefix(f.path, "/"), "/")
 	
 	fmt.Fprintf(os.Stderr, "[DEBUG] write: path=%q parts=%v len=%d\n", f.path, parts, len(parts))
+
+	// /events - ack events
+	if f.path == "/events" {
+		if err := s.events.Ack(fc.Data); err != nil {
+			return errFcall(fc, err.Error())
+		}
+		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
+	}
 
 	// /ctl - create new session
 	if f.path == "/ctl" {
@@ -793,6 +815,10 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 		})
 		dirs = append(dirs, plan9.Dir{
 			Qid: plan9.Qid{Type: QTFile, Path: qidAudit}, Mode: 0444, Name: "audit",
+			Uid: "q", Gid: "q", Muid: "q",
+		})
+		dirs = append(dirs, plan9.Dir{
+			Qid: plan9.Qid{Type: QTFile, Path: qidEvents}, Mode: 0644, Name: "events",
 			Uid: "q", Gid: "q", Muid: "q",
 		})
 		dirs = append(dirs, plan9.Dir{

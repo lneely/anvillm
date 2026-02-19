@@ -54,6 +54,9 @@ type Session struct {
 	// State machine
 	idleCond *sync.Cond  // Signals when state transitions to idle
 	idleSince time.Time  // Timestamp when session last transitioned to idle
+	
+	// Callbacks
+	OnStateChange func(sessionID, oldState, newState string)
 
 	mu sync.Mutex
 }
@@ -104,50 +107,47 @@ func (s *Session) IdleDuration() time.Duration {
 }
 
 func (s *Session) transitionToLocked(newState string) error {
+	oldState := s.state
 	// Validate transition
 	switch {
 	case s.state == "starting" && newState == "idle":
 		s.state = newState
 		s.idleSince = time.Now()
 		s.idleCond.Broadcast()
-		return nil
 	case s.state == "starting" && newState == "error":
 		s.state = newState
-		return nil
 	case s.state == "idle" && newState == "running":
 		s.state = newState
-		return nil
 	case s.state == "running" && newState == "idle":
 		s.state = newState
 		s.idleSince = time.Now()
 		s.idleCond.Broadcast()
-		return nil
 	case s.state == "running" && newState == "error":
 		s.state = newState
 		s.idleCond.Broadcast()
-		return nil
 	case s.state == "error" && newState == "idle":
 		// Manual recovery from error state
 		s.state = newState
 		s.idleSince = time.Now()
 		s.idleCond.Broadcast()
-		return nil
 	case s.state == "error" && newState == "starting":
 		// Restart from error state
 		s.state = newState
-		return nil
 	case newState == "stopped" || newState == "exited":
 		// Allow transition to stopped/exited from any state
 		s.state = newState
 		s.idleCond.Broadcast()
-		return nil
 	case s.state == "stopped" && newState == "starting":
 		// Allow restart from stopped state
 		s.state = newState
-		return nil
 	default:
 		return fmt.Errorf("invalid state transition: %s → %s", s.state, newState)
 	}
+	
+	if s.OnStateChange != nil && oldState != newState {
+		go s.OnStateChange(s.id, oldState, newState)
+	}
+	return nil
 }
 
 // SetState sets the session state (used for explicit signaling)
