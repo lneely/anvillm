@@ -207,7 +207,7 @@ Type `Assist` in Acme and middle-click to open the `/AnviLLM/` session manager.
 
 ### Commands
 
-**Main window** (`/AnviLLM/`) tag: `Get Attach Stop Restart Kill Alias Context Log Daemon Sandbox`
+**Main window** (`/AnviLLM/`) tag: `Get Attach Stop Restart Kill Alias Context Log Daemon Inbox Archive`
 
 | Command | Description |
 |---------|-------------|
@@ -221,7 +221,8 @@ Type `Assist` in Acme and middle-click to open the `/AnviLLM/` session manager.
 | `Context <id>` | Edit context (prepended to prompts) |
 | `Log <id>` | View session log |
 | `Daemon` | Manage anvilsrv daemon (start/stop/status) |
-| `Sandbox` | Configure sandbox settings |
+| `Inbox [id]` | View inbox messages (default: user) |
+| `Archive [id]` | View archived messages (default: user) |
 
 Right-click a session ID to open its prompt window. Select text anywhere and 2-1 chord on a session ID for fire-and-forget prompts.
 
@@ -390,7 +391,7 @@ Backends run inside [landrun](https://github.com/zouuup/landrun) sandboxes. **Sa
 
 ### Configuration
 
-Click `Sandbox` in main window, then `Edit` to modify `~/.config/anvillm/sandbox.yaml`.
+Sandbox configuration is stored in `~/.config/anvillm/sandbox.yaml`. Edit this file to customize sandbox behavior.
 
 Path templates: `{CWD}`, `{HOME}`, `{TMPDIR}`
 
@@ -407,7 +408,7 @@ filesystem:
     - "{HOME}/.npm"
 ```
 
-Changes apply to new sessions only.
+Changes apply to new sessions. Use `Restart` command to reload configuration for existing sessions.
 
 ### Kernel Requirements
 
