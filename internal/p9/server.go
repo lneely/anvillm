@@ -4,6 +4,7 @@ package p9
 import (
 	"anvillm/internal/backend"
 	"anvillm/internal/backend/tmux"
+	"anvillm/internal/beads"
 	"anvillm/internal/events"
 	"anvillm/internal/mailbox"
 	"anvillm/internal/session"
@@ -75,12 +76,17 @@ const (
 	qidUserCompleted             // user/completed
 	qidUserCtl                   // user/ctl
 	qidUserMail                  // user/mail
+	qidBeads                     // beads directory
+	qidBeadsCtl                  // beads/ctl
+	qidBeadsList                 // beads/list
+	qidBeadsReady                // beads/ready
 	qidSessionBase   = 1000
 	qidPeersBase     = 0x10000000 // peers/{id}/file
 	qidInboxBase     = 0x20000000 // session/{id}/inbox
 	qidOutboxBase    = 0x30000000 // session/{id}/outbox
 	qidCompletedBase = 0x40000000 // session/{id}/completed
 	qidMessageBase   = 0x50000000 // message files
+	qidBeadsBase     = 0x60000000 // beads/{id}/file
 )
 
 // File indices within a session directory
@@ -109,6 +115,7 @@ type Server struct {
 	listener      net.Listener
 	socketPath    string
 	events        *events.Queue
+	beads         *BeadsFS
 	OnAliasChange func(backend.Session) // Called when session alias changes
 	mu            sync.RWMutex
 }
@@ -127,7 +134,7 @@ type fid struct {
 }
 
 // NewServer creates and starts the 9P server.
-func NewServer(mgr *session.Manager) (*Server, error) {
+func NewServer(mgr *session.Manager, beadsStore *beads.Store) (*Server, error) {
 	ns := client.Namespace()
 	if ns == "" {
 		return nil, fmt.Errorf("no namespace")
@@ -150,7 +157,19 @@ func NewServer(mgr *session.Manager) (*Server, error) {
 		return nil, err
 	}
 
-	s := &Server{mgr: mgr, listener: listener, socketPath: sockPath, events: events.NewQueue()}
+	// Create BeadsFS (shared across all namespaces)
+	var beadsFS *BeadsFS
+	if beadsStore != nil {
+		beadsFS = NewBeadsFS(beadsStore)
+	}
+
+	s := &Server{
+		mgr:        mgr,
+		listener:   listener,
+		socketPath: sockPath,
+		events:     events.NewQueue(),
+		beads:      beadsFS,
+	}
 	go s.acceptLoop()
 	return s, nil
 }
@@ -277,6 +296,9 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			case "user":
 				qid = plan9.Qid{Type: QTDir, Path: qidUser}
 				newPath = "/user"
+			case "beads":
+				qid = plan9.Qid{Type: QTDir, Path: qidBeads}
+				newPath = "/beads"
 			default:
 				// Check if it's a session ID
 				if sess := s.mgr.Get(name); sess != nil {
@@ -307,6 +329,28 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			default:
 				return errFcall(fc, "not found")
 			}
+		} else if path == "/beads" {
+			// Inside beads directory
+			switch name {
+			case "ctl":
+				qid = plan9.Qid{Type: QTFile, Path: qidBeadsCtl}
+				newPath = "/beads/ctl"
+			case "list":
+				qid = plan9.Qid{Type: QTFile, Path: qidBeadsList}
+				newPath = "/beads/list"
+			case "ready":
+				qid = plan9.Qid{Type: QTFile, Path: qidBeadsReady}
+				newPath = "/beads/ready"
+			default:
+				// Bead ID directory
+				qid = plan9.Qid{Type: QTDir, Path: qidBeadsBase + hashID(name)}
+				newPath = "/beads/" + name
+			}
+		} else if strings.HasPrefix(path, "/beads/") && strings.Count(path, "/") == 2 {
+			// Inside a bead directory - property files
+			beadID := strings.TrimPrefix(path, "/beads/")
+			qid = plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(beadID+name)}
+			newPath = path + "/" + name
 		} else if strings.HasPrefix(path, "/user/") && strings.Count(path, "/") == 2 {
 			// Inside user mailbox directory - message files
 			qid = plan9.Qid{Type: QTFile, Path: qidMessageBase + hashID("user"+path[6:]+name)}
@@ -416,6 +460,17 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	parts := strings.Split(strings.TrimPrefix(f.path, "/"), "/")
 	
 	fmt.Fprintf(os.Stderr, "[DEBUG] write: path=%q parts=%v len=%d\n", f.path, parts, len(parts))
+
+	// Handle beads writes
+	if strings.HasPrefix(f.path, "/beads/") {
+		if s.beads != nil {
+			if err := s.beads.Write(strings.TrimPrefix(f.path, "/beads/"), fc.Data); err != nil {
+				return errFcall(fc, err.Error())
+			}
+			return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
+		}
+		return errFcall(fc, "beads not initialized")
+	}
 
 	// /events - ack events
 	if f.path == "/events" {
@@ -822,12 +877,30 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 			Qid:  plan9.Qid{Type: QTDir, Path: qidUser},
 			Mode: plan9.DMDIR | 0555, Name: "user", Uid: "q", Gid: "q", Muid: "q",
 		})
+		dirs = append(dirs, plan9.Dir{
+			Qid:  plan9.Qid{Type: QTDir, Path: qidBeads},
+			Mode: plan9.DMDIR | 0555, Name: "beads", Uid: "q", Gid: "q", Muid: "q",
+		})
 		for _, id := range s.mgr.List() {
 			dirs = append(dirs, plan9.Dir{
 				Qid:  plan9.Qid{Type: QTDir, Path: qidSessionBase + hashID(id)},
 				Mode: plan9.DMDIR | 0555, Name: id, Uid: "q", Gid: "q", Muid: "q",
 			})
 		}
+	} else if path == "/beads" {
+		// Beads directory
+		dirs = append(dirs, plan9.Dir{
+			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsCtl}, Mode: 0222, Name: "ctl",
+			Uid: "q", Gid: "q", Muid: "q",
+		})
+		dirs = append(dirs, plan9.Dir{
+			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsList}, Mode: 0444, Name: "list",
+			Uid: "q", Gid: "q", Muid: "q",
+		})
+		dirs = append(dirs, plan9.Dir{
+			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsReady}, Mode: 0444, Name: "ready",
+			Uid: "q", Gid: "q", Muid: "q",
+		})
 	} else if path == "/user" {
 		// User directory - only mailbox subdirs
 		dirs = append(dirs, plan9.Dir{
@@ -1008,6 +1081,18 @@ func (s *Server) readAuditLog(offset uint64, count uint32) []byte {
 }
 
 func (s *Server) readFile(path string) string {
+	// Handle beads paths
+	if strings.HasPrefix(path, "/beads/") {
+		if s.beads != nil {
+			data, err := s.beads.Read(strings.TrimPrefix(path, "/beads/"))
+			if err != nil {
+				return ""
+			}
+			return string(data)
+		}
+		return ""
+	}
+
 	if path == "/list" {
 		var lines []string
 		for _, id := range s.mgr.List() {

@@ -5,6 +5,7 @@ import (
 	"anvillm/internal/backend"
 	"anvillm/internal/backend/tmux"
 	"anvillm/internal/backends"
+	"anvillm/internal/beads"
 	"anvillm/internal/p9"
 	"anvillm/internal/session"
 	"context"
@@ -182,8 +183,22 @@ func start(daemonize bool) {
 		}
 	}()
 
+	// Create shared beads store (namespace-agnostic, persistent on disk)
+	beadsDir := os.Getenv("ANVILLM_BEADS_PATH")
+	if beadsDir == "" {
+		beadsDir = filepath.Join(os.Getenv("HOME"), ".beads")
+	}
+	beadsStore, err := beads.NewStore(context.Background(), beadsDir)
+	if err != nil {
+		log.Printf("Warning: failed to initialize beads store: %v", err)
+		beadsStore = nil // Continue without beads support
+	}
+	if beadsStore != nil {
+		defer beadsStore.Close()
+	}
+
 	// Start 9P server
-	srv, err := p9.NewServer(mgr)
+	srv, err := p9.NewServer(mgr, beadsStore)
 	if err != nil {
 		log.Fatal(err)
 	}

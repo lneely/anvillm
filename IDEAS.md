@@ -1,108 +1,101 @@
 # IDEAS.md
 
-## Persistent Work Tracking (Beads)
+## Issue Tracker Import
 
-Git-backed work units that survive orchestrator/bot crashes and preserve workflow state.
+Import issues from Jira, GitHub, GitLab, or Linear into beads for agent-driven work.
 
-### Problem
+### Supported Trackers
 
-Current workflow: Bot A produces file, instruct Bot B to read it. Works, but if either bot dies or orchestrator crashes, there's no record of:
-- What the overall goal was
-- What's been completed
-- What still needs to be done
-- Dependencies between tasks
+Beads library already has importers for:
+- **Jira** (`internal/jira/`) - Epics, stories, subtasks
+- **GitHub** (`internal/github/`) - Issues, PRs, milestones  
+- **GitLab** (`internal/gitlab/`) - Issues, merge requests, epics
+- **Linear** (`internal/linear/`) - Issues, projects, cycles
 
-### Beads Concept
-
-Inspired by [Gas Town's Beads system](https://gastown.dev/). Each work unit is a persistent file (TOML/JSON) storing:
-
-```toml
-[bead]
-id = "research-arch-001"
-title = "Research codebase architecture"
-description = "Analyze project structure and document key components"
-status = "completed"  # pending | in_progress | completed | failed
-assigned_to = "research-bot-a3f2b9d1"
-result_file = "/tmp/architecture-overview.md"
-created_at = 1739587200
-updated_at = 1739590800
-depends_on = []  # Array of bead IDs that must complete first
-```
-
-### 9P Integration
-
-Expose beads via filesystem:
-
-```
-agent/
-├── beads/
-│   ├── ctl              # "new <title> <role> <description>" creates bead
-│   ├── list             # All beads with status
-│   └── <bead-id>/
-│       ├── status       # pending | in_progress | completed | failed
-│       ├── title        # Human-readable name
-│       ├── description  # What needs to be done
-│       ├── role         # Which type of bot should handle this
-│       ├── assigned_to  # Session ID of bot working on it
-│       ├── result       # Output/findings (file path or inline text)
-│       ├── depends_on   # Newline-separated list of bead IDs
-│       └── ctl          # "claim <session-id>", "complete", "fail"
-```
-
-### Workflow
-
-1. **Create beads**: Orchestrator or "mayor" bot breaks down goal into beads
-2. **Bots claim beads**: Worker bots read `beads/list`, claim pending beads matching their role
-3. **Execute**: Bot works on task, writes result
-4. **Complete**: Bot marks bead as completed, writes result file path
-5. **Crash recovery**: If bot dies, bead remains `in_progress`. Orchestrator can reassign or restart
-
-### Example: Research → Development
+### Usage
 
 ```sh
-# Create research bead
-echo 'new "Research auth system" researcher "Analyze existing auth code"' | 9p write agent/beads/ctl
+# Jira
+echo 'import-jira PROJ-123 --recursive' | 9p write agent/beads/ctl
 
-# Research bot claims it
-echo 'claim research-bot-123' | 9p write agent/beads/research-auth-001/ctl
+# GitHub
+echo 'import-github owner/repo#123' | 9p write agent/beads/ctl
+echo 'import-github owner/repo milestone:v1.0' | 9p write agent/beads/ctl
 
-# Bot completes work
-echo '/tmp/auth-analysis.md' | 9p write agent/beads/research-auth-001/result
-echo 'complete' | 9p write agent/beads/research-auth-001/ctl
+# GitLab
+echo 'import-gitlab group/project#456' | 9p write agent/beads/ctl
 
-# Create dependent dev bead
-echo 'new "Implement OAuth" developer "Add OAuth based on research" research-auth-001' | 9p write agent/beads/ctl
+# Linear
+echo 'import-linear TEAM-789' | 9p write agent/beads/ctl
+```
 
-# Dev bot waits for dependency, then claims
-9p read agent/beads/research-auth-001/status  # → "completed"
-echo 'claim dev-bot-456' | 9p write agent/beads/impl-oauth-002/ctl
+### Mapping
+
+| Tracker | Beads |
+|---------|-------|
+| Jira Epic / GitHub Milestone / Linear Project | Issue with type=epic |
+| Story / Issue / Task | Issue with type=feature/task/bug |
+| Subtask | Issue with parent dependency |
+| Blocks / Depends on | Dependency with type=blocks |
+| PR / MR | Issue with type=task, linked to parent issue |
+
+### Pull-Only Sync
+
+All trackers use pull-only sync - tracker is source of truth:
+
+```sh
+# Refresh from tracker
+echo 'refresh-github bd-a1b2' | 9p write agent/beads/ctl
+echo 'refresh-jira bd-xyz' | 9p write agent/beads/ctl
+```
+
+Auto-refresh:
+```yaml
+# .beads/config.yaml
+sync:
+  auto_refresh: true
+  interval: 300s
+  
+jira:
+  url: https://company.atlassian.net
+  token: ${JIRA_TOKEN}
+  
+github:
+  token: ${GITHUB_TOKEN}
+  
+gitlab:
+  url: https://gitlab.company.com
+  token: ${GITLAB_TOKEN}
+  
+linear:
+  token: ${LINEAR_TOKEN}
 ```
 
 ### Benefits
 
-- **Crash resilient**: Work state persists on disk
-- **Resumable**: New orchestrator can read beads and continue
-- **Auditable**: Git-backed beads provide full history
-- **Dependency tracking**: Bots wait for prerequisites automatically
-- **Role-based**: Specialized bots pick up beads matching their role
+- **Unified interface**: Agents use beads regardless of tracker
+- **Cross-tracker**: Import from multiple trackers into one bead database
+- **Safe**: Pull-only, no risk of corrupting tracker data
+- **Dependency tracking**: Tracker links become bead dependencies
 
-### Git Integration
+### Example: Multi-Tracker Workflow
 
-Commit beads after state changes:
 ```sh
-git add agent/beads/
-git commit -m "Completed: Research auth system"
+# Import Jira epic for backend work
+echo 'import-jira BACKEND-100 --recursive' | 9p write agent/beads/ctl
+
+# Import GitHub issues for frontend work  
+echo 'import-github company/frontend milestone:v2.0' | 9p write agent/beads/ctl
+
+# Agent sees unified view
+9p read agent/beads/ready
+# bd-a1b2: BACKEND-101 - API endpoint
+# bd-c3d4: company/frontend#45 - UI component
+
+# Agent works on both, regardless of source tracker
 ```
 
-Full audit trail of what was done, when, and by whom.
-
-### Philosophy: Precision Over Throughput
-
-Unlike Gas Town's "spawn 30 workers and see what sticks" approach, beads in AnviLLM enable:
-- **Deliberate sequencing**: Dependencies ensure work happens in correct order
-- **Quality gates**: Beads can require approval before proceeding
-- **Traceability**: Every decision and result is recorded
-- **Human oversight**: Orchestrator (human or bot) reviews bead results before creating dependent beads
+## Pull-Only Sync Implementation
 
 ## Approval Gates
 
