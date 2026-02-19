@@ -4,16 +4,9 @@
 
 ## Overview
 
-Beads provides persistent, structured memory for coding agents. This integration exposes beads through the 9P filesystem, allowing agents to create, claim, and complete tasks using simple file operations.
+Beads provides persistent, structured task memory for coding agents. Tasks persist across crashes, enabling agents to resume work and coordinate through dependency graphs.
 
-## Storage Backend
-
-Uses Dolt (version-controlled SQL database) via the beads library:
-- **MVCC**: Built-in multi-version concurrency control
-- **Version control**: Cell-level diffs and merges
-- **Multi-writer**: Server mode supports concurrent agents
-- **ACID**: Full transaction guarantees
-- **Git integration**: JSONL export for portability
+**Storage:** Dolt (version-controlled SQL database) provides MVCC, ACID transactions, cell-level diffs, and JSONL export for git portability.
 
 ## Filesystem Structure
 
@@ -31,38 +24,6 @@ agent/beads/
     └── json         # Full bead as JSON
 ```
 
-## Usage
-
-### Create a bead
-```sh
-echo "new 'Implement auth' dev 'Add OAuth support'" | 9p write agent/beads/ctl
-```
-
-### Claim a bead
-```sh
-echo "claim bd-a1b2" | 9p write agent/beads/ctl
-```
-
-### Complete a bead
-```sh
-echo "complete bd-a1b2" | 9p write agent/beads/ctl
-```
-
-### List ready beads
-```sh
-9p read agent/beads/ready
-```
-
-### Read bead status
-```sh
-9p read agent/beads/bd-a1b2/status
-```
-
-### Add dependency
-```sh
-echo "dep bd-child bd-parent" | 9p write agent/beads/ctl
-```
-
 ## Control Commands
 
 | Command | Format | Description |
@@ -73,9 +34,31 @@ echo "dep bd-child bd-parent" | 9p write agent/beads/ctl
 | `fail` | `fail <bead-id> 'reason'` | Mark bead as failed |
 | `dep` | `dep <child-id> <parent-id>` | Add dependency (parent blocks child) |
 
+## Usage Examples
+
+```sh
+# Create bead
+echo "new 'Implement auth' dev 'Add OAuth support'" | 9p write agent/beads/ctl
+
+# Claim bead
+echo "claim bd-a1b2" | 9p write agent/beads/ctl
+
+# Complete bead
+echo "complete bd-a1b2" | 9p write agent/beads/ctl
+
+# List ready beads
+9p read agent/beads/ready
+
+# Read bead status
+9p read agent/beads/bd-a1b2/status
+
+# Add dependency (parent blocks child)
+echo "dep bd-child bd-parent" | 9p write agent/beads/ctl
+```
+
 ## Initialization
 
-Initialize beads in a project:
+Initialize beads in a project (creates `.beads/` directory with Dolt database):
 
 ```go
 import "anvillm/internal/beads"
@@ -83,28 +66,21 @@ import "anvillm/internal/beads"
 err := beads.InitBeads("/path/to/project")
 ```
 
-This creates `.beads/` directory with Dolt database.
+Agents access via 9P at `agent/beads/`:
 
-## Integration with anvilsrv
-
-The beads filesystem is mounted at `agent/beads/` in the 9P server. Agents access it like any other file:
-
-```
-# From agent session
+```sh
 cat agent/beads/ready
 echo 'claim bd-xyz' > agent/beads/ctl
 ```
 
-## MCP Integration (Optional)
+## MCP Integration
 
-anvilmcp can expose beads operations as MCP tools:
+anvilmcp exposes beads operations as MCP tools (calls `9p write agent/beads/ctl`):
 
 ```json
 {
   "name": "create_bead",
-  "description": "Create a new task bead",
   "inputSchema": {
-    "type": "object",
     "properties": {
       "title": {"type": "string"},
       "role": {"type": "string"},
@@ -114,23 +90,17 @@ anvilmcp can expose beads operations as MCP tools:
 }
 ```
 
-Implementation: MCP tool calls `9p write agent/beads/ctl`.
-
 ## Benefits
 
-1. **Crash resilience**: Beads persist in Dolt database
-2. **Resumability**: Agents can pick up where others left off
-3. **Dependency tracking**: Automatic blocking relationships
-4. **Version control**: Full audit trail via Dolt
-5. **Git portability**: JSONL export syncs via git
-6. **Scriptability**: Standard file operations
-7. **No Python**: Pure Go implementation
+- **Crash resilience** — Beads persist in Dolt database
+- **Resumability** — Agents pick up where others left off
+- **Dependency tracking** — Automatic blocking relationships
+- **Version control** — Full audit trail via Dolt
+- **Git portability** — JSONL export syncs via git
+- **Scriptability** — Standard file operations
+- **Pure Go** — No Python dependency
 
-## Implementation
-
-- `beads.go`: Storage wrapper around steveyegge/beads
-- `fs.go`: 9P filesystem handlers
-- ~300 LOC total
+**Implementation:** `beads.go` (storage wrapper), `fs.go` (9P handlers) — ~300 LOC
 
 ## See Also
 
