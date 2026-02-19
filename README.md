@@ -137,8 +137,6 @@ agent/
 │       ├── assignee
 │       └── json
 └── <id>/
-    ├── in          # Write prompts
-    ├── out         # Read responses
     ├── ctl         # "stop", "restart", "kill"
     ├── state       # starting, idle, running, stopped, error, exited
     ├── context     # Prepended to prompts (r/w)
@@ -146,6 +144,9 @@ agent/
     ├── pid         # Process ID
     ├── cwd         # Working directory
     ├── backend     # Backend name
+    ├── role        # Role name
+    ├── tasks       # Task names
+    ├── tmux        # Tmux session name
     ├── inbox       # Incoming messages (JSON)
     ├── outbox      # Outgoing messages (JSON)
     ├── completed   # Archived messages (JSON, "Archive" in Assist)
@@ -188,11 +189,14 @@ echo 'new claude /home/user/project' | 9p write agent/ctl
 # Get session ID (last created)
 ID=$(9p read agent/list | tail -1 | awk '{print $1}')
 
-# Send prompt
-echo 'Hello' | 9p write agent/$ID/in
+# Send prompt via mailbox
+echo '{"to":"'$ID'","type":"PROMPT_REQUEST","subject":"User prompt","body":"Hello"}' | 9p write user/mail
 
 # Check state
 9p read agent/$ID/state  # "running" or "idle"
+
+# Read response from inbox
+9p read user/inbox  # Lists message files
 ```
 
 See `SECURITY.md`
