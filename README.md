@@ -8,6 +8,10 @@
 **Clients:** Assist (Acme), anvillm.el (Emacs), anvillm (TUI), anvilweb (web)  
 **Benefits:** Shared sessions, crash-resilient, scriptable via 9P, service integration, MCP support
 
+## Why 9P?
+
+AnviLLM uses 9P because orchestration becomes file manipulation (`read`, `write`, `ls`, `stat`). Benefits: simplicity, universal access (shell, C, Go, Python, `cat`, `echo`), and composability (Unix pipes, `grep`, `awk`, `jq`). The only requirement is a 9P client (plan9port's `9p` or compatible).
+
 ## Requirements
 
 Go 1.21+, plan9port, tmux, [landrun](https://github.com/zouuup/landrun) (kernel 5.13+), backend ([Claude Code](https://github.com/anthropics/claude-code) or [Kiro](https://kiro.dev))
