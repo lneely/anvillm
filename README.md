@@ -69,6 +69,54 @@ NAMESPACE=/tmp/ns.$USER.:1 Assist          # connect
 | `Daemon` | Manage daemon |
 | `Inbox [id]` / `Archive [id]` | View messages |
 
+## Configuration
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NAMESPACE` | `/tmp/ns.$USER.:0` | 9P namespace for server/client communication |
+| `ANVILLM_BEADS_PATH` | `~/.beads` | Beads database location (shared across namespaces) |
+| `ANVILLM_TERMINAL` | `foot` | Terminal command for tmux attach (Assist) |
+| `ANTHROPIC_API_KEY` | — | Claude API key (required for Claude backend) |
+| `CLAUDE_AGENT_NAME` | `anvillm-agent` | Claude agent configuration name |
+| `KIRO_API_KEY` | — | Kiro API key (required for Kiro backend) |
+
+### Sandbox Config Templates
+
+Available in sandbox YAML files (`~/.config/anvillm/`):
+
+| Template | Expands To | Description |
+|----------|------------|-------------|
+| `{CWD}` | Current working directory | Session's working directory |
+| `{HOME}` | User home directory | `$HOME` |
+| `{TMPDIR}` | Temp directory | `$TMPDIR` or `/tmp` |
+| `{XDG_CONFIG_HOME}` | XDG config | `$XDG_CONFIG_HOME` or `~/.config` |
+| `{XDG_DATA_HOME}` | XDG data | `$XDG_DATA_HOME` or `~/.local/share` |
+| `{XDG_CACHE_HOME}` | XDG cache | `$XDG_CACHE_HOME` or `~/.cache` |
+| `{XDG_STATE_HOME}` | XDG state | `$XDG_STATE_HOME` or `~/.local/state` |
+
+## Backends & Sandboxing
+
+**Backends:** Claude (`npm install -g @anthropic-ai/claude-code`), Kiro ([kiro.dev](https://kiro.dev)) — Sandboxed with network access
+
+**Add:** Implement `CommandHandler`/`StateInspector` in `internal/backends/yourbackend.go`, register in `main.go`
+
+**Sandbox:** [landrun](https://github.com/zouuup/landrun) (cannot disable) — Defaults: CWD/`/tmp`/config (rw), `/usr`/`/lib`/`/bin` (ro+exec), no network
+
+**Config** (`~/.config/anvillm/`): `global.yaml` → `backends/<name>.yaml` → `roles/<name>.yaml` (default: `roles/default.yaml`) → `tasks/<name>.yaml` — Most permissive wins
+
+```yaml
+network: {enabled: true, unrestricted: true}
+filesystem: {rw: ["{CWD}", "{HOME}/.npm"]}
+```
+
+Templates: `{CWD}`, `{HOME}`, `{TMPDIR}`, `{XDG_*}` (see Configuration) — Tip: Make `roles/default.yaml` permissive
+
+**Kernel:** 5.13+ (Landlock v1), 6.7+ (v4), 6.10+ (v5 network) — Best-effort: `best_effort: true` (⚠️ unsandboxed if no Landlock)
+
+**Self-healing:** Auto-restarts crashes every 5s (preserves context/alias/cwd) — Skips intentional stops
+
 ## 9P Filesystem
 
 `$NAMESPACE/agent`:
@@ -141,27 +189,6 @@ echo 'Hello' | 9p write agent/a3f2b9d1/in
 
 See `SECURITY.md`
 
-## Backends & Sandboxing
-
-**Backends:** Claude (`npm install -g @anthropic-ai/claude-code`), Kiro ([kiro.dev](https://kiro.dev)) — Sandboxed with network access
-
-**Add:** Implement `CommandHandler`/`StateInspector` in `internal/backends/yourbackend.go`, register in `main.go`
-
-**Sandbox:** [landrun](https://github.com/zouuup/landrun) (cannot disable) — Defaults: CWD/`/tmp`/config (rw), `/usr`/`/lib`/`/bin` (ro+exec), no network
-
-**Config** (`~/.config/anvillm/`): `global.yaml` → `backends/<name>.yaml` → `roles/<name>.yaml` (default: `roles/default.yaml`) → `tasks/<name>.yaml` — Most permissive wins
-
-```yaml
-network: {enabled: true, unrestricted: true}
-filesystem: {rw: ["{CWD}", "{HOME}/.npm"]}
-```
-
-Templates: `{CWD}`, `{HOME}`, `{TMPDIR}`, `{XDG_*}` (see Configuration) — Tip: Make `roles/default.yaml` permissive
-
-**Kernel:** 5.13+ (Landlock v1), 6.7+ (v4), 6.10+ (v5 network) — Best-effort: `best_effort: true` (⚠️ unsandboxed if no Landlock)
-
-**Self-healing:** Auto-restarts crashes every 5s (preserves context/alias/cwd) — Skips intentional stops
-
 ## Workflows
 
 **Skills:** `anvillm-skills list`, `anvillm-skills load anvillm-communication`
@@ -192,33 +219,6 @@ See `workflows/`, `kiro-cli/SKILLS_PROMPT.md`
 **Tools:** `read_inbox`, `send_message`, `list_sessions`, `set_state`
 
 Enables LLM clients to control AnviLLM sessions and communicate with agents
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NAMESPACE` | `/tmp/ns.$USER.:0` | 9P namespace for server/client communication |
-| `ANVILLM_BEADS_PATH` | `~/.beads` | Beads database location (shared across namespaces) |
-| `ANVILLM_TERMINAL` | `foot` | Terminal command for tmux attach (Assist) |
-| `ANTHROPIC_API_KEY` | — | Claude API key (required for Claude backend) |
-| `CLAUDE_AGENT_NAME` | `anvillm-agent` | Claude agent configuration name |
-| `KIRO_API_KEY` | — | Kiro API key (required for Kiro backend) |
-
-### Sandbox Config Templates
-
-Available in sandbox YAML files (`~/.config/anvillm/`):
-
-| Template | Expands To | Description |
-|----------|------------|-------------|
-| `{CWD}` | Current working directory | Session's working directory |
-| `{HOME}` | User home directory | `$HOME` |
-| `{TMPDIR}` | Temp directory | `$TMPDIR` or `/tmp` |
-| `{XDG_CONFIG_HOME}` | XDG config | `$XDG_CONFIG_HOME` or `~/.config` |
-| `{XDG_DATA_HOME}` | XDG data | `$XDG_DATA_HOME` or `~/.local/share` |
-| `{XDG_CACHE_HOME}` | XDG cache | `$XDG_CACHE_HOME` or `~/.cache` |
-| `{XDG_STATE_HOME}` | XDG state | `$XDG_STATE_HOME` or `~/.local/state` |
 
 ## Troubleshooting
 
