@@ -189,6 +189,9 @@ func start(daemonize bool) {
 	}
 	defer srv.Close()
 
+	// Wire up event queue to session manager
+	mgr.SetEventQueue(srv.Events())
+
 	log.Println("anvilsrv started successfully")
 	log.Printf("9P server listening on %s", srv.SocketPath())
 

@@ -851,7 +851,7 @@ func (s *Session) Close() error {
 	}
 
 	s.pid = 0
-	s.state = "exited"
+	s.transitionToLocked("exited")
 	return nil
 }
 
@@ -876,7 +876,7 @@ func (s *Session) Refresh(ctx context.Context) error {
 			if s.intentionallyStopped {
 				debug.Log("[session %s] refresh: intentional stop, not auto-restarting", s.id)
 				s.pid = 0
-				s.state = "stopped"
+				s.transitionToLocked("stopped")
 				return nil
 			}
 			
@@ -884,7 +884,7 @@ func (s *Session) Refresh(ctx context.Context) error {
 			if time.Since(s.lastRestartAttempt) < 5*time.Second {
 				debug.Log("[session %s] refresh: skipping auto-restart (too soon since last attempt)", s.id)
 				s.pid = 0
-				s.state = "stopped"
+				s.transitionToLocked("stopped")
 				return nil
 			}
 			
@@ -899,7 +899,7 @@ func (s *Session) Refresh(ctx context.Context) error {
 			if err != nil {
 				debug.Log("[session %s] refresh: auto-restart failed: %v", s.id, err)
 				s.pid = 0
-				s.state = "stopped"
+				s.transitionToLocked("stopped")
 				return nil // Don't propagate error - just mark as stopped
 			}
 			
@@ -911,7 +911,7 @@ func (s *Session) Refresh(ctx context.Context) error {
 	// If PID is 0, state should be stopped
 	if s.pid == 0 {
 		debug.Log("[session %s] refresh: PID is 0, setting to stopped", s.id)
-		s.state = "stopped"
+		s.transitionToLocked("stopped")
 		return nil
 	}
 

@@ -4,6 +4,7 @@ package session
 import (
 	"anvillm/internal/backend"
 	"anvillm/internal/backend/tmux"
+	"anvillm/internal/events"
 	"anvillm/internal/mailbox"
 	"context"
 	"fmt"
@@ -17,6 +18,7 @@ type Manager struct {
 	backends      map[string]backend.Backend
 	sessions      map[string]backend.Session
 	mailManager   *mailbox.Manager
+	eventQueue    *events.Queue
 	OnStateChange func(sessionID, oldState, newState string)
 	mu            sync.RWMutex
 	stopCh        chan struct{}
@@ -31,11 +33,34 @@ func NewManager(backends map[string]backend.Backend) *Manager {
 		backends:    backends,
 		sessions:    make(map[string]backend.Session),
 		mailManager: mailMgr,
+		eventQueue:  nil, // Set via SetEventQueue
 		stopCh:      make(chan struct{}),
 	}
 	
 	// Set session getter for alias lookup
 	mailMgr.SetSessionGetter(m)
+	
+	// Wire up mailbox event callbacks
+	mailMgr.SetEventCallbacks(
+		func(senderID string, msg *mailbox.Message) {
+			if m.eventQueue != nil {
+				eventType := events.EventBotSend
+				if senderID == "user" {
+					eventType = events.EventUserSend
+				}
+				m.eventQueue.Push(senderID, eventType, msg)
+			}
+		},
+		func(receiverID string, msg *mailbox.Message) {
+			if m.eventQueue != nil {
+				eventType := events.EventBotRecv
+				if receiverID == "user" {
+					eventType = events.EventUserRecv
+				}
+				m.eventQueue.Push(receiverID, eventType, msg)
+			}
+		},
+	)
 	
 	// Start mail processing loop
 	m.wg.Add(1)
@@ -61,7 +86,16 @@ func (m *Manager) New(opts backend.SessionOptions, backendName string) (backend.
 
 	// Wire up state change callback
 	if tmuxSess, ok := sess.(*tmux.Session); ok && m.OnStateChange != nil {
-		tmuxSess.OnStateChange = m.OnStateChange
+		tmuxSess.OnStateChange = func(sessionID, oldState, newState string) {
+			m.OnStateChange(sessionID, oldState, newState)
+			// Emit state change event
+			if m.eventQueue != nil {
+				m.eventQueue.Push(sessionID, events.EventStateChange, map[string]string{
+					"old_state": oldState,
+					"new_state": newState,
+				})
+			}
+		}
 	}
 
 	m.mu.Lock()
@@ -220,4 +254,11 @@ func (m *Manager) processMailboxes() {
 // GetMailManager returns the mailbox manager
 func (m *Manager) GetMailManager() *mailbox.Manager {
 	return m.mailManager
+}
+
+// SetEventQueue sets the event queue for emitting events
+func (m *Manager) SetEventQueue(eq *events.Queue) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.eventQueue = eq
 }

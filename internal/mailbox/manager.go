@@ -22,6 +22,8 @@ type Manager struct {
 	idCounter uint64
 	auditLog  *audit.Log
 	sessions  SessionGetter
+	onSend    func(senderID string, msg *Message)
+	onRecv    func(receiverID string, msg *Message)
 }
 
 // NewManager creates a new mailbox manager
@@ -44,6 +46,14 @@ func (m *Manager) SetSessionGetter(sg SessionGetter) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sessions = sg
+}
+
+// SetEventCallbacks sets callbacks for send/receive events
+func (m *Manager) SetEventCallbacks(onSend, onRecv func(string, *Message)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.onSend = onSend
+	m.onRecv = onRecv
 }
 
 // EnsureMailbox initializes mailbox for a session (no-op for in-memory)
@@ -115,7 +125,13 @@ func (m *Manager) RemoveFromOutbox(sessionID string) error {
 		return fmt.Errorf("no messages in outbox")
 	}
 	
+	msg := msgs[0]
 	m.outboxes[sessionID] = msgs[1:]
+	
+	if m.onSend != nil {
+		m.onSend(sessionID, msg)
+	}
+	
 	return nil
 }
 
@@ -137,6 +153,10 @@ func (m *Manager) DeliverToInbox(sessionID string, msg *Message) error {
 	
 	// Audit log the delivery
 	m.auditLog.Append(string(msg.Type), sender, receiver, msg.Subject, msg.Body)
+	
+	if m.onRecv != nil {
+		m.onRecv(sessionID, msg)
+	}
 	
 	return nil
 }

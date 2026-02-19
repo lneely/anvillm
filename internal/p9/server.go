@@ -393,9 +393,6 @@ func (s *Server) read(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	} else if f.path == "/audit" {
 		// Streaming audit log (like tail -f)
 		data = s.readAuditLog(fc.Offset, fc.Count)
-	} else if f.path == "/events" {
-		// Event queue - return all pending events
-		data = s.events.Read()
 	} else {
 		content := s.readFile(f.path)
 		if fc.Offset < uint64(len(content)) {
@@ -1029,6 +1026,10 @@ func (s *Server) readFile(path string) string {
 			}
 		}
 		return strings.Join(lines, "\n") + "\n"
+	}
+
+	if path == "/events" {
+		return string(s.events.Read())
 	}
 
 	if path == "/audit" {

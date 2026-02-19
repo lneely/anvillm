@@ -11,6 +11,14 @@ import (
 
 const DefaultTTL = 2 * time.Minute
 
+const (
+	EventStateChange = "StateChange"
+	EventUserRecv    = "UserRecv"
+	EventUserSend    = "UserSend"
+	EventBotRecv     = "BotRecv"
+	EventBotSend     = "BotSend"
+)
+
 type Event struct {
 	ID     string `json:"id"`
 	TS     int64  `json:"ts"`
