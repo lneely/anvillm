@@ -179,12 +179,20 @@ echo '{"to":"a3f2b9d1","type":"REVIEW_REQUEST","subject":"...","body":"..."}' | 
 9p read agent/a3f2b9d1/completed
 ```
 
-### Example
+### Basic Session Example
 
 ```sh
+# Create session
 echo 'new claude /home/user/project' | 9p write agent/ctl
-echo 'Hello' | 9p write agent/a3f2b9d1/in
-9p read agent/a3f2b9d1/state  # "running"
+
+# Get session ID (last created)
+ID=$(9p read agent/list | tail -1 | awk '{print $1}')
+
+# Send prompt
+echo 'Hello' | 9p write agent/$ID/in
+
+# Check state
+9p read agent/$ID/state  # "running" or "idle"
 ```
 
 See `SECURITY.md`
