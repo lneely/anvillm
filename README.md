@@ -224,7 +224,15 @@ Both run with full permissions (`--dangerously-skip-permissions`, `--trust-all-t
 
 **Sandboxing:** [landrun](https://github.com/zouuup/landrun) sandboxes (cannot disable). Defaults: CWD/`/tmp`/config (rw), `/usr`/`/lib`/`/bin` (ro+exec), no network, strict mode.
 
-**Config** (`~/.config/anvillm/sandbox.yaml`):
+**Layered config** (`~/.config/anvillm/`):
+1. `global.yaml` - Base configuration
+2. `backends/<name>.yaml` - Per-backend overrides (claude, kiro)
+3. `roles/<name>.yaml` - Role-specific settings (default: `roles/default.yaml`)
+4. `tasks/<name>.yaml` - Task-specific additions (optional)
+
+Most permissive setting wins. If no role specified, uses `roles/default.yaml`.
+
+**Example** (`global.yaml`):
 
 ```yaml
 network:
@@ -236,7 +244,9 @@ filesystem:
     - "{HOME}/.npm"
 ```
 
-Templates: `{CWD}`, `{HOME}`, `{TMPDIR}`. Changes apply to new sessions; use `Restart` to reload.
+Templates: `{CWD}`, `{HOME}`, `{TMPDIR}`. Layers merge additively (most permissive wins).
+
+**Tip:** Make `roles/default.yaml` permissive for quick starts.
 
 **Kernel requirements:**
 - 5.13+: Landlock v1 (filesystem)
@@ -298,7 +308,7 @@ See `workflows/DevReview` and `workflows/Planning`. Details: `kiro-cli/SKILLS_PR
 | Can't connect | `anvilsrv status`; try `anvilsrv start` |
 | Session won't start | Check stderr; verify backend installed |
 | Landlock ABI error | Set `best_effort: true` or upgrade kernel |
-| Permission denied | Add paths to `sandbox.yaml` |
+| Permission denied | Add paths to layered config |
 | Orphaned tmux | `tmux kill-session -t anvillm-0` |
 | 9P not working | `9p ls agent` |
 | Stale PID | `anvilsrv stop` auto-cleans |
