@@ -156,7 +156,7 @@ network: {enabled: true, unrestricted: true}
 filesystem: {rw: ["{CWD}", "{HOME}/.npm"]}
 ```
 
-Templates: `{CWD}`, `{HOME}`, `{TMPDIR}` — Tip: Make `roles/default.yaml` permissive
+Templates: `{CWD}`, `{HOME}`, `{TMPDIR}`, `{XDG_*}` (see Configuration) — Tip: Make `roles/default.yaml` permissive
 
 **Kernel:** 5.13+ (Landlock v1), 6.7+ (v4), 6.10+ (v5 network) — Best-effort: `best_effort: true` (⚠️ unsandboxed if no Landlock)
 
@@ -193,6 +193,33 @@ See `workflows/`, `kiro-cli/SKILLS_PROMPT.md`
 
 Enables LLM clients to control AnviLLM sessions and communicate with agents
 
+## Configuration
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NAMESPACE` | `/tmp/ns.$USER.:0` | 9P namespace for server/client communication |
+| `ANVILLM_BEADS_PATH` | `~/.beads` | Beads database location (shared across namespaces) |
+| `ANVILLM_TERMINAL` | `foot` | Terminal command for tmux attach (Assist) |
+| `ANTHROPIC_API_KEY` | — | Claude API key (required for Claude backend) |
+| `CLAUDE_AGENT_NAME` | `anvillm-agent` | Claude agent configuration name |
+| `KIRO_API_KEY` | — | Kiro API key (required for Kiro backend) |
+
+### Sandbox Config Templates
+
+Available in sandbox YAML files (`~/.config/anvillm/`):
+
+| Template | Expands To | Description |
+|----------|------------|-------------|
+| `{CWD}` | Current working directory | Session's working directory |
+| `{HOME}` | User home directory | `$HOME` |
+| `{TMPDIR}` | Temp directory | `$TMPDIR` or `/tmp` |
+| `{XDG_CONFIG_HOME}` | XDG config | `$XDG_CONFIG_HOME` or `~/.config` |
+| `{XDG_DATA_HOME}` | XDG data | `$XDG_DATA_HOME` or `~/.local/share` |
+| `{XDG_CACHE_HOME}` | XDG cache | `$XDG_CACHE_HOME` or `~/.cache` |
+| `{XDG_STATE_HOME}` | XDG state | `$XDG_STATE_HOME` or `~/.local/state` |
+
 ## Troubleshooting
 
 | Problem | Solution |
@@ -207,5 +234,4 @@ Enables LLM clients to control AnviLLM sessions and communicate with agents
 | Daemon won't stop | `anvilsrv fgstart` for logs |
 | anvilweb issues | Check anvilsrv running, namespace matches |
 
-Debug: `anvilsrv fgstart`  
-Terminal: `$ANVILLM_TERMINAL` (default: `foot`)
+See Configuration section for environment variables.
