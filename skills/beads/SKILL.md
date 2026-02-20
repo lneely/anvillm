@@ -122,7 +122,7 @@ All read endpoints return JSON for easy parsing.
 - `agent/beads/stats` - Statistics (counts by status)
 
 **Query Operations:**
-- `agent/beads/query` - Query beads (write SQL to this endpoint)
+- `agent/beads/query` - Query beads (write JSON filter, then read results)
 - `agent/beads/search/<term>` - Search beads by term
 - `agent/beads/by-ref/<ref>` - Find bead by external reference
 - `agent/beads/label/<label>` - Beads with specific label
