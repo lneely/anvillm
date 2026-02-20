@@ -214,10 +214,10 @@ func (s *Store) CreateSubtask(parentID, title, description, actor string) (strin
 		return "", err
 	}
 
-	// Add parent-child dependency
+	// Add parent-child dependency (parent is blocked by child)
 	dep := &bd.Dependency{
-		IssueID:     childID,
-		DependsOnID: parentID,
+		IssueID:     parentID,
+		DependsOnID: childID,
 		Type:        bd.DepParentChild,
 	}
 	if err := s.store.AddDependency(s.ctx, dep, actor); err != nil {
