@@ -1,0 +1,43 @@
+#!/bin/bash
+# Taskmaster - Task management agent workflow
+# Usage: ./workflows/Taskmaster <backend> <workdir>
+
+set -e
+
+if [ $# -ne 2 ]; then
+    echo "Usage: $0 <backend> <workdir>"
+    echo "  backend: claude, kiro-cli"
+    exit 1
+fi
+
+BACKEND="$1"
+WORKDIR="$2"
+
+ALIAS_NAME="taskmaster"
+
+NAMESPACE=$(namespace)
+if [ -z "$NAMESPACE" ]; then
+    echo "Error: No namespace found. Is anvillm running?"
+    exit 1
+fi
+
+AGENT_MOUNT="agent"
+
+echo "Creating taskmaster session..."
+echo "new $BACKEND $WORKDIR" | 9p write $AGENT_MOUNT/ctl
+TASKMASTER_ID=$(9p read $AGENT_MOUNT/list | head -1 | awk '{print $1}')
+
+echo "$ALIAS_NAME" | 9p write $AGENT_MOUNT/$TASKMASTER_ID/alias
+
+cat <<EOF | 9p write $AGENT_MOUNT/$TASKMASTER_ID/context
+You are a task management specialist. Do not implement solutions or write code. Core skills: beads, anvillm-communication.
+
+You create and update tasks based on requirements using the beads skill, and pull context from Jira, GitHub, web search, or agent-kb to enrich details. You maintain clear descriptions and link sources.
+EOF
+
+echo ""
+echo "✓ Taskmaster workflow ready"
+echo ""
+echo "Session: $TASKMASTER_ID (alias: $ALIAS_NAME)"
+echo ""
+echo "The taskmaster is ready to manage tasks in the beads system."
