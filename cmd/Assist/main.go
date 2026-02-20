@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -93,7 +94,7 @@ func main() {
 	defer w.CloseFiles()
 
 	w.Name(windowName)
-	w.Write("tag", []byte("Get Attach Stop Restart Kill Alias Context Daemon Inbox Archive "))
+	w.Write("tag", []byte("Get Attach Stop Restart Kill Alias Context Daemon Inbox Archive Tasks "))
 	refreshList(w)
 	w.Ctl("clean")
 
@@ -251,6 +252,10 @@ func main() {
 				}
 				if err := openArchiveWindow(owner); err != nil {
 					fmt.Fprintf(os.Stderr, "Error opening archive window: %v\n", err)
+				}
+			case "Tasks":
+				if err := openTasksWindow(); err != nil {
+					fmt.Fprintf(os.Stderr, "Error opening tasks window: %v\n", err)
 				}
 
 			default:
@@ -1335,6 +1340,466 @@ func sendReply(to, msgType, subject, body string) error {
 
 	if _, err := fid.Write(msgJSON); err != nil {
 		return fmt.Errorf("failed to write message: %w", err)
+	}
+
+	return nil
+}
+
+type Bead struct {
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Status      string   `json:"status"`
+	Assignee    string   `json:"assignee"`
+	Priority    int      `json:"priority"`
+	Blockers    []string `json:"blockers,omitempty"`
+}
+
+func openTasksWindow() error {
+	w, err := acme.New()
+	if err != nil {
+		return err
+	}
+
+	w.Name("/AnviLLM/Tasks")
+	w.Write("tag", []byte("Get New Remove "))
+
+	go handleTasksWindow(w)
+	return nil
+}
+
+func handleTasksWindow(w *acme.Win) {
+	defer w.CloseFiles()
+
+	var beads []Bead
+	beads, _ = listBeads()
+	refreshTasksWindowWithBeads(w, beads)
+
+	for e := range w.EventChan() {
+		switch e.C2 {
+		case 'x', 'X':
+			cmd := string(e.Text)
+			arg := strings.TrimSpace(string(e.Arg))
+			switch cmd {
+			case "Get":
+				beads, _ = listBeads()
+				refreshTasksWindowWithBeads(w, beads)
+			case "New":
+				if err := openNewBeadWindow(""); err != nil {
+					fmt.Fprintf(os.Stderr, "Error opening new bead window: %v\n", err)
+				}
+			case "Remove":
+				if arg == "" {
+					fmt.Fprintf(os.Stderr, "Usage: select bead ID, then Remove\n")
+				} else if err := deleteBead(arg); err != nil {
+					fmt.Fprintf(os.Stderr, "Error deleting bead: %v\n", err)
+				} else {
+					beads, _ = listBeads()
+					refreshTasksWindowWithBeads(w, beads)
+				}
+			default:
+				w.WriteEvent(e)
+			}
+		case 'l', 'L':
+			text := strings.TrimSpace(string(e.Text))
+			if idx := parseIndex(text); idx > 0 && idx <= len(beads) {
+				if err := openViewBeadWindow(beads[idx-1].ID); err != nil {
+					fmt.Fprintf(os.Stderr, "Error opening bead window: %v\n", err)
+				}
+			} else {
+				w.WriteEvent(e)
+			}
+		default:
+			w.WriteEvent(e)
+		}
+	}
+}
+
+func refreshTasksWindow(w *acme.Win) {
+	beads, _ := listBeads()
+	refreshTasksWindowWithBeads(w, beads)
+}
+
+func refreshTasksWindowWithBeads(w *acme.Win, beads []Bead) {
+	var buf strings.Builder
+	buf.WriteString("Tasks\n")
+	buf.WriteString(strings.Repeat("=", 110) + "\n\n")
+	buf.WriteString(fmt.Sprintf("%-4s %-12s %-12s %-4s %-8s %s\n", "#", "ID", "Status", "Blk", "Assignee", "Title"))
+	buf.WriteString(fmt.Sprintf("%-4s %-12s %-12s %-4s %-8s %s\n", "----", "------------", "------------", "----", "--------", strings.Repeat("-", 50)))
+
+	for i, b := range beads {
+		assignee := b.Assignee
+		if assignee == "" {
+			assignee = "-"
+		}
+		blk := "-"
+		if len(b.Blockers) > 0 {
+			blk = fmt.Sprintf("%d", len(b.Blockers))
+		}
+		buf.WriteString(fmt.Sprintf("%-4d %-12s %-12s %-4s %-8s %s\n", i+1, b.ID, b.Status, blk, assignee, b.Title))
+	}
+
+	w.Addr(",")
+	w.Write("data", []byte(buf.String()))
+	w.Ctl("clean")
+}
+
+func listBeads() ([]Bead, error) {
+	if !isConnected() {
+		return nil, fmt.Errorf("not connected to anvilsrv")
+	}
+
+	data, err := readFile("beads/list")
+	if err != nil {
+		return nil, err
+	}
+
+	var beads []Bead
+	if err := json.Unmarshal(data, &beads); err != nil {
+		return nil, err
+	}
+
+	return beads, nil
+}
+
+func openNewBeadWindow(parentID string) error {
+	w, err := acme.New()
+	if err != nil {
+		return err
+	}
+
+	if parentID != "" {
+		w.Name(fmt.Sprintf("/AnviLLM/Tasks/%s/+new", parentID))
+	} else {
+		w.Name("/AnviLLM/Tasks/+new")
+	}
+	w.Write("tag", []byte("Put "))
+
+	template := `---
+title: 
+blockers: 
+---
+`
+	w.Write("body", []byte(template))
+	w.Ctl("clean")
+
+	go handleNewBeadWindow(w, parentID)
+	return nil
+}
+
+func handleNewBeadWindow(w *acme.Win, parentID string) {
+	defer w.CloseFiles()
+
+	for e := range w.EventChan() {
+		if (e.C2 == 'x' || e.C2 == 'X') && string(e.Text) == "Put" {
+			body, err := w.ReadAll("body")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error reading body: %v\n", err)
+				continue
+			}
+			if err := createBeadFromMarkdown(string(body), parentID); err != nil {
+				fmt.Fprintf(os.Stderr, "Error creating bead: %v\n", err)
+				continue
+			}
+			w.Ctl("delete")
+			return
+		} else {
+			w.WriteEvent(e)
+		}
+	}
+}
+
+func createBeadFromMarkdown(content, parentID string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
+
+	// Parse frontmatter
+	content = strings.TrimSpace(content)
+	if !strings.HasPrefix(content, "---") {
+		return fmt.Errorf("missing frontmatter")
+	}
+
+	parts := strings.SplitN(content[3:], "---", 2)
+	if len(parts) < 1 {
+		return fmt.Errorf("invalid frontmatter")
+	}
+
+	frontmatter := strings.TrimSpace(parts[0])
+	description := ""
+	if len(parts) > 1 {
+		description = strings.TrimSpace(parts[1])
+	}
+
+	// Parse YAML frontmatter (simple key: value parsing)
+	var title, blockers string
+	for _, line := range strings.Split(frontmatter, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "title:") {
+			title = strings.TrimSpace(strings.TrimPrefix(line, "title:"))
+		} else if strings.HasPrefix(line, "blockers:") {
+			blockers = strings.TrimSpace(strings.TrimPrefix(line, "blockers:"))
+		}
+	}
+
+	if title == "" {
+		return fmt.Errorf("title is required")
+	}
+
+	// Build command: new 'title' 'description' [parent-id]
+	cmd := fmt.Sprintf("new '%s' '%s'", title, description)
+	if parentID != "" {
+		cmd = fmt.Sprintf("%s %s", cmd, parentID)
+	}
+
+	if err := writeFile("beads/ctl", []byte(cmd)); err != nil {
+		return err
+	}
+
+	// Add blockers if specified
+	if blockers != "" {
+		// Need to find the newly created bead ID
+		beads, err := listBeads()
+		if err != nil {
+			return nil // bead created, deps failed
+		}
+		var newID string
+		for _, b := range beads {
+			if b.Title == title {
+				newID = b.ID
+				break
+			}
+		}
+		if newID != "" {
+			for _, blockerID := range strings.Split(blockers, ",") {
+				blockerID = strings.TrimSpace(blockerID)
+				if blockerID != "" {
+					// blockerID blocks newID
+					addBlocksDep(blockerID, newID)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func openViewBeadWindow(beadID string) error {
+	w, err := acme.New()
+	if err != nil {
+		return err
+	}
+
+	w.Name(fmt.Sprintf("/AnviLLM/Tasks/%s", beadID))
+	w.Write("tag", []byte("Get Put New Blocks "))
+
+	go handleViewBeadWindow(w, beadID)
+	return nil
+}
+
+func handleViewBeadWindow(w *acme.Win, beadID string) {
+	defer w.CloseFiles()
+
+	// Track original blockers for diff on Put
+	bead, _ := getBead(beadID)
+	var origBlockers []string
+	if bead != nil {
+		origBlockers = bead.Blockers
+	}
+
+	refreshViewBeadWindow(w, beadID)
+
+	for e := range w.EventChan() {
+		switch e.C2 {
+		case 'x', 'X':
+			cmd := string(e.Text)
+			arg := strings.TrimSpace(string(e.Arg))
+			switch cmd {
+			case "Get":
+				bead, _ = getBead(beadID)
+				if bead != nil {
+					origBlockers = bead.Blockers
+				}
+				refreshViewBeadWindow(w, beadID)
+			case "Put":
+				body, err := w.ReadAll("body")
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error reading body: %v\n", err)
+					continue
+				}
+				if err := updateBead(beadID, string(body), origBlockers); err != nil {
+					fmt.Fprintf(os.Stderr, "Error updating bead: %v\n", err)
+				} else {
+					bead, _ = getBead(beadID)
+					if bead != nil {
+						origBlockers = bead.Blockers
+					}
+					w.Ctl("clean")
+				}
+			case "New":
+				if err := openNewBeadWindow(beadID); err != nil {
+					fmt.Fprintf(os.Stderr, "Error opening new bead window: %v\n", err)
+				}
+			case "Blocks":
+				if arg == "" {
+					fmt.Fprintf(os.Stderr, "Usage: select bead ID, then Blocks\n")
+				} else if err := addBlocksDep(beadID, arg); err != nil {
+					fmt.Fprintf(os.Stderr, "Error adding blocks dep: %v\n", err)
+				}
+			default:
+				w.WriteEvent(e)
+			}
+		default:
+			w.WriteEvent(e)
+		}
+	}
+}
+
+func refreshViewBeadWindow(w *acme.Win, beadID string) {
+	bead, err := getBead(beadID)
+	if err != nil {
+		w.Addr(",")
+		w.Write("data", []byte(fmt.Sprintf("Error reading bead: %v\n", err)))
+		w.Ctl("clean")
+		return
+	}
+
+	var buf strings.Builder
+	buf.WriteString("---\n")
+	buf.WriteString(fmt.Sprintf("id: %s\n", bead.ID))
+	buf.WriteString(fmt.Sprintf("title: %s\n", bead.Title))
+	buf.WriteString(fmt.Sprintf("status: %s\n", bead.Status))
+	if bead.Assignee != "" {
+		buf.WriteString(fmt.Sprintf("assignee: %s\n", bead.Assignee))
+	}
+	if bead.Priority != 0 {
+		buf.WriteString(fmt.Sprintf("priority: %d\n", bead.Priority))
+	}
+	buf.WriteString(fmt.Sprintf("blockers: %s\n", strings.Join(bead.Blockers, ", ")))
+	buf.WriteString("---\n")
+	if bead.Description != "" {
+		desc, _ := strconv.Unquote(`"` + bead.Description + `"`)
+		if desc == "" {
+			desc = bead.Description
+		}
+		buf.WriteString(desc)
+	}
+
+	w.Addr(",")
+	w.Write("data", []byte(buf.String()))
+	w.Ctl("clean")
+}
+
+func getBead(beadID string) (*Bead, error) {
+	if !isConnected() {
+		return nil, fmt.Errorf("not connected to anvilsrv")
+	}
+
+	data, err := readFile(fmt.Sprintf("beads/%s/json", beadID))
+	if err != nil {
+		return nil, err
+	}
+
+	var bead Bead
+	if err := json.Unmarshal(data, &bead); err != nil {
+		return nil, err
+	}
+
+	return &bead, nil
+}
+
+func addBlocksDep(blockerID, blockedID string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
+	// dep <child> <parent> means parent blocks child
+	// So "blockerID blocks blockedID" means blockedID depends on blockerID
+	cmd := fmt.Sprintf("dep %s %s", blockedID, blockerID)
+	return writeFile("beads/ctl", []byte(cmd))
+}
+
+func removeBlocksDep(beadID, blockerID string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
+	cmd := fmt.Sprintf("undep %s %s", beadID, blockerID)
+	return writeFile("beads/ctl", []byte(cmd))
+}
+
+func deleteBead(beadID string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
+	cmd := fmt.Sprintf("delete %s", beadID)
+	return writeFile("beads/ctl", []byte(cmd))
+}
+
+func updateBead(beadID, content string, origBlockers []string) error {
+	content = strings.TrimSpace(content)
+	if !strings.HasPrefix(content, "---") {
+		return fmt.Errorf("missing frontmatter")
+	}
+
+	parts := strings.SplitN(content[3:], "---", 2)
+	if len(parts) < 1 {
+		return fmt.Errorf("invalid frontmatter")
+	}
+
+	frontmatter := strings.TrimSpace(parts[0])
+	description := ""
+	if len(parts) > 1 {
+		description = strings.TrimSpace(parts[1])
+	}
+
+	// Parse frontmatter
+	var title string
+	var newBlockers []string
+	for _, line := range strings.Split(frontmatter, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "title:") {
+			title = strings.TrimSpace(strings.TrimPrefix(line, "title:"))
+		} else if strings.HasPrefix(line, "blockers:") {
+			val := strings.TrimSpace(strings.TrimPrefix(line, "blockers:"))
+			if val != "" {
+				for _, b := range strings.Split(val, ",") {
+					b = strings.TrimSpace(b)
+					if b != "" {
+						newBlockers = append(newBlockers, b)
+					}
+				}
+			}
+		}
+	}
+
+	// Update title and description
+	if title != "" {
+		cmd := fmt.Sprintf("update %s title '%s'", beadID, title)
+		writeFile("beads/ctl", []byte(cmd))
+	}
+	if description != "" {
+		cmd := fmt.Sprintf("update %s description '%s'", beadID, description)
+		writeFile("beads/ctl", []byte(cmd))
+	}
+
+	// Update blockers
+	origSet := make(map[string]bool)
+	for _, b := range origBlockers {
+		origSet[b] = true
+	}
+	newSet := make(map[string]bool)
+	for _, b := range newBlockers {
+		newSet[b] = true
+	}
+
+	for _, b := range newBlockers {
+		if !origSet[b] {
+			addBlocksDep(b, beadID)
+		}
+	}
+	for _, b := range origBlockers {
+		if !newSet[b] {
+			removeBlocksDep(beadID, b)
+		}
 	}
 
 	return nil

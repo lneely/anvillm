@@ -3,6 +3,7 @@ package p9
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"anvillm/internal/beads"
@@ -55,7 +56,25 @@ func (b *BeadsFS) readList() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return json.MarshalIndent(issues, "", "  ")
+	// Sort by ID for hierarchical view (bd-a3f8, bd-a3f8.1, bd-a3f8.1.1, etc.)
+	sort.Slice(issues, func(i, j int) bool {
+		return issues[i].ID < issues[j].ID
+	})
+
+	// Enrich with blockers
+	type BeadWithBlockers struct {
+		*beads.Issue
+		Blockers []string `json:"blockers,omitempty"`
+	}
+	result := make([]BeadWithBlockers, len(issues))
+	for i, issue := range issues {
+		result[i].Issue = issue
+		if blockers, err := b.store.GetBlockers(issue.ID); err == nil && len(blockers) > 0 {
+			result[i].Blockers = blockers
+		}
+	}
+
+	return json.MarshalIndent(result, "", "  ")
 }
 
 func (b *BeadsFS) readReady(role string) ([]byte, error) {
@@ -82,7 +101,15 @@ func (b *BeadsFS) readBeadProperty(beadID, property string) ([]byte, error) {
 	case "assignee":
 		return []byte(issue.Assignee), nil
 	case "json":
-		return json.MarshalIndent(issue, "", "  ")
+		type BeadWithBlockers struct {
+			*beads.Issue
+			Blockers []string `json:"blockers,omitempty"`
+		}
+		result := BeadWithBlockers{Issue: issue}
+		if blockers, err := b.store.GetBlockers(beadID); err == nil {
+			result.Blockers = blockers
+		}
+		return json.MarshalIndent(result, "", "  ")
 	default:
 		return nil, fmt.Errorf("unknown property: %s", property)
 	}
@@ -106,14 +133,22 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		
 	case "new", "create":
 		if len(args) < 1 {
-			return fmt.Errorf("usage: new 'title' ['description']")
+			return fmt.Errorf("usage: new 'title' ['description'] [parent-id]")
 		}
 		title := args[0]
 		description := ""
+		parentID := ""
 		if len(args) > 1 {
 			description = args[1]
 		}
-		_, err = b.store.CreateBead(title, "", description, actor)
+		if len(args) > 2 {
+			parentID = args[2]
+		}
+		if parentID != "" {
+			_, err = b.store.CreateSubtask(parentID, title, description, actor)
+		} else {
+			_, err = b.store.CreateBead(title, "", description, actor)
+		}
 		return err
 		
 	case "claim":
@@ -139,9 +174,27 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 			return fmt.Errorf("usage: dep <child-id> <parent-id>")
 		}
 		return b.store.AddDependency(args[0], args[1], actor)
+
+	case "undep", "rm-dep":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: undep <child-id> <parent-id>")
+		}
+		return b.store.RemoveDependency(args[0], args[1], actor)
+
+	case "update":
+		if len(args) < 3 {
+			return fmt.Errorf("usage: update <bead-id> <field> 'value'")
+		}
+		return b.store.UpdateBead(args[0], args[1], args[2], actor)
+
+	case "delete", "rm":
+		if len(args) < 1 {
+			return fmt.Errorf("usage: delete <bead-id>")
+		}
+		return b.store.DeleteBead(args[0])
 		
 	default:
-		return fmt.Errorf("unknown command: %s (supported: init, new, claim, complete, fail, dep)", command)
+		return fmt.Errorf("unknown command: %s (supported: init, new, update, delete, claim, complete, fail, dep, undep)", command)
 	}
 }
 
@@ -160,6 +213,7 @@ func parseQuotedArgs(s string) []string {
 	var args []string
 	var current strings.Builder
 	var quoteChar rune
+	var wasQuoted bool
 	
 	s = strings.TrimSpace(s)
 	for i := 0; i < len(s); i++ {
@@ -169,6 +223,7 @@ func parseQuotedArgs(s string) []string {
 			// Inside quotes
 			if c == quoteChar {
 				quoteChar = 0 // End quote
+				wasQuoted = true
 			} else {
 				current.WriteByte(s[i])
 			}
@@ -178,9 +233,10 @@ func parseQuotedArgs(s string) []string {
 			case '\'', '"':
 				quoteChar = c // Start quote
 			case ' ', '\t':
-				if current.Len() > 0 {
+				if current.Len() > 0 || wasQuoted {
 					args = append(args, current.String())
 					current.Reset()
+					wasQuoted = false
 				}
 			default:
 				current.WriteByte(s[i])
@@ -188,7 +244,7 @@ func parseQuotedArgs(s string) []string {
 		}
 	}
 	
-	if current.Len() > 0 {
+	if current.Len() > 0 || wasQuoted {
 		args = append(args, current.String())
 	}
 	

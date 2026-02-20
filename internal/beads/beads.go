@@ -4,6 +4,8 @@ package beads
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 
 	bd "github.com/steveyegge/beads"
 )
@@ -124,6 +126,21 @@ func (s *Store) ReadyBeads(role string) ([]*bd.Issue, error) {
 	return ready, nil
 }
 
+// GetBlockers returns IDs of issues that block the given issue.
+func (s *Store) GetBlockers(id string) ([]string, error) {
+	deps, err := s.store.GetDependencies(s.ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	var blockers []string
+	for _, dep := range deps {
+		if dep.Status != bd.StatusClosed {
+			blockers = append(blockers, dep.ID)
+		}
+	}
+	return blockers, nil
+}
+
 // AddDependency adds a dependency.
 func (s *Store) AddDependency(childID, parentID, actor string) error {
 	dep := &bd.Dependency{
@@ -132,5 +149,82 @@ func (s *Store) AddDependency(childID, parentID, actor string) error {
 		Type:        bd.DepBlocks,
 	}
 	return s.store.AddDependency(s.ctx, dep, actor)
+}
+
+// RemoveDependency removes a dependency.
+func (s *Store) RemoveDependency(childID, parentID, actor string) error {
+	return s.store.RemoveDependency(s.ctx, childID, parentID, actor)
+}
+
+// UpdateBead updates a field on a bead.
+func (s *Store) UpdateBead(id, field, value, actor string) error {
+	updates := map[string]interface{}{
+		field: value,
+	}
+	return s.store.UpdateIssue(s.ctx, id, updates, actor)
+}
+
+// DeleteBead deletes a bead.
+func (s *Store) DeleteBead(id string) error {
+	return s.store.DeleteIssue(s.ctx, id)
+}
+
+// CreateSubtask creates a subtask with hierarchical ID (e.g., bd-s2r.1).
+func (s *Store) CreateSubtask(parentID, title, description, actor string) (string, error) {
+	// Verify parent exists
+	parent, err := s.store.GetIssue(s.ctx, parentID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get parent: %w", err)
+	}
+	if parent == nil {
+		return "", fmt.Errorf("parent %s not found", parentID)
+	}
+
+	// Find next child number by scanning existing IDs
+	nextChild := 1
+	issues, err := s.store.SearchIssues(s.ctx, "", bd.IssueFilter{})
+	if err == nil {
+		prefix := parentID + "."
+		for _, issue := range issues {
+			if strings.HasPrefix(issue.ID, prefix) {
+				// Extract child number from ID like "bd-s2r.3"
+				suffix := strings.TrimPrefix(issue.ID, prefix)
+				// Handle nested children - only count direct children
+				if !strings.Contains(suffix, ".") {
+					if n, err := strconv.Atoi(suffix); err == nil && n >= nextChild {
+						nextChild = n + 1
+					}
+				}
+			}
+		}
+	}
+
+	childID := fmt.Sprintf("%s.%d", parentID, nextChild)
+
+	issue := &bd.Issue{
+		ID:          childID,
+		Title:       title,
+		Description: description,
+		Status:      bd.StatusOpen,
+		IssueType:   bd.TypeTask,
+		Priority:    2,
+	}
+
+	if err := s.store.CreateIssue(s.ctx, issue, actor); err != nil {
+		return "", err
+	}
+
+	// Add parent-child dependency
+	dep := &bd.Dependency{
+		IssueID:     childID,
+		DependsOnID: parentID,
+		Type:        bd.DepParentChild,
+	}
+	if err := s.store.AddDependency(s.ctx, dep, actor); err != nil {
+		// Issue created but dep failed - not fatal
+		return childID, nil
+	}
+
+	return childID, nil
 }
 
