@@ -464,7 +464,7 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	// Handle beads writes
 	if strings.HasPrefix(f.path, "/beads/") {
 		if s.beads != nil {
-			if err := s.beads.Write(strings.TrimPrefix(f.path, "/beads/"), fc.Data); err != nil {
+			if err := s.beads.Write(strings.TrimPrefix(f.path, "/beads/"), fc.Data, cs.sessionID); err != nil {
 				return errFcall(fc, err.Error())
 			}
 			return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}

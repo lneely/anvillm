@@ -41,14 +41,14 @@ func (b *BeadsFS) Read(path string) ([]byte, error) {
 }
 
 // Write handles writes to beads filesystem.
-func (b *BeadsFS) Write(path string, data []byte) error {
+func (b *BeadsFS) Write(path string, data []byte, sessionID string) error {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	
 	if len(parts) != 1 || parts[0] != "ctl" {
 		return fmt.Errorf("write not allowed: %s", path)
 	}
 	
-	return b.executeCtl(string(data))
+	return b.executeCtl(string(data), sessionID)
 }
 
 func (b *BeadsFS) readList() ([]byte, error) {
@@ -115,13 +115,16 @@ func (b *BeadsFS) readBeadProperty(beadID, property string) ([]byte, error) {
 	}
 }
 
-func (b *BeadsFS) executeCtl(cmd string) error {
+func (b *BeadsFS) executeCtl(cmd string, sessionID string) error {
 	command, args, err := parseCtlCommand(cmd)
 	if err != nil {
 		return err
 	}
 	
-	actor := "system"
+	actor := sessionID
+	if actor == "" {
+		actor = "system"
+	}
 	
 	switch command {
 	case "init":
