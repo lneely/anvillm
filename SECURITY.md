@@ -77,6 +77,6 @@ Backend sessions run in tmux windows with:
 Potential security enhancements for consideration:
 1. Add authentication to 9P protocol (shared secret, capabilities)
 2. Per-session access control lists
-3. Audit logging of 9P operations
+3. Enhanced event logging of 9P operations
 4. Encrypted transport for 9P (though Unix sockets are local-only)
 5. Namespace isolation via Linux namespaces or FreeBSD jails

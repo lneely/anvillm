@@ -1,7 +1,6 @@
 package mailbox
 
 import (
-	"anvillm/internal/audit"
 	"fmt"
 	"sync"
 	"time"
@@ -20,7 +19,6 @@ type Manager struct {
 	completed map[string][]*Message
 	mu        sync.RWMutex
 	idCounter uint64
-	auditLog  *audit.Log
 	sessions  SessionGetter
 	onSend    func(senderID string, msg *Message)
 	onRecv    func(receiverID string, msg *Message)
@@ -32,7 +30,6 @@ func NewManager() *Manager {
 		inboxes:   make(map[string][]*Message),
 		outboxes:  make(map[string][]*Message),
 		completed: make(map[string][]*Message),
-		auditLog:  audit.NewLog(),
 	}
 	// Initialize user mailbox
 	m.inboxes["user"] = []*Message{}
@@ -146,13 +143,6 @@ func (m *Manager) DeliverToInbox(sessionID string, msg *Message) error {
 	}
 	
 	m.inboxes[sessionID] = append(m.inboxes[sessionID], msg)
-	
-	// Format sender and receiver with aliases
-	sender := m.formatParticipant(msg.From)
-	receiver := m.formatParticipant(msg.To)
-	
-	// Audit log the delivery
-	m.auditLog.Append(string(msg.Type), sender, receiver, msg.Subject, msg.Body)
 	
 	if m.onRecv != nil {
 		m.onRecv(sessionID, msg)
@@ -307,7 +297,4 @@ func (m *Manager) MoveToCompleted(sessionID string, msg *Message) {
 	m.completed[sessionID] = append(m.completed[sessionID], msg)
 }
 
-// GetAuditLog returns the audit log
-func (m *Manager) GetAuditLog() *audit.Log {
-	return m.auditLog
-}
+

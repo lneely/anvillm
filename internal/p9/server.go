@@ -68,7 +68,6 @@ const (
 	qidCtl
 	qidList
 	qidStatus
-	qidAudit                     // agent/audit
 	qidEvents                    // agent/events
 	qidUser                      // user directory
 	qidUserInbox                 // user/inbox
@@ -287,9 +286,6 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			case "list":
 				qid = plan9.Qid{Type: QTFile, Path: qidList}
 				newPath = "/list"
-			case "audit":
-				qid = plan9.Qid{Type: QTFile, Path: qidAudit}
-				newPath = "/audit"
 			case "events":
 				qid = plan9.Qid{Type: QTFile, Path: qidEvents}
 				newPath = "/events"
@@ -434,9 +430,6 @@ func (s *Server) read(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 
 	if f.qid.Type&QTDir != 0 {
 		data = s.readDir(f.path, fc.Offset, fc.Count)
-	} else if f.path == "/audit" {
-		// Streaming audit log (like tail -f)
-		data = s.readAuditLog(fc.Offset, fc.Count)
 	} else {
 		content := s.readFile(f.path)
 		if fc.Offset < uint64(len(content)) {
@@ -866,10 +859,6 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 			Uid: "q", Gid: "q", Muid: "q",
 		})
 		dirs = append(dirs, plan9.Dir{
-			Qid: plan9.Qid{Type: QTFile, Path: qidAudit}, Mode: 0444, Name: "audit",
-			Uid: "q", Gid: "q", Muid: "q",
-		})
-		dirs = append(dirs, plan9.Dir{
 			Qid: plan9.Qid{Type: QTFile, Path: qidEvents}, Mode: 0644, Name: "events",
 			Uid: "q", Gid: "q", Muid: "q",
 		})
@@ -1047,39 +1036,6 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 	return data[offset:end]
 }
 
-func (s *Server) readAuditLog(offset uint64, count uint32) []byte {
-	mailMgr := s.mgr.GetMailManager()
-	if mailMgr == nil {
-		return nil
-	}
-
-	auditLog := mailMgr.GetAuditLog()
-	if auditLog == nil {
-		return nil
-	}
-
-	// Try to read from current offset
-	logData, hasMore := auditLog.ReadFrom(int64(offset))
-	if hasMore && len(logData) > 0 {
-		// Return available data
-		end := min(int(count), len(logData))
-		return []byte(logData[:end])
-	}
-
-	// No data available at this offset, wait for new data
-	waitCh := auditLog.WaitForData()
-	<-waitCh
-
-	// Check again after new data arrived
-	logData, hasMore = auditLog.ReadFrom(int64(offset))
-	if hasMore && len(logData) > 0 {
-		end := min(int(count), len(logData))
-		return []byte(logData[:end])
-	}
-
-	return nil
-}
-
 func (s *Server) readFile(path string) string {
 	// Handle beads paths
 	if strings.HasPrefix(path, "/beads/") {
@@ -1115,18 +1071,6 @@ func (s *Server) readFile(path string) string {
 
 	if path == "/events" {
 		return string(s.events.Read())
-	}
-
-	if path == "/audit" {
-		mailMgr := s.mgr.GetMailManager()
-		if mailMgr == nil {
-			return ""
-		}
-		auditLog := mailMgr.GetAuditLog()
-		if auditLog == nil {
-			return ""
-		}
-		return auditLog.Read()
 	}
 
 	if path == "/status" {

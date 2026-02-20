@@ -37,7 +37,7 @@ agent/beads/
     ├── dependencies-meta  # Dependencies with metadata (JSON)
     ├── dependents-meta    # Dependents with metadata (JSON)
     ├── tree               # Dependency tree (JSON)
-    └── events             # Audit trail events (JSON)
+    └── events             # Event history (JSON)
 ```
 
 ## Control Commands
@@ -123,7 +123,7 @@ echo "complete bd-a1b2" | 9p write agent/beads/ctl
 # Read dependency tree
 9p read agent/beads/bd-a1b2/tree
 
-# Read audit trail
+# Read event history
 9p read agent/beads/bd-a1b2/events
 
 # Add dependency (parent blocks child)
@@ -208,7 +208,7 @@ anvilmcp exposes beads operations as MCP tools (calls `9p write agent/beads/ctl`
 - **Crash resilience** — Beads persist in Dolt database
 - **Resumability** — Agents pick up where others left off
 - **Dependency tracking** — Automatic blocking relationships
-- **Version control** — Full audit trail via Dolt
+- **Version control** — Full history via Dolt
 - **Git portability** — JSONL export syncs via git
 - **Scriptability** — Standard file operations
 - **Pure Go** — No Python dependency

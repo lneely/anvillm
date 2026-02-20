@@ -116,9 +116,6 @@ func setupUI() {
 			case 'a':
 				showAliasDialog()
 				return nil
-			case 'l':
-				showLogViewer()
-				return nil
 			case 'd':
 				showDaemonStatus()
 				return nil
@@ -583,63 +580,6 @@ func killSelectedSession() {
 		updateStatus(fmt.Sprintf("[green]Killed session %s", sess.ID[:8]))
 		refreshSessions()
 	}
-}
-
-func showLogViewer() {
-	// Read the centralized audit log
-	path := "audit"
-	logData, err := readLogFile(path)
-	if err != nil {
-		updateStatus(fmt.Sprintf("[red]Error reading audit log: %v", err))
-		return
-	}
-
-	logText := string(logData)
-	if logText == "" {
-		logText = "[gray]No audit log entries yet[-]"
-	}
-
-	textView := tview.NewTextView().
-		SetDynamicColors(true).
-		SetText(logText).
-		SetScrollable(true).
-		SetWordWrap(true)
-
-	textView.SetBorder(true).
-		SetTitle(" Audit Log ").
-		SetTitleAlign(tview.AlignLeft)
-
-	// Scroll to bottom
-	textView.ScrollToEnd()
-
-	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		switch event.Rune() {
-		case 'q':
-			pages.RemovePage("log")
-			return nil
-		case 'r':
-			// Refresh log
-			logData, err := readLogFile(path)
-			if err != nil {
-				updateStatus(fmt.Sprintf("[red]Error refreshing log: %v", err))
-				return nil
-			}
-			logText := string(logData)
-			if logText == "" {
-				logText = "[gray]No audit log entries yet[-]"
-			}
-			textView.SetText(logText)
-			textView.ScrollToEnd()
-			return nil
-		}
-		if event.Key() == tcell.KeyEscape {
-			pages.RemovePage("log")
-			return nil
-		}
-		return event
-	})
-
-	pages.AddPage("log", createModalDynamic(textView, 8, 25), true, true)
 }
 
 func showDaemonStatus() {

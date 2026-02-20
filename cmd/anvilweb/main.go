@@ -51,7 +51,6 @@ func main() {
 	http.Handle("/", http.FileServer(http.FS(staticFS)))
 	http.HandleFunc("/api/sessions", handleSessions)
 	http.HandleFunc("/api/session/", handleSession)
-	http.HandleFunc("/api/log", handleLogStream)
 	http.HandleFunc("/api/inbox", handleInbox)
 	http.HandleFunc("/api/inbox/count", handleInboxCount)
 	http.HandleFunc("/api/inbox/reply", handleInboxReply)
@@ -499,65 +498,6 @@ func updateSessionFile(w http.ResponseWriter, r *http.Request, id, file string) 
 	}
 
 	w.WriteHeader(http.StatusOK)
-}
-
-func handleLogStream(w http.ResponseWriter, r *http.Request) {
-	// Stream the centralized audit log
-	// Set headers for SSE
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
-	fs, err := connect()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	defer fs.Close()
-
-	// Open audit log file for streaming
-	fid, err := fs.Open("audit", plan9.OREAD)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer fid.Close()
-
-	// Flush immediately to establish connection
-	if flusher, ok := w.(http.Flusher); ok {
-		flusher.Flush()
-	}
-
-	// Stream log data
-	buf := make([]byte, 4096)
-	for {
-		n, err := fid.Read(buf)
-		if n > 0 {
-			// Escape data for SSE format - each line must be prefixed with "data: "
-			data := string(buf[:n])
-			lines := strings.Split(data, "\n")
-			for _, line := range lines {
-				if line != "" || len(lines) > 1 {
-					fmt.Fprintf(w, "data: %s\n", line)
-				}
-			}
-			fmt.Fprintf(w, "\n")
-			if flusher, ok := w.(http.Flusher); ok {
-				flusher.Flush()
-			}
-		}
-		if err != nil {
-			// Connection closed or error
-			break
-		}
-
-		// Check if client disconnected
-		select {
-		case <-r.Context().Done():
-			return
-		default:
-		}
-	}
 }
 
 type Message struct {
