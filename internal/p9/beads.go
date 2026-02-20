@@ -36,8 +36,28 @@ func (b *BeadsFS) Read(path string) ([]byte, error) {
 		return b.readList()
 	case len(parts) == 1 && parts[0] == "ready":
 		return b.readReady("")
+	case len(parts) == 1 && parts[0] == "stats":
+		return b.readStats()
+	case len(parts) == 1 && parts[0] == "blocked":
+		return b.readBlocked()
+	case len(parts) == 1 && parts[0] == "config":
+		return b.readAllConfig()
+	case len(parts) == 2 && parts[0] == "search":
+		return b.readSearch(parts[1])
+	case len(parts) == 2 && parts[0] == "by-ref":
+		return b.readByExternalRef(parts[1])
+	case len(parts) == 2 && parts[0] == "config":
+		return b.readConfig(parts[1])
+	case len(parts) == 2 && parts[0] == "batch":
+		return b.readBatch(parts[1])
+	case len(parts) == 2 && parts[0] == "label":
+		return b.readByLabel(parts[1])
 	case len(parts) == 2:
 		return b.readBeadProperty(parts[0], parts[1])
+	case len(parts) == 3 && parts[2] == "dependencies-meta":
+		return b.readDependenciesMeta(parts[1])
+	case len(parts) == 3 && parts[2] == "dependents-meta":
+		return b.readDependentsMeta(parts[1])
 	default:
 		return nil, fmt.Errorf("invalid path: %s", path)
 	}
@@ -89,6 +109,88 @@ func (b *BeadsFS) readReady(role string) ([]byte, error) {
 	return json.MarshalIndent(issues, "", "  ")
 }
 
+func (b *BeadsFS) readSearch(query string) ([]byte, error) {
+	issues, err := b.store.SearchIssues(b.ctx, query, bd.IssueFilter{})
+	if err != nil {
+		return nil, err
+	}
+	return json.MarshalIndent(issues, "", "  ")
+}
+
+func (b *BeadsFS) readByExternalRef(ref string) ([]byte, error) {
+	issue, err := b.store.GetIssueByExternalRef(b.ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	return json.MarshalIndent(issue, "", "  ")
+}
+
+func (b *BeadsFS) readConfig(key string) ([]byte, error) {
+	value, err := b.store.GetConfig(b.ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(value), nil
+}
+
+func (b *BeadsFS) readAllConfig() ([]byte, error) {
+	config, err := b.store.GetAllConfig(b.ctx)
+	if err != nil {
+		return nil, err
+	}
+	return json.MarshalIndent(config, "", "  ")
+}
+
+func (b *BeadsFS) readBatch(ids string) ([]byte, error) {
+	idList := strings.Split(ids, ",")
+	issues, err := b.store.GetIssuesByIDs(b.ctx, idList)
+	if err != nil {
+		return nil, err
+	}
+	return json.MarshalIndent(issues, "", "  ")
+}
+
+func (b *BeadsFS) readByLabel(label string) ([]byte, error) {
+	issues, err := b.store.GetIssuesByLabel(b.ctx, label)
+	if err != nil {
+		return nil, err
+	}
+	return json.MarshalIndent(issues, "", "  ")
+}
+
+func (b *BeadsFS) readBlocked() ([]byte, error) {
+	filter := bd.WorkFilter{}
+	blocked, err := b.store.GetBlockedIssues(b.ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	return json.MarshalIndent(blocked, "", "  ")
+}
+
+func (b *BeadsFS) readDependenciesMeta(beadID string) ([]byte, error) {
+	deps, err := b.store.GetDependenciesWithMetadata(b.ctx, beadID)
+	if err != nil {
+		return nil, err
+	}
+	return json.MarshalIndent(deps, "", "  ")
+}
+
+func (b *BeadsFS) readDependentsMeta(beadID string) ([]byte, error) {
+	deps, err := b.store.GetDependentsWithMetadata(b.ctx, beadID)
+	if err != nil {
+		return nil, err
+	}
+	return json.MarshalIndent(deps, "", "  ")
+}
+
+func (b *BeadsFS) readStats() ([]byte, error) {
+	stats, err := b.store.GetStatistics(b.ctx)
+	if err != nil {
+		return nil, err
+	}
+	return json.MarshalIndent(stats, "", "  ")
+}
+
 func (b *BeadsFS) readBeadProperty(beadID, property string) ([]byte, error) {
 	issue, err := b.store.GetIssue(b.ctx, beadID)
 	if err != nil {
@@ -114,6 +216,36 @@ func (b *BeadsFS) readBeadProperty(beadID, property string) ([]byte, error) {
 			result.Blockers = blockers
 		}
 		return json.MarshalIndent(result, "", "  ")
+	case "comments":
+		comments, err := b.store.GetIssueComments(b.ctx, beadID)
+		if err != nil {
+			return nil, err
+		}
+		return json.MarshalIndent(comments, "", "  ")
+	case "labels":
+		labels, err := b.store.GetLabels(b.ctx, beadID)
+		if err != nil {
+			return nil, err
+		}
+		return json.MarshalIndent(labels, "", "  ")
+	case "dependents":
+		dependents, err := b.store.GetDependents(b.ctx, beadID)
+		if err != nil {
+			return nil, err
+		}
+		return json.MarshalIndent(dependents, "", "  ")
+	case "tree":
+		tree, err := b.store.GetDependencyTree(b.ctx, beadID, 10, false, false)
+		if err != nil {
+			return nil, err
+		}
+		return json.MarshalIndent(tree, "", "  ")
+	case "events":
+		events, err := b.store.GetEvents(b.ctx, beadID, 100)
+		if err != nil {
+			return nil, err
+		}
+		return json.MarshalIndent(events, "", "  ")
 	default:
 		return nil, fmt.Errorf("unknown property: %s", property)
 	}
@@ -232,6 +364,35 @@ func (b *BeadsFS) executeCtl(cmd string, sessionID string) error {
 			return fmt.Errorf("usage: delete <bead-id>")
 		}
 		return b.store.DeleteIssue(b.ctx, args[0])
+
+	case "comment":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: comment <bead-id> 'text'")
+		}
+		_, err := b.store.AddIssueComment(b.ctx, args[0], actor, args[1])
+		return err
+
+	case "label":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: label <bead-id> 'label'")
+		}
+		return b.store.AddLabel(b.ctx, args[0], args[1], actor)
+
+	case "unlabel":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: unlabel <bead-id> 'label'")
+		}
+		return b.store.RemoveLabel(b.ctx, args[0], args[1], actor)
+
+	case "batch-create":
+		if len(args) < 1 {
+			return fmt.Errorf("usage: batch-create <json-array>")
+		}
+		var issues []*bd.Issue
+		if err := json.Unmarshal([]byte(args[0]), &issues); err != nil {
+			return fmt.Errorf("invalid JSON: %w", err)
+		}
+		return b.store.CreateIssues(b.ctx, issues, actor)
 		
 	default:
 		return fmt.Errorf("unknown command: %s (supported: init, new, update, delete, claim, complete, fail, dep, undep)", command)
