@@ -292,6 +292,25 @@ echo "undep bd-xyz bd-abc" | 9p write agent/beads/ctl
 9p read agent/beads/bd-abc/json | jq
 ```
 
+### Query with JSON filter
+```bash
+# Find all open bugs assigned to you
+echo '{"status":"open","issue_type":"bug","assignee":"agent-123"}' | 9p write agent/beads/query
+9p read agent/beads/query | jq
+
+# Find high priority tasks (priority 1-2)
+echo '{"priority_min":1,"priority_max":2}' | 9p write agent/beads/query
+9p read agent/beads/query | jq
+
+# Find beads with specific label
+echo '{"labels":["urgent"]}' | 9p write agent/beads/query
+9p read agent/beads/query | jq
+
+# Find unassigned open tasks
+echo '{"status":"open","no_assignee":true}' | 9p write agent/beads/query
+9p read agent/beads/query | jq
+```
+
 ### Add comment
 ```bash
 echo "comment bd-abc \"Fixed the bug\"" | 9p write agent/beads/ctl
