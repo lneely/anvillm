@@ -5,17 +5,6 @@ description: Manage tasks using the beads 9P interface. Use when creating, updat
 
 # Beads Task System
 
-## Table of Contents
-- [Purpose](#purpose)
-- [When to Use](#when-to-use)
-- [Atomic Operations](#atomic-operations)
-- [Dependency-Aware Workflow](#dependency-aware-workflow)
-- [JSON Output](#json-output-for-programmatic-use)
-- [Persistence](#persistence-and-session-lifecycle)
-- [Anti-Patterns](#anti-patterns-and-warnings)
-- [Quick Reference](#quick-command-reference)
-- [Complete Example](#complete-workflow-example)
-
 ## Purpose
 
 Beads is a hierarchical task tracking system accessed via 9P. Use it to track work items, their status, and dependencies. All operations persist immediately to a Dolt database, providing crash resilience and resumability.
