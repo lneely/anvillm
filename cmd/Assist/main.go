@@ -373,9 +373,22 @@ func controlSession(id, cmd string) error {
 	return err
 }
 
+func isBeadID(text string) bool {
+	// Match bead ID pattern: prefix-xxx or prefix-xxx.yyy (hierarchical)
+	// Common prefixes: bd, task, bug, etc.
+	matched, _ := regexp.MatchString(`^[a-zA-Z]+-[a-z0-9]+(\.[0-9]+)*$`, text)
+	return matched
+}
+
 func sendPrompt(id, prompt string) error {
 	if !isConnected() {
 		return fmt.Errorf("not connected to anvilsrv")
+	}
+
+	// Check if prompt is a bead ID and construct execution prompt
+	trimmedPrompt := strings.TrimSpace(prompt)
+	if isBeadID(trimmedPrompt) {
+		prompt = fmt.Sprintf("Load the beads skill, and work on bead %s.", trimmedPrompt)
 	}
 
 	// Create message JSON
@@ -1476,8 +1489,8 @@ func openNewBeadWindow(parentID string) error {
 	w.Write("tag", []byte("Put "))
 
 	template := `---
-title: 
-blockers: 
+title:
+blockers:
 ---
 `
 	w.Write("body", []byte(template))
