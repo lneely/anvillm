@@ -157,12 +157,6 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		}
 		return b.store.ClaimBead(args[0], actor)
 		
-	case "revoke":
-		if len(args) < 1 {
-			return fmt.Errorf("usage: revoke <bead-id>")
-		}
-		return b.store.RevokeClaim(args[0], actor)
-		
 	case "complete", "close":
 		if len(args) < 1 {
 			return fmt.Errorf("usage: complete <bead-id>")
@@ -200,7 +194,7 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		return b.store.DeleteBead(args[0])
 		
 	default:
-		return fmt.Errorf("unknown command: %s (supported: init, new, update, delete, claim, revoke, complete, fail, dep, undep)", command)
+		return fmt.Errorf("unknown command: %s (supported: init, new, update, delete, claim, complete, fail, dep, undep)", command)
 	}
 }
 

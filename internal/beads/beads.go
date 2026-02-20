@@ -71,25 +71,6 @@ func (s *Store) ClaimBead(id, actor string) error {
 	return s.store.UpdateIssue(s.ctx, id, updates, actor)
 }
 
-// RevokeClaim revokes a claim on a bead.
-func (s *Store) RevokeClaim(id, actor string) error {
-	issue, err := s.GetBead(id)
-	if err != nil {
-		return fmt.Errorf("failed to get bead: %w", err)
-	}
-	if issue.Status == bd.StatusClosed {
-		return fmt.Errorf("cannot revoke claim on closed bead")
-	}
-	if issue.Assignee == "" {
-		return fmt.Errorf("bead has no assignee")
-	}
-	updates := map[string]interface{}{
-		"assignee": "",
-		"status":   bd.StatusOpen,
-	}
-	return s.store.UpdateIssue(s.ctx, id, updates, actor)
-}
-
 // CompleteBead completes a bead.
 func (s *Store) CompleteBead(id, actor string) error {
 	return s.store.CloseIssue(s.ctx, id, "completed", actor, "")
