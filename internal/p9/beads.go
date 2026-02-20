@@ -1,22 +1,25 @@
 package p9
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
-	"anvillm/internal/beads"
+	bd "github.com/steveyegge/beads"
 )
 
 // BeadsFS handles beads filesystem operations.
 type BeadsFS struct {
-	store *beads.Store
+	store bd.Storage
+	ctx   context.Context
 }
 
 // NewBeadsFS creates a beads filesystem handler from an existing store.
-func NewBeadsFS(store *beads.Store) *BeadsFS {
-	return &BeadsFS{store: store}
+func NewBeadsFS(store bd.Storage, ctx context.Context) *BeadsFS {
+	return &BeadsFS{store: store, ctx: ctx}
 }
 
 // Close is a no-op since the store is managed externally.
@@ -52,7 +55,7 @@ func (b *BeadsFS) Write(path string, data []byte, sessionID string) error {
 }
 
 func (b *BeadsFS) readList() ([]byte, error) {
-	issues, err := b.store.ListBeads(beads.IssueFilter{})
+	issues, err := b.store.SearchIssues(b.ctx, "", bd.IssueFilter{})
 	if err != nil {
 		return nil, err
 	}
@@ -63,13 +66,13 @@ func (b *BeadsFS) readList() ([]byte, error) {
 
 	// Enrich with blockers
 	type BeadWithBlockers struct {
-		*beads.Issue
+		*bd.Issue
 		Blockers []string `json:"blockers,omitempty"`
 	}
 	result := make([]BeadWithBlockers, len(issues))
 	for i, issue := range issues {
 		result[i].Issue = issue
-		if blockers, err := b.store.GetBlockers(issue.ID); err == nil && len(blockers) > 0 {
+		if blockers, err := b.getBlockers(issue.ID); err == nil && len(blockers) > 0 {
 			result[i].Blockers = blockers
 		}
 	}
@@ -78,7 +81,8 @@ func (b *BeadsFS) readList() ([]byte, error) {
 }
 
 func (b *BeadsFS) readReady(role string) ([]byte, error) {
-	issues, err := b.store.ReadyBeads(role)
+	filter := bd.WorkFilter{}
+	issues, err := b.store.GetReadyWork(b.ctx, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +90,7 @@ func (b *BeadsFS) readReady(role string) ([]byte, error) {
 }
 
 func (b *BeadsFS) readBeadProperty(beadID, property string) ([]byte, error) {
-	issue, err := b.store.GetBead(beadID)
+	issue, err := b.store.GetIssue(b.ctx, beadID)
 	if err != nil {
 		return nil, err
 	}
@@ -102,17 +106,31 @@ func (b *BeadsFS) readBeadProperty(beadID, property string) ([]byte, error) {
 		return []byte(issue.Assignee), nil
 	case "json":
 		type BeadWithBlockers struct {
-			*beads.Issue
+			*bd.Issue
 			Blockers []string `json:"blockers,omitempty"`
 		}
 		result := BeadWithBlockers{Issue: issue}
-		if blockers, err := b.store.GetBlockers(beadID); err == nil {
+		if blockers, err := b.getBlockers(beadID); err == nil {
 			result.Blockers = blockers
 		}
 		return json.MarshalIndent(result, "", "  ")
 	default:
 		return nil, fmt.Errorf("unknown property: %s", property)
 	}
+}
+
+func (b *BeadsFS) getBlockers(id string) ([]string, error) {
+	deps, err := b.store.GetDependencies(b.ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	var blockers []string
+	for _, dep := range deps {
+		if dep.Status != bd.StatusClosed {
+			blockers = append(blockers, dep.ID)
+		}
+	}
+	return blockers, nil
 }
 
 func (b *BeadsFS) executeCtl(cmd string, sessionID string) error {
@@ -132,7 +150,7 @@ func (b *BeadsFS) executeCtl(cmd string, sessionID string) error {
 		if len(args) > 0 {
 			prefix = args[0]
 		}
-		return b.store.Init(prefix)
+		return b.store.SetConfig(b.ctx, "issue_prefix", prefix)
 		
 	case "new", "create":
 		if len(args) < 1 {
@@ -147,58 +165,133 @@ func (b *BeadsFS) executeCtl(cmd string, sessionID string) error {
 		if len(args) > 2 {
 			parentID = args[2]
 		}
+		
 		if parentID != "" {
-			_, err = b.store.CreateSubtask(parentID, title, description, actor)
-		} else {
-			_, err = b.store.CreateBead(title, "", description, actor)
+			return b.createSubtask(parentID, title, description, actor)
 		}
-		return err
+		
+		issue := &bd.Issue{
+			Title:       title,
+			Description: description,
+			Status:      bd.StatusOpen,
+			IssueType:   bd.TypeTask,
+			Priority:    2,
+		}
+		return b.store.CreateIssue(b.ctx, issue, actor)
 		
 	case "claim":
 		if len(args) < 1 {
 			return fmt.Errorf("usage: claim <bead-id>")
 		}
-		return b.store.ClaimBead(args[0], actor)
+		updates := map[string]interface{}{
+			"assignee": actor,
+			"status":   bd.StatusInProgress,
+		}
+		return b.store.UpdateIssue(b.ctx, args[0], updates, actor)
 		
 	case "complete", "close":
 		if len(args) < 1 {
 			return fmt.Errorf("usage: complete <bead-id>")
 		}
-		return b.store.CompleteBead(args[0], actor)
+		return b.store.CloseIssue(b.ctx, args[0], "completed", actor, "")
 		
 	case "fail":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: fail <bead-id> 'reason'")
 		}
-		return b.store.FailBead(args[0], args[1], actor)
+		return b.store.CloseIssue(b.ctx, args[0], args[1], actor, "")
 		
 	case "dep", "add-dep":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: dep <child-id> <parent-id>")
 		}
-		return b.store.AddDependency(args[0], args[1], actor)
+		dep := &bd.Dependency{
+			IssueID:     args[0],
+			DependsOnID: args[1],
+			Type:        bd.DepBlocks,
+		}
+		return b.store.AddDependency(b.ctx, dep, actor)
 
 	case "undep", "rm-dep":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: undep <child-id> <parent-id>")
 		}
-		return b.store.RemoveDependency(args[0], args[1], actor)
+		return b.store.RemoveDependency(b.ctx, args[0], args[1], actor)
 
 	case "update":
 		if len(args) < 3 {
 			return fmt.Errorf("usage: update <bead-id> <field> 'value'")
 		}
-		return b.store.UpdateBead(args[0], args[1], args[2], actor)
+		updates := map[string]interface{}{
+			args[1]: args[2],
+		}
+		return b.store.UpdateIssue(b.ctx, args[0], updates, actor)
 
 	case "delete", "rm":
 		if len(args) < 1 {
 			return fmt.Errorf("usage: delete <bead-id>")
 		}
-		return b.store.DeleteBead(args[0])
+		return b.store.DeleteIssue(b.ctx, args[0])
 		
 	default:
 		return fmt.Errorf("unknown command: %s (supported: init, new, update, delete, claim, complete, fail, dep, undep)", command)
 	}
+}
+
+func (b *BeadsFS) createSubtask(parentID, title, description, actor string) error {
+	// Verify parent exists
+	parent, err := b.store.GetIssue(b.ctx, parentID)
+	if err != nil {
+		return fmt.Errorf("failed to get parent: %w", err)
+	}
+	if parent == nil {
+		return fmt.Errorf("parent %s not found", parentID)
+	}
+
+	// Find next child number by scanning existing IDs
+	nextChild := 1
+	issues, err := b.store.SearchIssues(b.ctx, "", bd.IssueFilter{})
+	if err == nil {
+		prefix := parentID + "."
+		for _, issue := range issues {
+			if strings.HasPrefix(issue.ID, prefix) {
+				suffix := strings.TrimPrefix(issue.ID, prefix)
+				if !strings.Contains(suffix, ".") {
+					if n, err := strconv.Atoi(suffix); err == nil && n >= nextChild {
+						nextChild = n + 1
+					}
+				}
+			}
+		}
+	}
+
+	childID := fmt.Sprintf("%s.%d", parentID, nextChild)
+
+	issue := &bd.Issue{
+		ID:          childID,
+		Title:       title,
+		Description: description,
+		Status:      bd.StatusOpen,
+		IssueType:   bd.TypeTask,
+		Priority:    2,
+	}
+
+	if err := b.store.CreateIssue(b.ctx, issue, actor); err != nil {
+		return err
+	}
+
+	// Add parent-child dependency (parent is blocked by child)
+	dep := &bd.Dependency{
+		IssueID:     parentID,
+		DependsOnID: childID,
+		Type:        bd.DepParentChild,
+	}
+	if err := b.store.AddDependency(b.ctx, dep, actor); err != nil {
+		// Issue created but dep failed - not fatal
+		return nil
+	}
+
+	return nil
 }
 
 func parseCtlCommand(cmd string) (string, []string, error) {

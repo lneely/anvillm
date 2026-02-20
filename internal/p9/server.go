@@ -4,7 +4,6 @@ package p9
 import (
 	"anvillm/internal/backend"
 	"anvillm/internal/backend/tmux"
-	"anvillm/internal/beads"
 	"anvillm/internal/events"
 	"anvillm/internal/mailbox"
 	"anvillm/internal/session"
@@ -22,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	bd "github.com/steveyegge/beads"
 
 	"9fans.net/go/plan9"
 	"9fans.net/go/plan9/client"
@@ -134,7 +134,7 @@ type fid struct {
 }
 
 // NewServer creates and starts the 9P server.
-func NewServer(mgr *session.Manager, beadsStore *beads.Store) (*Server, error) {
+func NewServer(mgr *session.Manager, beadsStore bd.Storage) (*Server, error) {
 	ns := client.Namespace()
 	if ns == "" {
 		return nil, fmt.Errorf("no namespace")
@@ -160,7 +160,7 @@ func NewServer(mgr *session.Manager, beadsStore *beads.Store) (*Server, error) {
 	// Create BeadsFS (shared across all namespaces)
 	var beadsFS *BeadsFS
 	if beadsStore != nil {
-		beadsFS = NewBeadsFS(beadsStore)
+		beadsFS = NewBeadsFS(beadsStore, context.Background())
 	}
 
 	s := &Server{

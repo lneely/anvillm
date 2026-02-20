@@ -5,7 +5,6 @@ import (
 	"anvillm/internal/backend"
 	"anvillm/internal/backend/tmux"
 	"anvillm/internal/backends"
-	"anvillm/internal/beads"
 	"anvillm/internal/p9"
 	"anvillm/internal/session"
 	"context"
@@ -20,6 +19,7 @@ import (
 	"time"
 
 	"9fans.net/go/plan9/client"
+	bd "github.com/steveyegge/beads"
 )
 
 func getPidFilePath() string {
@@ -188,7 +188,7 @@ func start(daemonize bool) {
 	if beadsDir == "" {
 		beadsDir = filepath.Join(os.Getenv("HOME"), ".beads")
 	}
-	beadsStore, err := beads.NewStore(context.Background(), beadsDir)
+	beadsStore, err := bd.OpenFromConfig(context.Background(), beadsDir)
 	if err != nil {
 		log.Printf("Warning: failed to initialize beads store: %v", err)
 		beadsStore = nil // Continue without beads support
