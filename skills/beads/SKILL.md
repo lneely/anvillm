@@ -5,6 +5,17 @@ description: Manage tasks using the beads 9P interface. Use when creating, updat
 
 # Beads Task System
 
+## Table of Contents
+- [Purpose](#purpose)
+- [When to Use](#when-to-use)
+- [Atomic Operations](#atomic-operations)
+- [Dependency-Aware Workflow](#dependency-aware-workflow)
+- [JSON Output](#json-output-for-programmatic-use)
+- [Persistence](#persistence-and-session-lifecycle)
+- [Anti-Patterns](#anti-patterns-and-warnings)
+- [Quick Reference](#quick-command-reference)
+- [Complete Example](#complete-workflow-example)
+
 ## Purpose
 
 Beads is a hierarchical task tracking system accessed via 9P. Use it to track work items, their status, and dependencies. All operations persist immediately to a Dolt database, providing crash resilience and resumability.
@@ -110,15 +121,29 @@ Read the blockers field to see what's blocking a bead:
 
 ## JSON Output for Programmatic Use
 
-All read endpoints return JSON for easy parsing:
+All read endpoints return JSON for easy parsing.
 
 ### Available Endpoints
+
+**List Operations:**
 - `agent/beads/list` - All beads
 - `agent/beads/ready` - Beads with no blockers
 - `agent/beads/blocked` - Beads that have blockers
 - `agent/beads/stale` - Beads 30+ days old
 - `agent/beads/stats` - Statistics (counts by status)
+
+**Query Operations:**
+- `agent/beads/query` - Query beads (write SQL to this endpoint)
+- `agent/beads/search/<term>` - Search beads by term
+- `agent/beads/by-ref/<ref>` - Find bead by external reference
+- `agent/beads/label/<label>` - Beads with specific label
+- `agent/beads/children/<id>` - Child beads of parent
+
+**Bead Details:**
 - `agent/beads/<id>/json` - Single bead with full details
+- `agent/beads/<id>/events` - Event history
+- `agent/beads/<id>/dependencies-meta` - Dependencies with metadata
+- `agent/beads/<id>/dependents-meta` - Dependents with metadata
 
 ### Structured Fields
 Each bead JSON contains:
