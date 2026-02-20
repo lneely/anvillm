@@ -7,14 +7,17 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	bd "github.com/steveyegge/beads"
 )
 
 // BeadsFS handles beads filesystem operations.
 type BeadsFS struct {
-	store bd.Storage
-	ctx   context.Context
+	store       bd.Storage
+	ctx         context.Context
+	lastQuery   *bd.IssueFilter
+	queryResult []*bd.Issue
 }
 
 // NewBeadsFS creates a beads filesystem handler from an existing store.
@@ -40,6 +43,10 @@ func (b *BeadsFS) Read(path string) ([]byte, error) {
 		return b.readStats()
 	case len(parts) == 1 && parts[0] == "blocked":
 		return b.readBlocked()
+	case len(parts) == 1 && parts[0] == "stale":
+		return b.readStale()
+	case len(parts) == 1 && parts[0] == "query":
+		return b.readQuery()
 	case len(parts) == 1 && parts[0] == "config":
 		return b.readAllConfig()
 	case len(parts) == 2 && parts[0] == "search":
@@ -52,6 +59,8 @@ func (b *BeadsFS) Read(path string) ([]byte, error) {
 		return b.readBatch(parts[1])
 	case len(parts) == 2 && parts[0] == "label":
 		return b.readByLabel(parts[1])
+	case len(parts) == 2 && parts[0] == "children":
+		return b.readChildren(parts[1])
 	case len(parts) == 2:
 		return b.readBeadProperty(parts[0], parts[1])
 	case len(parts) == 3 && parts[2] == "dependencies-meta":
@@ -66,6 +75,10 @@ func (b *BeadsFS) Read(path string) ([]byte, error) {
 // Write handles writes to beads filesystem.
 func (b *BeadsFS) Write(path string, data []byte, sessionID string) error {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
+	
+	if len(parts) == 1 && parts[0] == "query" {
+		return b.executeQuery(data)
+	}
 	
 	if len(parts) != 1 || parts[0] != "ctl" {
 		return fmt.Errorf("write not allowed: %s", path)
@@ -181,6 +194,58 @@ func (b *BeadsFS) readDependentsMeta(beadID string) ([]byte, error) {
 		return nil, err
 	}
 	return json.MarshalIndent(deps, "", "  ")
+}
+
+func (b *BeadsFS) readChildren(parentID string) ([]byte, error) {
+	filter := bd.IssueFilter{ParentID: &parentID}
+	children, err := b.store.SearchIssues(b.ctx, "", filter)
+	if err != nil {
+		return nil, err
+	}
+	return json.MarshalIndent(children, "", "  ")
+}
+
+func (b *BeadsFS) readStale() ([]byte, error) {
+	// Get all non-closed issues
+	filter := bd.IssueFilter{}
+	issues, err := b.store.SearchIssues(b.ctx, "", filter)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Filter to stale issues (not updated in 30+ days, status open or in_progress)
+	cutoff := time.Now().AddDate(0, 0, -30)
+	var stale []*bd.Issue
+	for _, issue := range issues {
+		if issue.Status != bd.StatusClosed && issue.UpdatedAt.Before(cutoff) {
+			stale = append(stale, issue)
+		}
+	}
+	
+	return json.MarshalIndent(stale, "", "  ")
+}
+
+func (b *BeadsFS) executeQuery(data []byte) error {
+	var filter bd.IssueFilter
+	if err := json.Unmarshal(data, &filter); err != nil {
+		return fmt.Errorf("invalid JSON filter: %w", err)
+	}
+	
+	issues, err := b.store.SearchIssues(b.ctx, "", filter)
+	if err != nil {
+		return err
+	}
+	
+	b.lastQuery = &filter
+	b.queryResult = issues
+	return nil
+}
+
+func (b *BeadsFS) readQuery() ([]byte, error) {
+	if b.queryResult == nil {
+		return json.MarshalIndent([]*bd.Issue{}, "", "  ")
+	}
+	return json.MarshalIndent(b.queryResult, "", "  ")
 }
 
 func (b *BeadsFS) readStats() ([]byte, error) {
