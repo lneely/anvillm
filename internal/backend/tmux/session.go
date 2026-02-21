@@ -50,6 +50,7 @@ type Session struct {
 	readerGeneration int  // Incremented on each restart to prevent old readers from updating state
 	intentionallyStopped bool // True if user explicitly stopped the session (prevents auto-restart)
 	lastRestartAttempt time.Time // Last time auto-restart was attempted (prevents spam)
+	hadCrash bool // True if session has crashed at least once (enables resume on restart)
 	
 	// State machine
 	idleCond *sync.Cond  // Signals when state transitions to idle
@@ -648,7 +649,20 @@ func (s *Session) Restart(ctx context.Context) error {
 	backendCommand := s.backendCommand
 	role := s.role
 	tasks := s.tasks
+	hadCrash := s.hadCrash
 	s.mu.Unlock()
+	
+	// Add resume flag if this is a crash restart
+	if hadCrash {
+		switch backendName {
+		case "kiro-cli":
+			backendCommand = append(backendCommand, "-r")
+			debug.Log("[session %s] restart: adding -r flag for kiro-cli resume", s.id)
+		case "claude":
+			backendCommand = append(backendCommand, "-c")
+			debug.Log("[session %s] restart: adding -c flag for claude continue", s.id)
+		}
+	}
 
 	// Reload sandbox config from YAML (picks up any changes)
 	baseCfg, err := sandbox.Load()
@@ -878,6 +892,9 @@ func (s *Session) Refresh(ctx context.Context) error {
 		if err := syscall.Kill(s.pid, 0); err != nil {
 			// Process is not running - this is an unexpected crash
 			debug.Log("[session %s] refresh: PID %d not running (unexpected crash)", s.id, s.pid)
+			
+			// Mark that we had a crash (enables resume on restart)
+			s.hadCrash = true
 			
 			// Check if this was an intentional stop
 			if s.intentionallyStopped {
