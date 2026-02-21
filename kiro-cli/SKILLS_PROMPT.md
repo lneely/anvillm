@@ -12,11 +12,17 @@ Before responding to any request, evaluate if you need specialized tools or know
 
 ## When to Load Skills
 
-Load skills proactively based on the user's request:
+Always check if a skill exists for the operation you're about to perform:
 
-- **Agent communication** → load `anvillm-communication` skill
-- **Multi-agent workflows** → load `anvillm-communication` skill
-- **Mailbox operations** → load `anvillm-communication` skill
+1. Run `anvillm-skills list` to see available skills
+2. If a skill matches the domain (beads, communication, GitHub, etc.), load it first
+3. Follow the skill's guidance for the operation
+
+Common patterns:
+- Bead/task management operations → `beads` skill
+- Agent communication/mailbox → `anvillm-communication` skill
+- GitHub operations → `github-cli` skill
+- Web development with browser → `web-dev-browser-screencapture` skill
 
 ## Commands
 

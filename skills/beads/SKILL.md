@@ -24,7 +24,8 @@ Beads emphasizes atomic, single-purpose operations via the 9P control file:
 ### Claiming Work
 ```bash
 # Atomically sets assignee and status to in_progress
-echo "claim bd-abc" | 9p write agent/beads/ctl
+# MUST pass your agent ID (available as $AGENT_ID)
+echo "claim bd-abc $AGENT_ID" | 9p write agent/beads/ctl
 ```
 
 ### Completing Work
@@ -103,7 +104,7 @@ Read the blockers field to see what's blocking a bead:
 
 ### Recommended Workflow
 1. Check ready work: `9p read agent/beads/ready`
-2. Claim an unblocked bead: `echo "claim bd-xyz" | 9p write agent/beads/ctl`
+2. Claim an unblocked bead: `echo "claim bd-xyz $AGENT_ID" | 9p write agent/beads/ctl`
 3. Do the work
 4. Complete it: `echo "complete bd-xyz" | 9p write agent/beads/ctl`
 5. Completing a bead unblocks its dependents
@@ -189,7 +190,7 @@ All operations immediately persist to the database. Agents can resume work after
 
 2. **Claim**: Atomically claim a bead
    ```bash
-   echo "claim bd-abc" | 9p write agent/beads/ctl
+   echo "claim bd-abc $AGENT_ID" | 9p write agent/beads/ctl
    ```
 
 3. **Work**: Perform the task
@@ -233,7 +234,7 @@ View the event history for a bead:
 
 ### ❌ NEVER leave tasks unclaimed while working
 **Why**: Other agents may claim the same work, causing conflicts.
-**Instead**: Always `echo "claim bd-xxx" | 9p write agent/beads/ctl` before starting.
+**Instead**: Always `echo "claim bd-xxx $AGENT_ID" | 9p write agent/beads/ctl` before starting.
 
 ## Quick Command Reference
 
@@ -254,7 +255,7 @@ echo "new \"Design API\" \"Define interfaces\" bd-abc" | 9p write agent/beads/ct
 
 ### Claim bead
 ```bash
-echo "claim bd-abc" | 9p write agent/beads/ctl
+echo "claim bd-abc $AGENT_ID" | 9p write agent/beads/ctl
 ```
 
 ### Complete bead
@@ -348,7 +349,7 @@ echo "unlabel bd-abc bug" | 9p write agent/beads/ctl
 9p read agent/beads/ready | jq
 
 # Claim a bead
-echo "claim bd-abc" | 9p write agent/beads/ctl
+echo "claim bd-abc $AGENT_ID" | 9p write agent/beads/ctl
 
 # Verify claim
 9p read agent/beads/bd-abc/json | jq '.status, .assignee'

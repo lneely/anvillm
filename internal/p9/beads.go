@@ -84,7 +84,7 @@ func (b *BeadsFS) Write(path string, data []byte, sessionID string) error {
 		return fmt.Errorf("write not allowed: %s", path)
 	}
 	
-	return b.executeCtl(string(data), sessionID)
+	return b.executeCtl(string(data))
 }
 
 func (b *BeadsFS) readList() ([]byte, error) {
@@ -330,16 +330,13 @@ func (b *BeadsFS) getBlockers(id string) ([]string, error) {
 	return blockers, nil
 }
 
-func (b *BeadsFS) executeCtl(cmd string, sessionID string) error {
+func (b *BeadsFS) executeCtl(cmd string) error {
 	command, args, err := parseCtlCommand(cmd)
 	if err != nil {
 		return err
 	}
 	
-	actor := sessionID
-	if actor == "" {
-		actor = "system"
-	}
+	actor := "user"
 	
 	switch command {
 	case "init":
@@ -378,10 +375,14 @@ func (b *BeadsFS) executeCtl(cmd string, sessionID string) error {
 		
 	case "claim":
 		if len(args) < 1 {
-			return fmt.Errorf("usage: claim <bead-id>")
+			return fmt.Errorf("usage: claim <bead-id> [assignee]")
+		}
+		assignee := "user"
+		if len(args) > 1 {
+			assignee = args[1]
 		}
 		updates := map[string]interface{}{
-			"assignee": actor,
+			"assignee": assignee,
 			"status":   bd.StatusInProgress,
 		}
 		return b.store.UpdateIssue(b.ctx, args[0], updates, actor)
