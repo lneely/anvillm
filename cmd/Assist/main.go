@@ -1464,10 +1464,11 @@ func refreshTasksWindowWithBeads(w *acme.Win, beads []Bead) {
 		buf.WriteString(fmt.Sprintf("%-4d %-12s %-12s %-4s %-8s %s\n", i+1, b.ID, b.Status, blk, assignee, b.Title))
 	}
 
+	w.Addr(",")
 	w.Write("data", []byte(buf.String()))
+	w.Ctl("clean")
 	w.Addr("0")
 	w.Ctl("dot=addr")
-	w.Ctl("clean")
 	w.Ctl("show")
 }
 
