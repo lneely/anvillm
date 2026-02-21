@@ -4,9 +4,9 @@
 
 ## Architecture
 
-**Core:** anvilsrv (9P daemon), anvilmcp (MCP server)  
-**Clients:** Assist (Acme), anvillm.el (Emacs), anvillm (TUI), anvilweb (web)  
-**Benefits:** Shared sessions, crash-resilient, scriptable via 9P, service integration, MCP support
+**Core:** anvilsrv (9P daemon), anvilmcp (MCP server)
+**Clients:** Assist (Acme), anvillm.el (Emacs), anvillm (TUI), anvilweb (web)
+**Benefits:** Shared sessions, crash-resilient, scriptable via 9P, service integration, MCP support, **cross-backend agent communication**
 
 ## Why 9P?
 
@@ -213,6 +213,8 @@ echo '{"to":"'$ID'","type":"PROMPT_REQUEST","subject":"User prompt","body":"Hell
 See `SECURITY.md`
 
 ## Workflows
+
+**Multi-Agent Communication:** Agents can communicate with each other **regardless of backend** (Claude, Kiro, etc.) via the built-in mailbox system. The `anvillm-communication` skill provides a convenient interface for agent messaging, enabling heterogeneous multi-agent workflows where different specialists use different backends while collaborating seamlessly.
 
 **Skills:** `anvillm-skills list`, `anvillm-skills load anvillm-communication`
 
