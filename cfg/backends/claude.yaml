@@ -2,6 +2,7 @@
 filesystem:
   rw:
     - "{HOME}/.claude"
+    - "{HOME}/.mcp.json"
     - "{HOME}/.claude.json"
     - "{HOME}/.config/anvillm"
   rwx:

@@ -1,33 +1,19 @@
 #!/bin/bash
 
-# Target .mcp.json file in project root
-MCP_FILE=".mcp.json"
-
-# MCP configuration for anvilmcp
-MCP_CONFIG='{
-  "mcpServers": {
-    "anvilmcp": {
-      "type": "stdio",
-      "command": "anvilmcp",
-      "args": [],
-      "env": {}
-    }
-  }
-}'
-
-if ! command -v jq &> /dev/null; then
-    echo "Error: jq is required but not installed. Please install jq first." >&2
-    exit 1
+# Skip installation if claude command is not available
+if ! command -v claude &> /dev/null; then
+    echo "Skipping MCP server installation: 'claude' command not found in PATH"
+    exit 0
 fi
 
-if [ -f "$MCP_FILE" ]; then
-    # Merge with existing .mcp.json
-    jq -s '.[0] * .[1]' "$MCP_FILE" <(echo "$MCP_CONFIG") > "$MCP_FILE.tmp"
-    mv "$MCP_FILE.tmp" ~/"$MCP_FILE"
-else
-    # Create new .mcp.json file
-    echo "$MCP_CONFIG" | jq '.' > ~/"$MCP_FILE"
+# Check if anvilmcp is already installed
+if claude mcp get anvilmcp &> /dev/null; then
+    echo "AnviLLM MCP server already installed"
+    exit 0
 fi
+
+# Install anvilmcp MCP server using claude CLI (user scope)
+claude mcp add --scope user --transport stdio anvilmcp -- anvilmcp
 
 echo "AnviLLM MCP server configured in $MCP_FILE"
 echo ""
