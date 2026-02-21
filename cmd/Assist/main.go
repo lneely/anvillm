@@ -1385,7 +1385,8 @@ func handleTasksWindow(w *acme.Win) {
 	defer w.CloseFiles()
 
 	var beads []Bead
-	beads, _ = listBeads()
+	statusFilter := ""
+	beads, _ = listBeadsWithFilter(statusFilter)
 	refreshTasksWindowWithBeads(w, beads)
 
 	for e := range w.EventChan() {
@@ -1395,7 +1396,7 @@ func handleTasksWindow(w *acme.Win) {
 			arg := strings.TrimSpace(string(e.Arg))
 			switch cmd {
 			case "Get":
-				beads, _ = listBeads()
+				beads, _ = listBeadsWithFilter(statusFilter)
 				refreshTasksWindowWithBeads(w, beads)
 			case "New":
 				if err := openNewBeadWindow(""); err != nil {
@@ -1407,9 +1408,21 @@ func handleTasksWindow(w *acme.Win) {
 				} else if err := deleteBead(arg); err != nil {
 					fmt.Fprintf(os.Stderr, "Error deleting bead: %v\n", err)
 				} else {
-					beads, _ = listBeads()
+					beads, _ = listBeadsWithFilter(statusFilter)
 					refreshTasksWindowWithBeads(w, beads)
 				}
+			case "Open":
+				statusFilter = "open"
+				beads, _ = listBeadsWithFilter(statusFilter)
+				refreshTasksWindowWithBeads(w, beads)
+			case "InProgress":
+				statusFilter = "in_progress"
+				beads, _ = listBeadsWithFilter(statusFilter)
+				refreshTasksWindowWithBeads(w, beads)
+			case "Closed":
+				statusFilter = "closed"
+				beads, _ = listBeadsWithFilter(statusFilter)
+				refreshTasksWindowWithBeads(w, beads)
 			default:
 				w.WriteEvent(e)
 			}
@@ -1429,14 +1442,13 @@ func handleTasksWindow(w *acme.Win) {
 }
 
 func refreshTasksWindow(w *acme.Win) {
-	beads, _ := listBeads()
+	beads, _ := listBeadsWithFilter("")
 	refreshTasksWindowWithBeads(w, beads)
 }
 
 func refreshTasksWindowWithBeads(w *acme.Win, beads []Bead) {
 	var buf strings.Builder
-	buf.WriteString("Tasks\n")
-	buf.WriteString(strings.Repeat("=", 110) + "\n\n")
+	buf.WriteString("[Open] [InProgress] [Closed]\n\n")
 	buf.WriteString(fmt.Sprintf("%-4s %-12s %-12s %-4s %-8s %s\n", "#", "ID", "Status", "Blk", "Assignee", "Title"))
 	buf.WriteString(fmt.Sprintf("%-4s %-12s %-12s %-4s %-8s %s\n", "----", "------------", "------------", "----", "--------", strings.Repeat("-", 50)))
 
@@ -1452,12 +1464,15 @@ func refreshTasksWindowWithBeads(w *acme.Win, beads []Bead) {
 		buf.WriteString(fmt.Sprintf("%-4d %-12s %-12s %-4s %-8s %s\n", i+1, b.ID, b.Status, blk, assignee, b.Title))
 	}
 
-	w.Addr(",")
 	w.Write("data", []byte(buf.String()))
+	w.Addr("0")
+	w.Ctl("dot=addr")
+	w.Show()
 	w.Ctl("clean")
+
 }
 
-func listBeads() ([]Bead, error) {
+func listBeadsWithFilter(statusFilter string) ([]Bead, error) {
 	if !isConnected() {
 		return nil, fmt.Errorf("not connected to anvilsrv")
 	}
@@ -1472,7 +1487,26 @@ func listBeads() ([]Bead, error) {
 		return nil, err
 	}
 
-	return beads, nil
+	// Apply status filter
+	if statusFilter == "" {
+		// Default: filter out closed beads
+		var openBeads []Bead
+		for _, b := range beads {
+			if b.Status != "closed" {
+				openBeads = append(openBeads, b)
+			}
+		}
+		return openBeads, nil
+	}
+
+	// Filter by specific status
+	var filtered []Bead
+	for _, b := range beads {
+		if b.Status == statusFilter {
+			filtered = append(filtered, b)
+		}
+	}
+	return filtered, nil
 }
 
 func openNewBeadWindow(parentID string) error {
@@ -1572,7 +1606,7 @@ func createBeadFromMarkdown(content, parentID string) error {
 	// Add blockers if specified
 	if blockers != "" {
 		// Need to find the newly created bead ID
-		beads, err := listBeads()
+		beads, err := listBeadsWithFilter("")
 		if err != nil {
 			return nil // bead created, deps failed
 		}
