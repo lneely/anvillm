@@ -65,45 +65,17 @@
         
         #prompt-area { min-height: 100px; }
         .hidden { display: none; }
-        
-        #log-pane {
-            margin-top: 2rem;
-            border: 1px solid var(--pico-muted-border-color);
-            border-radius: 0.5rem;
-            overflow: hidden;
-        }
-        #log-header {
-            background: var(--pico-card-background-color);
-            padding: 0.75rem 1rem;
-            border-bottom: 1px solid var(--pico-muted-border-color);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        #log-header h3 {
-            margin: 0;
-            font-size: 1rem;
-        }
-        #log-content {
-            background: #000;
-            color: #fff;
-            font-family: 'Courier New', monospace;
-            font-size: 0.875rem;
-            padding: 1rem;
-            height: 400px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
-        #log-content:empty::before {
-            content: 'No log data yet...';
-            color: #666;
-        }
+
         th.sortable { cursor: pointer; user-select: none; }
-        th.sortable:hover { background: var(--pico-secondary-background); }
+        th.sortable:hover { background: rgba(0, 0, 0, 0.05); }
         th.sortable::after { content: ' ⇅'; opacity: 0.3; }
         th.sortable.asc::after { content: ' ↑'; opacity: 1; }
         th.sortable.desc::after { content: ' ↓'; opacity: 1; }
+
+        #work-on-content tr[data-bead-id].selected td {
+            background: #3b82f6 !important;
+            color: white !important;
+        }
         
         .inbox-btn {
             position: absolute;
@@ -139,11 +111,61 @@
         .inbox-badge.hidden {
             display: none;
         }
+        .tasks-btn {
+            position: absolute;
+            top: 50%;
+            right: 5rem;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            font-size: 2rem;
+            cursor: pointer;
+            padding: 0;
+            color: white;
+            line-height: 1;
+        }
+        .tasks-btn:hover {
+            opacity: 0.8;
+        }
+        .bead-status {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        .bead-status-open { background: #3b82f6; color: white; }
+        .bead-status-in_progress { background: #f97316; color: white; }
+        .bead-status-closed { background: #22c55e; color: white; }
+        .bead-status-failed { background: #ef4444; color: white; }
+        .daemon-status {
+            position: absolute;
+            top: 50%;
+            left: 10rem;
+            transform: translateY(-50%);
+            font-size: 0.875rem;
+            color: white;
+            opacity: 0.8;
+        }
+        .daemon-status-indicator {
+            display: inline-block;
+            width: 0.5rem;
+            height: 0.5rem;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+        .daemon-running { background: #22c55e; }
+        .daemon-stopped { background: #ef4444; }
     </style>
 </head>
 <body>
     <header>
         <h1><a href="#" onclick="showTab('sessions'); return false;" style="color: white; text-decoration: none;">AnviLLM</a></h1>
+        <div class="daemon-status">
+            <span class="daemon-status-indicator daemon-stopped" id="daemon-indicator"></span>
+            <span id="daemon-text">Checking...</span>
+        </div>
+        <button class="tasks-btn" onclick="showTab('tasks')" title="Tasks">☑</button>
         <button class="inbox-btn" onclick="showTab('inbox')" title="Inbox">
             <span class="inbox-badge hidden" id="inbox-badge"></span>
             ✉
@@ -167,6 +189,7 @@
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <h2>Inbox</h2>
                 <div>
+                    <button onclick="showTab('archive')">Archive</button>
                     <button onclick="loadInbox()" class="secondary">Refresh</button>
                     <button onclick="showTab('sessions')" class="secondary">Back</button>
                 </div>
@@ -174,12 +197,35 @@
             <div id="inbox-container" style="margin-top: 1rem;"></div>
         </section>
 
-        <section id="log-pane" class="hidden">
-            <div id="log-header">
-                <h3 id="log-title">Log</h3>
-                <button onclick="closeLogPane()" class="secondary" style="margin: 0;">Close</button>
+        <section id="archive-tab" class="hidden">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>Archive</h2>
+                <div>
+                    <button onclick="loadArchive()" class="secondary">Refresh</button>
+                    <button onclick="showTab('inbox')" class="secondary">Back to Inbox</button>
+                </div>
             </div>
-            <div id="log-content"></div>
+            <div id="archive-container" style="margin-top: 1rem;"></div>
+        </section>
+
+        <section id="tasks-tab" class="hidden">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>Tasks</h2>
+                <div>
+                    <button onclick="openNewBeadDialog()">New Task</button>
+                    <button onclick="loadBeads()" class="secondary">Refresh</button>
+                    <button onclick="showTab('sessions')" class="secondary">Back</button>
+                </div>
+            </div>
+            <div style="margin-top: 1rem; display: flex; gap: 0.5rem; align-items: center;">
+                <span>Filter:</span>
+                <button id="filter-open" onclick="setBeadFilter('open')" class="contrast">Open</button>
+                <button id="filter-in_progress" onclick="setBeadFilter('in_progress')" class="secondary">In Progress</button>
+                <button id="filter-closed" onclick="setBeadFilter('closed')" class="secondary">Closed</button>
+                <button id="filter-all" onclick="setBeadFilter('all')" class="secondary">All</button>
+            </div>
+            <input type="search" id="tasks-search-box" placeholder="Search tasks..." style="margin-top: 1rem;">
+            <div id="tasks-container" style="margin-top: 1rem;"></div>
         </section>
 
         <dialog id="new-session-dialog">
@@ -304,13 +350,64 @@
                 </footer>
             </article>
         </dialog>
+
+        <dialog id="new-bead-dialog">
+            <article>
+                <header>
+                    <button aria-label="Close" rel="prev" onclick="closeNewBeadDialog()"></button>
+                    <h3>New Task</h3>
+                </header>
+                <form id="new-bead-form">
+                    <label>
+                        Title
+                        <input type="text" name="title" required>
+                    </label>
+                    <label>
+                        Description
+                        <textarea name="description" rows="4"></textarea>
+                    </label>
+                    <footer style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                        <button type="submit">Create</button>
+                        <button type="button" onclick="closeNewBeadDialog()" class="secondary">Cancel</button>
+                    </footer>
+                </form>
+            </article>
+        </dialog>
+
+        <dialog id="bead-detail-dialog">
+            <article>
+                <header>
+                    <button aria-label="Close" rel="prev" onclick="closeBeadDetailDialog()"></button>
+                    <h3 id="bead-detail-title">Task Details</h3>
+                </header>
+                <div id="bead-detail-content"></div>
+                <footer style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    <button onclick="closeBeadDetailDialog()" class="secondary">Close</button>
+                </footer>
+            </article>
+        </dialog>
+
+        <dialog id="work-on-dialog">
+            <article>
+                <header>
+                    <button aria-label="Close" rel="prev" onclick="closeWorkOnDialog()"></button>
+                    <h3>Select Task to Work On</h3>
+                </header>
+                <div id="work-on-content" style="min-height: 200px; max-height: 400px; overflow-y: auto;">
+                    <p>Loading ready tasks...</p>
+                </div>
+                <footer style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    <button id="work-on-start-btn" onclick="startWorkOnBead()" disabled>Start</button>
+                    <button onclick="closeWorkOnDialog()" class="secondary">Cancel</button>
+                </footer>
+            </article>
+        </dialog>
     </main>
 
     <script>
         let currentSessionId = null;
         let allSessions = [];
-        let logEventSource = null;
-        let sortColumn = 'alias';
+        let sortColumn = 'id';
         let sortAsc = true;
         let previousStates = {};
 
@@ -362,8 +459,7 @@
                     s.id || '',
                     s.state || '',
                     s.backend || '',
-                    s.cwd || '',
-                    s.pid || ''
+                    s.cwd || ''
                 ].join(' ').toLowerCase();
                 return searchText.includes(query);
             });
@@ -385,15 +481,14 @@
             sessions.sort((a, b) => {
                 let valA, valB;
                 switch (sortColumn) {
-                    case 'alias': valA = (a.alias || a.id).toLowerCase(); valB = (b.alias || b.id).toLowerCase(); break;
                     case 'id': valA = a.id; valB = b.id; break;
+                    case 'alias': valA = (a.alias || '').toLowerCase(); valB = (b.alias || '').toLowerCase(); break;
                     case 'state': valA = a.state; valB = b.state; break;
                     case 'backend': valA = a.backend || ''; valB = b.backend || ''; break;
                     case 'cwd': valA = a.cwd; valB = b.cwd; break;
-                    case 'pid': valA = parseInt(a.pid) || 0; valB = parseInt(b.pid) || 0; break;
                     default: valA = ''; valB = '';
                 }
-                const cmp = typeof valA === 'number' ? valA - valB : String(valA).localeCompare(String(valB));
+                const cmp = String(valA).localeCompare(String(valB));
                 return sortAsc ? cmp : -cmp;
             });
 
@@ -402,35 +497,32 @@
                 <table>
                     <thead>
                         <tr>
-                            <th class="${sortClass('alias')}" data-sort="alias">Alias</th>
                             <th class="${sortClass('id')}" data-sort="id">ID</th>
+                            <th class="${sortClass('alias')}" data-sort="alias">Alias</th>
                             <th class="${sortClass('state')}" data-sort="state">State</th>
                             <th class="${sortClass('backend')}" data-sort="backend">Backend</th>
                             <th class="${sortClass('cwd')}" data-sort="cwd">Working Directory</th>
-                            <th class="${sortClass('pid')}" data-sort="pid">PID</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${sessions.map(s => {
-                            const alias = escapeHtml(s.alias || s.id);
+                            const alias = escapeHtml(s.alias || '-');
                             const backend = escapeHtml(s.backend || 'unknown');
                             const cwd = escapeHtml(s.cwd);
-                            const pid = escapeHtml(s.pid);
                             const state = escapeHtml(s.state);
                             const id = escapeHtml(s.id);
-                            
+
                             return `
                                 <tr>
-                                    <td><strong>${alias}</strong></td>
                                     <td><span class="session-id">${id}</span></td>
+                                    <td><strong>${alias}</strong></td>
                                     <td><span class="state-badge state-${state}">${state}</span></td>
                                     <td>${backend}</td>
                                     <td><small>${cwd}</small></td>
-                                    <td><small>${pid}</small></td>
                                     <td class="actions-cell">
-                                        <button data-session-id="${id}" data-action="log">Log</button>
                                         <button data-session-id="${id}" data-action="prompt">Prompt</button>
+                                        <button data-session-id="${id}" data-action="work-on">Work On</button>
                                         <button data-session-id="${id}" data-action="attach">Attach</button>
                                         <div class="action-menu">
                                             <button class="action-menu-btn secondary" onclick="toggleMenu(this)">⋯</button>
@@ -524,7 +616,13 @@
 
         document.getElementById('prompt-form').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const prompt = document.getElementById('prompt-area').value;
+            let prompt = document.getElementById('prompt-area').value;
+            
+            // Check if prompt is a bead ID and wrap it
+            const trimmedPrompt = prompt.trim();
+            if (isBeadID(trimmedPrompt)) {
+                prompt = `Load the beads skill, and work on bead ${trimmedPrompt}.`;
+            }
             
             try {
                 const res = await fetch(`/api/session/${currentSessionId}/prompt`, {
@@ -543,6 +641,12 @@
                 alert('Error: ' + err.message);
             }
         });
+
+        function isBeadID(text) {
+            // Match bead ID pattern: prefix-xxx or prefix-xxx.yyy (hierarchical)
+            // Common prefixes: bd, task, bug, etc.
+            return /^[a-zA-Z]+-[a-z0-9]+(\.[0-9]+)*$/.test(text);
+        }
 
         async function openContextDialog(id) {
             currentSessionId = id;
@@ -691,9 +795,9 @@
             const action = btn.dataset.action;
             
             switch (action) {
-                case 'log': openLogPane(id); break;
                 case 'attach': attachSession(id); break;
                 case 'prompt': openPromptDialog(id); break;
+                case 'work-on': openWorkOnDialog(id); break;
                 case 'context': openContextDialog(id); break;
                 case 'alias': openAliasDialog(id); break;
                 case 'stop': controlSession(id, 'stop'); break;
@@ -702,60 +806,118 @@
             }
         });
 
-        // Log streaming functions
-        function openLogPane(id) {
-            // Close existing stream if any
-            closeLogPane();
-            
-            // Update UI for centralized audit log
-            document.getElementById('log-title').textContent = 'Audit Log';
-            document.getElementById('log-content').textContent = '';
-            document.getElementById('log-pane').classList.remove('hidden');
-            
-            // Start streaming centralized audit log
-            logEventSource = new EventSource('/api/log');
-            
-            logEventSource.onmessage = (event) => {
-                const logContent = document.getElementById('log-content');
-                // Each event.data is one line from the log
-                logContent.textContent += event.data + '\n';
-                // Auto-scroll to bottom
-                logContent.scrollTop = logContent.scrollHeight;
-            };
-            
-            logEventSource.onerror = (error) => {
-                console.error('Log stream error:', error);
-                if (logEventSource) {
-                    logEventSource.close();
-                    logEventSource = null;
-                }
-            };
+        // Work On dialog functionality
+        let selectedBeadId = null;
+
+        async function openWorkOnDialog(sessionId) {
+            currentSessionId = sessionId;
+            selectedBeadId = null;
+            document.getElementById('work-on-start-btn').disabled = true;
+            document.getElementById('work-on-dialog').showModal();
+
+            // Load ready beads
+            try {
+                const response = await fetch('/api/beads/ready');
+                const readyBeads = await response.json();
+                renderWorkOnBeads(readyBeads);
+            } catch (error) {
+                console.error('Failed to load ready beads:', error);
+                document.getElementById('work-on-content').innerHTML = '<p>Failed to load ready tasks</p>';
+            }
         }
 
-        function closeLogPane() {
-            // Close event source
-            if (logEventSource) {
-                logEventSource.close();
-                logEventSource = null;
+        function renderWorkOnBeads(beads) {
+            const container = document.getElementById('work-on-content');
+
+            if (beads.length === 0) {
+                container.innerHTML = '<p>No ready tasks available</p>';
+                return;
             }
-            
-            // Hide pane
-            document.getElementById('log-pane').classList.add('hidden');
-            document.getElementById('log-content').textContent = '';
+
+            let html = '<table><thead><tr><th>ID</th><th>Title</th><th>Priority</th></tr></thead><tbody>';
+
+            for (const bead of beads) {
+                const description = bead.description || '';
+                html += `<tr onclick="selectBeadForWork('${bead.id}')" style="cursor: pointer;" data-bead-id="${bead.id}">
+                    <td><small>${escapeHtml(bead.id)}</small></td>
+                    <td title="${escapeHtml(description)}">${escapeHtml(bead.title)}</td>
+                    <td>${bead.priority || '-'}</td>
+                </tr>`;
+            }
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        function selectBeadForWork(beadId) {
+            selectedBeadId = beadId;
+
+            // Highlight selected row
+            document.querySelectorAll('#work-on-content tr[data-bead-id]').forEach(row => {
+                if (row.dataset.beadId === beadId) {
+                    row.classList.add('selected');
+                } else {
+                    row.classList.remove('selected');
+                }
+            });
+
+            document.getElementById('work-on-start-btn').disabled = false;
+        }
+
+        async function startWorkOnBead() {
+            if (!selectedBeadId || !currentSessionId) return;
+
+            const prompt = `Load the beads skill, and work on bead ${selectedBeadId}.`;
+
+            try {
+                const res = await fetch(`/api/session/${currentSessionId}/prompt`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt })
+                });
+
+                if (res.ok) {
+                    closeWorkOnDialog();
+                    loadSessions();
+                } else {
+                    alert('Failed to send prompt');
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        function closeWorkOnDialog() {
+            document.getElementById('work-on-dialog').close();
+            selectedBeadId = null;
+            document.getElementById('work-on-start-btn').disabled = true;
         }
 
         // Tab switching
         function showTab(tab) {
             document.getElementById('sessions-tab').classList.toggle('hidden', tab !== 'sessions');
             document.getElementById('inbox-tab').classList.toggle('hidden', tab !== 'inbox');
-            
+            document.getElementById('archive-tab').classList.toggle('hidden', tab !== 'archive');
+            document.getElementById('tasks-tab').classList.toggle('hidden', tab !== 'tasks');
+
             if (tab === 'inbox') {
                 loadInbox();
+            } else if (tab === 'archive') {
+                loadArchive();
+            } else if (tab === 'tasks') {
+                // Update filter button styles to match current filter
+                document.querySelectorAll('[id^="filter-"]').forEach(btn => {
+                    btn.className = 'secondary';
+                });
+                document.getElementById(`filter-${beadStatusFilter}`).className = 'contrast';
+                loadBeads();
             }
         }
 
         // Inbox functionality
         let currentMessage = null;
+        let inboxMessages = [];
+        let archiveMessages = [];
 
         async function updateInboxBadge() {
             try {
@@ -786,7 +948,8 @@
 
         function renderInbox(messages) {
             messages.sort((a, b) => b.timestamp - a.timestamp);
-            
+            inboxMessages = messages;
+
             const container = document.getElementById('inbox-container');
             if (messages.length === 0) {
                 container.innerHTML = '<p>No messages</p>';
@@ -794,8 +957,9 @@
             }
 
             let html = '<table><thead><tr><th>Date</th><th>From</th><th>Type</th><th>Subject</th><th>Actions</th></tr></thead><tbody>';
-            
-            for (const msg of messages) {
+
+            for (let i = 0; i < messages.length; i++) {
+                const msg = messages[i];
                 const date = new Date(msg.timestamp * 1000).toLocaleString();
                 html += `<tr>
                     <td>${escapeHtml(date)}</td>
@@ -803,12 +967,52 @@
                     <td>${escapeHtml(msg.type)}</td>
                     <td>${escapeHtml(msg.subject)}</td>
                     <td>
-                        <button onclick='viewMessage(${JSON.stringify(msg)})'>View</button>
-                        <button onclick='archiveMessage(${JSON.stringify(msg.id)})' class="secondary">Archive</button>
+                        <button onclick='viewInboxMessage(${i})'>View</button>
+                        <button onclick='archiveMessageById("${escapeHtml(msg.id)}")' class="secondary">Archive</button>
                     </td>
                 </tr>`;
             }
-            
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        async function loadArchive() {
+            try {
+                const response = await fetch('/api/archive');
+                const messages = await response.json();
+                renderArchive(messages);
+            } catch (error) {
+                console.error('Failed to load archive:', error);
+            }
+        }
+
+        function renderArchive(messages) {
+            messages.sort((a, b) => b.timestamp - a.timestamp);
+            archiveMessages = messages;
+
+            const container = document.getElementById('archive-container');
+            if (messages.length === 0) {
+                container.innerHTML = '<p>No archived messages</p>';
+                return;
+            }
+
+            let html = '<table><thead><tr><th>Date</th><th>From</th><th>Type</th><th>Subject</th><th>Actions</th></tr></thead><tbody>';
+
+            for (let i = 0; i < messages.length; i++) {
+                const msg = messages[i];
+                const date = new Date(msg.timestamp * 1000).toLocaleString();
+                html += `<tr>
+                    <td>${escapeHtml(date)}</td>
+                    <td>${escapeHtml(msg.from || '-')}</td>
+                    <td>${escapeHtml(msg.type)}</td>
+                    <td>${escapeHtml(msg.subject)}</td>
+                    <td>
+                        <button onclick='viewArchiveMessage(${i})'>View</button>
+                    </td>
+                </tr>`;
+            }
+
             html += '</tbody></table>';
             container.innerHTML = html;
         }
@@ -823,9 +1027,21 @@ Subject: ${msg.subject}
 Date: ${date}
 
 ${msg.body}`;
-            
+
             document.getElementById('message-content').textContent = content;
             document.getElementById('message-dialog').showModal();
+        }
+
+        function viewInboxMessage(index) {
+            if (index >= 0 && index < inboxMessages.length) {
+                viewMessage(inboxMessages[index]);
+            }
+        }
+
+        function viewArchiveMessage(index) {
+            if (index >= 0 && index < archiveMessages.length) {
+                viewMessage(archiveMessages[index]);
+            }
         }
 
         function closeMessageDialog() {
@@ -880,6 +1096,10 @@ ${msg.body}`;
             }
         }
 
+        async function archiveMessageById(msgId) {
+            await archiveMessage(msgId);
+        }
+
         function archiveCurrentMessage() {
             if (!currentMessage) return;
             archiveMessage(currentMessage.id);
@@ -914,6 +1134,223 @@ ${msg.body}`;
                 alert('Failed to send reply');
             }
         });
+
+        // Tasks/Beads functionality
+        let allBeads = [];
+        let currentBead = null;
+        let beadStatusFilter = 'open';
+
+        async function loadBeads() {
+            try {
+                const response = await fetch('/api/beads');
+                const beads = await response.json();
+                allBeads = beads;
+                filterBeads();
+            } catch (error) {
+                console.error('Failed to load beads:', error);
+                document.getElementById('tasks-container').innerHTML = '<p>Failed to load tasks</p>';
+            }
+        }
+
+        function setBeadFilter(status) {
+            beadStatusFilter = status;
+
+            // Update button styles
+            document.querySelectorAll('[id^="filter-"]').forEach(btn => {
+                btn.className = 'secondary';
+            });
+            document.getElementById(`filter-${status}`).className = 'contrast';
+
+            filterBeads();
+        }
+
+        function filterBeads() {
+            const query = document.getElementById('tasks-search-box').value.toLowerCase();
+            const filtered = allBeads.filter(b => {
+                // Filter by status
+                if (beadStatusFilter !== 'all' && b.status !== beadStatusFilter) {
+                    return false;
+                }
+
+                // Filter by search query
+                const searchText = [
+                    b.id || '',
+                    b.title || '',
+                    b.description || '',
+                    b.status || '',
+                    b.assignee || ''
+                ].join(' ').toLowerCase();
+                return searchText.includes(query);
+            });
+            renderBeads(filtered);
+        }
+
+        function renderBeads(beads) {
+            const container = document.getElementById('tasks-container');
+            if (beads.length === 0) {
+                container.innerHTML = '<p>No tasks found</p>';
+                return;
+            }
+
+            let html = '<table><thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Priority</th><th>Assignee</th><th>Actions</th></tr></thead><tbody>';
+            
+            for (const bead of beads) {
+                const statusClass = `bead-status-${bead.status}`;
+                html += `<tr>
+                    <td><small>${escapeHtml(bead.id)}</small></td>
+                    <td>${escapeHtml(bead.title)}</td>
+                    <td><span class="bead-status ${statusClass}">${escapeHtml(bead.status)}</span></td>
+                    <td>${bead.priority || '-'}</td>
+                    <td>${escapeHtml(bead.assignee || '-')}</td>
+                    <td>
+                        <button onclick='viewBead("${bead.id}")'>View</button>
+                        ${bead.status === 'open' ? `<button onclick='claimBead("${bead.id}")'>Claim</button>` : ''}
+                        ${bead.status === 'in_progress' ? `<button onclick='completeBead("${bead.id}")' class="secondary">Complete</button>` : ''}
+                    </td>
+                </tr>`;
+            }
+            
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        function openNewBeadDialog() {
+            document.getElementById('new-bead-dialog').showModal();
+        }
+
+        function closeNewBeadDialog() {
+            document.getElementById('new-bead-dialog').close();
+            document.getElementById('new-bead-form').reset();
+        }
+
+        document.getElementById('new-bead-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const title = formData.get('title');
+            const description = formData.get('description');
+            
+            const command = `new '${title.replace(/'/g, "\\'")}' '${description.replace(/'/g, "\\'")}'`;
+            
+            try {
+                const response = await fetch('/api/beads/ctl', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command })
+                });
+
+                if (response.ok) {
+                    closeNewBeadDialog();
+                    setTimeout(loadBeads, 500);
+                } else {
+                    alert('Failed to create task');
+                }
+            } catch (error) {
+                console.error('Failed to create task:', error);
+                alert('Failed to create task');
+            }
+        });
+
+        async function viewBead(id) {
+            try {
+                const response = await fetch(`/api/beads/${id}`);
+                const bead = await response.json();
+                currentBead = bead;
+                
+                const statusClass = `bead-status-${bead.status}`;
+                let content = `<p><strong>ID:</strong> ${escapeHtml(bead.id)}</p>`;
+                content += `<p><strong>Status:</strong> <span class="bead-status ${statusClass}">${escapeHtml(bead.status)}</span></p>`;
+                content += `<p><strong>Priority:</strong> ${bead.priority || '-'}</p>`;
+                content += `<p><strong>Type:</strong> ${escapeHtml(bead.issue_type || '-')}</p>`;
+                content += `<p><strong>Assignee:</strong> ${escapeHtml(bead.assignee || '-')}</p>`;
+                content += `<p><strong>Created:</strong> ${new Date(bead.created_at).toLocaleString()}</p>`;
+                content += `<p><strong>Updated:</strong> ${new Date(bead.updated_at).toLocaleString()}</p>`;
+                content += `<p><strong>Description:</strong></p><p>${escapeHtml(bead.description || '')}</p>`;
+                
+                if (bead.blockers && bead.blockers.length > 0) {
+                    content += `<p><strong>Blockers:</strong> ${bead.blockers.map(b => escapeHtml(b)).join(', ')}</p>`;
+                }
+                
+                document.getElementById('bead-detail-title').textContent = bead.title;
+                document.getElementById('bead-detail-content').innerHTML = content;
+                document.getElementById('bead-detail-dialog').showModal();
+            } catch (error) {
+                console.error('Failed to load bead details:', error);
+                alert('Failed to load task details');
+            }
+        }
+
+        function closeBeadDetailDialog() {
+            document.getElementById('bead-detail-dialog').close();
+            currentBead = null;
+        }
+
+        async function claimBead(id) {
+            try {
+                const response = await fetch('/api/beads/ctl', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: `claim ${id}` })
+                });
+
+                if (response.ok) {
+                    setTimeout(loadBeads, 500);
+                } else {
+                    alert('Failed to claim task');
+                }
+            } catch (error) {
+                console.error('Failed to claim task:', error);
+                alert('Failed to claim task');
+            }
+        }
+
+        async function completeBead(id) {
+            try {
+                const response = await fetch('/api/beads/ctl', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: `complete ${id}` })
+                });
+
+                if (response.ok) {
+                    setTimeout(loadBeads, 500);
+                } else {
+                    alert('Failed to complete task');
+                }
+            } catch (error) {
+                console.error('Failed to complete task:', error);
+                alert('Failed to complete task');
+            }
+        }
+
+        // Tasks search box filtering
+        document.getElementById('tasks-search-box').addEventListener('input', filterBeads);
+
+        // Daemon status
+        async function updateDaemonStatus() {
+            try {
+                const response = await fetch('/api/daemon/status');
+                const data = await response.json();
+                const indicator = document.getElementById('daemon-indicator');
+                const text = document.getElementById('daemon-text');
+                
+                if (data.running) {
+                    indicator.className = 'daemon-status-indicator daemon-running';
+                    text.textContent = `Daemon: ${data.session_count} sessions`;
+                } else {
+                    indicator.className = 'daemon-status-indicator daemon-stopped';
+                    text.textContent = 'Daemon: Stopped';
+                }
+            } catch (error) {
+                const indicator = document.getElementById('daemon-indicator');
+                const text = document.getElementById('daemon-text');
+                indicator.className = 'daemon-status-indicator daemon-stopped';
+                text.textContent = 'Daemon: Error';
+            }
+        }
+
+        // Update daemon status on load and periodically
+        updateDaemonStatus();
+        setInterval(updateDaemonStatus, 5000);
     </script>
 </body>
 </html>

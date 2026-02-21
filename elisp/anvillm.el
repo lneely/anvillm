@@ -257,11 +257,15 @@ Keybindings:
 s - Start new session (select backend)
 p - Compose prompt in buffer (C-c C-c to send, C-c C-k to abort)
 l - View session log (press 'r' to refresh, 'q' to close)
+c - Edit session context (C-c C-c to save, C-c C-k to abort)
+i - Open inbox
+C - Open archive (completed messages)
+T - Open tasks/beads manager
 t - Stop selected session
 R - Restart selected session
 K - Kill selected session
-a - Set alias for selected session
-A - Attach to tmux session in terminal
+A - Set alias for selected session
+a - Attach to tmux session in terminal
 r, g - Refresh session list
 d - Daemon status
 q - Quit
@@ -276,6 +280,14 @@ Prompt Composition:
 The prompt buffer supports multi-line input. Lines starting with ;;
 are treated as comments and stripped before sending.
 
+Bead ID Detection:
+If you enter just a bead ID (e.g., bd-5xz), it will automatically
+be wrapped with instructions to load the beads skill and work on it.
+
+Context:
+Session context is a text prefix prepended to all prompts sent to
+that session. Use it to provide persistent instructions or information.
+
 9P Filesystem:
 All operations read/write the 9P filesystem at $NAMESPACE/agent
 
@@ -285,6 +297,677 @@ Backends:
 
 ")))
 
+
+;;; Inbox Management
+
+(defvar anvillm-inbox-mode-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map tabulated-list-mode-map)
+    (define-key map (kbd "RET") #'anvillm-inbox-view)
+    (define-key map (kbd "v") #'anvillm-inbox-view)
+    (define-key map (kbd "r") #'anvillm-inbox-reply)
+    (define-key map (kbd "d") #'anvillm-inbox-archive)
+    (define-key map (kbd "g") #'anvillm-inbox-refresh)
+    (define-key map (kbd "q") #'quit-window)
+    (define-key map (kbd "?") #'anvillm-inbox-help)
+    map)
+  "Keymap for AnviLLM inbox mode.")
+
+(defun anvillm--list-inbox-messages ()
+  "Get list of inbox messages from the 9P filesystem."
+  (condition-case err
+      (let* ((inbox-path (concat anvillm-agent-path "/user/inbox"))
+             (files-str (anvillm--9p-read inbox-path))
+             (files (split-string files-str "\n" t))
+             messages)
+        (dolist (file files)
+          (when (string-suffix-p ".json" file)
+            (let* ((msg-path (concat inbox-path "/" file))
+                   (json-object-type 'plist)
+                   (json-array-type 'list)
+                   (msg-json (anvillm--9p-read msg-path))
+                   (msg (json-read-from-string msg-json))
+                   (id (plist-get msg :id))
+                   (from (plist-get msg :from))
+                   (type (plist-get msg :type))
+                   (subject (plist-get msg :subject))
+                   (timestamp (plist-get msg :timestamp)))
+              (push (list id (vector
+                             (substring id 0 (min 8 (length id)))
+                             (substring from 0 (min 8 (length from)))
+                             type
+                             subject
+                             (format-time-string "%Y-%m-%d %H:%M" 
+                                               (seconds-to-time timestamp))))
+                    messages))))
+        (nreverse messages))
+    (error
+     (message "Failed to list inbox: %s" (error-message-string err))
+     nil)))
+
+(defun anvillm--refresh-inbox ()
+  "Refresh the inbox list in the current buffer."
+  (when (eq major-mode 'anvillm-inbox-mode)
+    (let ((messages (anvillm--list-inbox-messages)))
+      (setq tabulated-list-entries messages)
+      (tabulated-list-print t))))
+
+(define-derived-mode anvillm-inbox-mode tabulated-list-mode "AnviLLM-Inbox"
+  "Major mode for managing AnviLLM inbox.
+
+\\{anvillm-inbox-mode-map}"
+  (setq tabulated-list-format [("ID" 10 t)
+                                ("From" 10 t)
+                                ("Type" 20 t)
+                                ("Subject" 30 t)
+                                ("Time" 16 t)])
+  (setq tabulated-list-padding 2)
+  (setq tabulated-list-sort-key (cons "Time" t))
+  (tabulated-list-init-header))
+
+(defun anvillm-inbox ()
+  "Open the AnviLLM inbox."
+  (interactive)
+  (let ((buffer (get-buffer-create "*AnviLLM Inbox*")))
+    (with-current-buffer buffer
+      (anvillm-inbox-mode)
+      (anvillm--refresh-inbox))
+    (switch-to-buffer buffer)))
+
+(defun anvillm-inbox-refresh ()
+  "Refresh the inbox list."
+  (interactive)
+  (anvillm--refresh-inbox))
+
+(defun anvillm--get-selected-message ()
+  "Get the ID of the currently selected message."
+  (tabulated-list-get-id))
+
+(defun anvillm-inbox-view ()
+  "View the selected message."
+  (interactive)
+  (if-let ((msg-id (anvillm--get-selected-message)))
+      (condition-case err
+          (let* ((json-object-type 'plist)
+                 (json-array-type 'list)
+                 (msg-path (concat anvillm-agent-path "/user/inbox/" msg-id ".json"))
+                 (msg-json (anvillm--9p-read msg-path))
+                 (msg (json-read-from-string msg-json))
+                 (buffer (get-buffer-create (format "*Message: %s*" 
+                                                   (substring msg-id 0 (min 8 (length msg-id)))))))
+            (with-current-buffer buffer
+              (erase-buffer)
+              (insert (format "From: %s\n" (plist-get msg :from)))
+              (insert (format "To: %s\n" (plist-get msg :to)))
+              (insert (format "Type: %s\n" (plist-get msg :type)))
+              (insert (format "Subject: %s\n" (plist-get msg :subject)))
+              (insert (format "Time: %s\n" 
+                            (format-time-string "%Y-%m-%d %H:%M:%S" 
+                                              (seconds-to-time (plist-get msg :timestamp)))))
+              (insert "\n")
+              (insert (plist-get msg :body))
+              (special-mode))
+            (pop-to-buffer buffer))
+        (error
+         (message "Failed to view message: %s" (error-message-string err))))
+    (message "No message selected")))
+
+(defun anvillm-inbox-reply ()
+  "Reply to the selected message."
+  (interactive)
+  (if-let ((msg-id (anvillm--get-selected-message)))
+      (condition-case err
+          (let* ((json-object-type 'plist)
+                 (json-array-type 'list)
+                 (msg-path (concat anvillm-agent-path "/user/inbox/" msg-id ".json"))
+                 (msg-json (anvillm--9p-read msg-path))
+                 (msg (json-read-from-string msg-json))
+                 (from (plist-get msg :from))
+                 (subject (plist-get msg :subject))
+                 (reply-body (read-string "Reply: ")))
+            (when (> (length reply-body) 0)
+              (let ((reply-msg (json-encode `((to . ,from)
+                                             (type . "PROMPT_RESPONSE")
+                                             (subject . ,(concat "Re: " subject))
+                                             (body . ,reply-body)))))
+                (anvillm--9p-write (concat anvillm-agent-path "/user/mail") reply-msg)
+                (message "Sent reply to %s" from))))
+        (error
+         (message "Failed to reply: %s" (error-message-string err))))
+    (message "No message selected")))
+
+(defun anvillm-inbox-archive ()
+  "Archive (complete) the selected message."
+  (interactive)
+  (if-let ((msg-id (anvillm--get-selected-message)))
+      (condition-case err
+          (progn
+            ;; Remove the message file (which marks it as completed)
+            (let ((msg-path (concat anvillm-agent-path "/user/inbox/" msg-id ".json")))
+              (with-temp-buffer
+                (call-process anvillm-9p-command nil t nil "remove" msg-path)))
+            (message "Archived message %s" (substring msg-id 0 (min 8 (length msg-id))))
+            (anvillm--refresh-inbox))
+        (error
+         (message "Failed to archive message: %s" (error-message-string err))))
+    (message "No message selected")))
+
+(defun anvillm-inbox-help ()
+  "Show help for AnviLLM inbox mode."
+  (interactive)
+  (with-help-window "*AnviLLM Inbox Help*"
+    (princ "AnviLLM Inbox
+
+Keybindings:
+RET, v - View selected message
+r - Reply to selected message
+d - Archive (complete) selected message
+g - Refresh inbox
+q - Quit
+? - This help
+
+Navigation:
+n, C-n - Next line
+p, C-p - Previous line
+
+")))
+
+;;; Archive Management
+
+(defvar anvillm-archive-mode-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map tabulated-list-mode-map)
+    (define-key map (kbd "RET") #'anvillm-archive-view)
+    (define-key map (kbd "v") #'anvillm-archive-view)
+    (define-key map (kbd "g") #'anvillm-archive-refresh)
+    (define-key map (kbd "q") #'quit-window)
+    (define-key map (kbd "?") #'anvillm-archive-help)
+    map)
+  "Keymap for AnviLLM archive mode.")
+
+(defun anvillm--list-archive-messages ()
+  "Get list of archived (completed) messages from the 9P filesystem."
+  (condition-case err
+      (let* ((archive-path (concat anvillm-agent-path "/user/completed"))
+             (files-str (anvillm--9p-read archive-path))
+             (files (split-string files-str "\n" t))
+             messages)
+        (dolist (file files)
+          (when (string-suffix-p ".json" file)
+            (let* ((msg-path (concat archive-path "/" file))
+                   (json-object-type 'plist)
+                   (json-array-type 'list)
+                   (msg-json (anvillm--9p-read msg-path))
+                   (msg (json-read-from-string msg-json))
+                   (id (plist-get msg :id))
+                   (from (plist-get msg :from))
+                   (type (plist-get msg :type))
+                   (subject (plist-get msg :subject))
+                   (timestamp (plist-get msg :timestamp)))
+              (push (list id (vector
+                             (substring id 0 (min 8 (length id)))
+                             (substring from 0 (min 8 (length from)))
+                             type
+                             subject
+                             (format-time-string "%Y-%m-%d %H:%M" 
+                                               (seconds-to-time timestamp))))
+                    messages))))
+        (nreverse messages))
+    (error
+     (message "Failed to list archive: %s" (error-message-string err))
+     nil)))
+
+(defun anvillm--refresh-archive ()
+  "Refresh the archive list in the current buffer."
+  (when (eq major-mode 'anvillm-archive-mode)
+    (let ((messages (anvillm--list-archive-messages)))
+      (setq tabulated-list-entries messages)
+      (tabulated-list-print t))))
+
+(define-derived-mode anvillm-archive-mode tabulated-list-mode "AnviLLM-Archive"
+  "Major mode for viewing AnviLLM archived messages.
+
+\\{anvillm-archive-mode-map}"
+  (setq tabulated-list-format [("ID" 10 t)
+                                ("From" 10 t)
+                                ("Type" 20 t)
+                                ("Subject" 30 t)
+                                ("Time" 16 t)])
+  (setq tabulated-list-padding 2)
+  (setq tabulated-list-sort-key (cons "Time" t))
+  (tabulated-list-init-header))
+
+(defun anvillm-archive ()
+  "Open the AnviLLM archive."
+  (interactive)
+  (let ((buffer (get-buffer-create "*AnviLLM Archive*")))
+    (with-current-buffer buffer
+      (anvillm-archive-mode)
+      (anvillm--refresh-archive))
+    (switch-to-buffer buffer)))
+
+(defun anvillm-archive-refresh ()
+  "Refresh the archive list."
+  (interactive)
+  (anvillm--refresh-archive))
+
+(defun anvillm-archive-view ()
+  "View the selected archived message."
+  (interactive)
+  (if-let ((msg-id (anvillm--get-selected-message)))
+      (condition-case err
+          (let* ((json-object-type 'plist)
+                 (json-array-type 'list)
+                 (msg-path (concat anvillm-agent-path "/user/completed/" msg-id ".json"))
+                 (msg-json (anvillm--9p-read msg-path))
+                 (msg (json-read-from-string msg-json))
+                 (buffer (get-buffer-create (format "*Archived Message: %s*" 
+                                                   (substring msg-id 0 (min 8 (length msg-id)))))))
+            (with-current-buffer buffer
+              (erase-buffer)
+              (insert (format "From: %s\n" (plist-get msg :from)))
+              (insert (format "To: %s\n" (plist-get msg :to)))
+              (insert (format "Type: %s\n" (plist-get msg :type)))
+              (insert (format "Subject: %s\n" (plist-get msg :subject)))
+              (insert (format "Time: %s\n" 
+                            (format-time-string "%Y-%m-%d %H:%M:%S" 
+                                              (seconds-to-time (plist-get msg :timestamp)))))
+              (insert "\n")
+              (insert (plist-get msg :body))
+              (special-mode))
+            (pop-to-buffer buffer))
+        (error
+         (message "Failed to view message: %s" (error-message-string err))))
+    (message "No message selected")))
+
+(defun anvillm-archive-help ()
+  "Show help for AnviLLM archive mode."
+  (interactive)
+  (with-help-window "*AnviLLM Archive Help*"
+    (princ "AnviLLM Archive
+
+Keybindings:
+RET, v - View selected message
+g - Refresh archive
+q - Quit
+? - This help
+
+Navigation:
+n, C-n - Next line
+p, C-p - Previous line
+
+")))
+
+;;; Context Management
+
+(defvar-local anvillm--context-session-id nil
+  "Session ID for the current context buffer.")
+
+(defvar anvillm-context-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-c C-c") #'anvillm-context-save)
+    (define-key map (kbd "C-c C-k") #'anvillm-context-abort)
+    map)
+  "Keymap for AnviLLM context editing mode.")
+
+(define-derived-mode anvillm-context-mode text-mode "AnviLLM-Context"
+  "Major mode for editing session context.
+
+\\{anvillm-context-mode-map}"
+  (setq header-line-format
+        (substitute-command-keys
+         "Edit session context. Save: \\[anvillm-context-save] | Abort: \\[anvillm-context-abort]")))
+
+(defun anvillm-edit-context ()
+  "Edit context for the selected session."
+  (interactive)
+  (if-let ((session-id (anvillm--get-selected-session)))
+      (condition-case err
+          (let* ((current-context (string-trim 
+                                  (anvillm--9p-read 
+                                   (concat anvillm-agent-path "/" session-id "/context"))))
+                 (session-info (anvillm--get-session-info session-id))
+                 (display-name (or (plist-get session-info :alias) 
+                                  (substring session-id 0 (min 8 (length session-id)))))
+                 (buffer-name (format "*AnviLLM Context: %s*" display-name))
+                 (buffer (get-buffer-create buffer-name)))
+            (with-current-buffer buffer
+              (anvillm-context-mode)
+              (erase-buffer)
+              (setq anvillm--context-session-id session-id)
+              (when (> (length current-context) 0)
+                (insert current-context))
+              (goto-char (point-min)))
+            (pop-to-buffer buffer))
+        (error
+         (message "Failed to load context: %s" (error-message-string err))))
+    (message "No session selected")))
+
+(defun anvillm-context-save ()
+  "Save the edited context to the session."
+  (interactive)
+  (unless anvillm--context-session-id
+    (error "No session ID associated with this buffer"))
+  (let ((context (buffer-string)))
+    (condition-case err
+        (progn
+          (anvillm--9p-write 
+           (concat anvillm-agent-path "/" anvillm--context-session-id "/context")
+           context)
+          (message "Context saved for %s" 
+                  (substring anvillm--context-session-id 0 
+                            (min 8 (length anvillm--context-session-id))))
+          (quit-window t))
+      (error
+       (message "Failed to save context: %s" (error-message-string err))))))
+
+(defun anvillm-context-abort ()
+  "Abort context editing and close the buffer."
+  (interactive)
+  (when (yes-or-no-p "Discard context changes? ")
+    (quit-window t)))
+
+;;; Tasks/Beads Management
+
+(defvar anvillm-tasks-mode-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map tabulated-list-mode-map)
+    (define-key map (kbd "n") #'anvillm-tasks-new)
+    (define-key map (kbd "c") #'anvillm-tasks-claim)
+    (define-key map (kbd "C") #'anvillm-tasks-complete)
+    (define-key map (kbd "f") #'anvillm-tasks-fail)
+    (define-key map (kbd "v") #'anvillm-tasks-view)
+    (define-key map (kbd "d") #'anvillm-tasks-add-dependency)
+    (define-key map (kbd "D") #'anvillm-tasks-remove-dependency)
+    (define-key map (kbd "l") #'anvillm-tasks-add-label)
+    (define-key map (kbd "L") #'anvillm-tasks-remove-label)
+    (define-key map (kbd "m") #'anvillm-tasks-comment)
+    (define-key map (kbd "r") #'anvillm-tasks-refresh)
+    (define-key map (kbd "g") #'anvillm-tasks-refresh)
+    (define-key map (kbd "q") #'quit-window)
+    (define-key map (kbd "?") #'anvillm-tasks-help)
+    map)
+  "Keymap for AnviLLM tasks mode.")
+
+(defun anvillm--parse-bead (json-str)
+  "Parse a bead from JSON-STR."
+  (let* ((json-object-type 'plist)
+         (json-array-type 'list)
+         (bead (json-read-from-string json-str)))
+    bead))
+
+(defun anvillm--list-beads ()
+  "Get list of beads from the 9P filesystem."
+  (condition-case err
+      (let* ((json-object-type 'plist)
+             (json-array-type 'list)
+             (beads-data (anvillm--9p-read (concat anvillm-agent-path "/beads/ready")))
+             (beads (json-read-from-string beads-data)))
+        (mapcar (lambda (bead)
+                  (let ((id (plist-get bead :id))
+                        (title (plist-get bead :title))
+                        (status (plist-get bead :status))
+                        (priority (or (plist-get bead :priority) 0))
+                        (assignee (or (plist-get bead :assignee) "")))
+                    (list id (vector
+                             id
+                             (propertize status 'face (anvillm--bead-status-face status))
+                             (number-to-string priority)
+                             assignee
+                             title))))
+                beads))
+    (error
+     (message "Failed to list beads: %s" (error-message-string err))
+     nil)))
+
+(defun anvillm--bead-status-face (status)
+  "Return face for bead STATUS."
+  (cond
+   ((string= status "open") 'warning)
+   ((string= status "in_progress") 'font-lock-function-name-face)
+   ((string= status "closed") 'success)
+   (t 'default)))
+
+(defun anvillm--refresh-tasks ()
+  "Refresh the tasks list in the current buffer."
+  (when (eq major-mode 'anvillm-tasks-mode)
+    (let ((beads (anvillm--list-beads)))
+      (setq tabulated-list-entries beads)
+      (tabulated-list-print t))))
+
+(define-derived-mode anvillm-tasks-mode tabulated-list-mode "AnviLLM-Tasks"
+  "Major mode for managing AnviLLM tasks/beads.
+
+\\{anvillm-tasks-mode-map}"
+  (setq tabulated-list-format [("ID" 15 t)
+                                ("Status" 12 t)
+                                ("Pri" 4 t)
+                                ("Assignee" 12 t)
+                                ("Title" 0 t)])
+  (setq tabulated-list-padding 2)
+  (setq tabulated-list-sort-key (cons "ID" nil))
+  (tabulated-list-init-header))
+
+(defun anvillm-tasks ()
+  "Open the AnviLLM tasks manager."
+  (interactive)
+  (let ((buffer (get-buffer-create "*AnviLLM Tasks*")))
+    (with-current-buffer buffer
+      (anvillm-tasks-mode)
+      (anvillm--refresh-tasks))
+    (switch-to-buffer buffer)))
+
+(defun anvillm-tasks-refresh ()
+  "Refresh the tasks list."
+  (interactive)
+  (anvillm--refresh-tasks))
+
+(defun anvillm-tasks-new ()
+  "Create a new bead."
+  (interactive)
+  (let ((title (read-string "Title: "))
+        (description (read-string "Description (optional): ")))
+    (when (> (length title) 0)
+      (condition-case err
+          (let ((cmd (if (> (length description) 0)
+                        (format "new '%s' '%s'" title description)
+                      (format "new '%s'" title))))
+            (anvillm--9p-write (concat anvillm-agent-path "/beads/ctl") cmd)
+            (message "Created bead: %s" title)
+            (anvillm--refresh-tasks))
+        (error
+         (message "Failed to create bead: %s" (error-message-string err)))))))
+
+(defun anvillm--get-selected-bead ()
+  "Get the ID of the currently selected bead."
+  (tabulated-list-get-id))
+
+(defun anvillm-tasks-claim ()
+  "Claim the selected bead."
+  (interactive)
+  (if-let ((bead-id (anvillm--get-selected-bead)))
+      (condition-case err
+          (progn
+            (anvillm--9p-write (concat anvillm-agent-path "/beads/ctl")
+                              (format "claim %s" bead-id))
+            (message "Claimed bead %s" bead-id)
+            (anvillm--refresh-tasks))
+        (error
+         (message "Failed to claim bead: %s" (error-message-string err))))
+    (message "No bead selected")))
+
+(defun anvillm-tasks-complete ()
+  "Complete the selected bead."
+  (interactive)
+  (if-let ((bead-id (anvillm--get-selected-bead)))
+      (condition-case err
+          (progn
+            (anvillm--9p-write (concat anvillm-agent-path "/beads/ctl")
+                              (format "complete %s" bead-id))
+            (message "Completed bead %s" bead-id)
+            (anvillm--refresh-tasks))
+        (error
+         (message "Failed to complete bead: %s" (error-message-string err))))
+    (message "No bead selected")))
+
+(defun anvillm-tasks-fail ()
+  "Fail the selected bead."
+  (interactive)
+  (if-let ((bead-id (anvillm--get-selected-bead)))
+      (let ((reason (read-string "Reason: ")))
+        (condition-case err
+            (progn
+              (anvillm--9p-write (concat anvillm-agent-path "/beads/ctl")
+                                (format "fail %s '%s'" bead-id reason))
+              (message "Failed bead %s" bead-id)
+              (anvillm--refresh-tasks))
+          (error
+           (message "Failed to fail bead: %s" (error-message-string err)))))
+    (message "No bead selected")))
+
+(defun anvillm-tasks-view ()
+  "View details of the selected bead."
+  (interactive)
+  (if-let ((bead-id (anvillm--get-selected-bead)))
+      (condition-case err
+          (let* ((json-object-type 'plist)
+                 (json-array-type 'list)
+                 (bead-json (anvillm--9p-read 
+                            (concat anvillm-agent-path "/beads/" bead-id "/json")))
+                 (bead (json-read-from-string bead-json))
+                 (buffer (get-buffer-create (format "*Bead: %s*" bead-id))))
+            (with-current-buffer buffer
+              (erase-buffer)
+              (insert (format "ID: %s\n" (plist-get bead :id)))
+              (insert (format "Title: %s\n" (plist-get bead :title)))
+              (insert (format "Status: %s\n" (plist-get bead :status)))
+              (insert (format "Priority: %s\n" (or (plist-get bead :priority) "N/A")))
+              (insert (format "Assignee: %s\n" (or (plist-get bead :assignee) "N/A")))
+              (insert (format "Type: %s\n" (or (plist-get bead :issue_type) "N/A")))
+              (insert (format "Created: %s\n" (plist-get bead :created_at)))
+              (insert (format "Updated: %s\n" (plist-get bead :updated_at)))
+              (when-let ((desc (plist-get bead :description)))
+                (insert (format "\nDescription:\n%s\n" desc)))
+              (when-let ((blockers (plist-get bead :blockers)))
+                (insert (format "\nBlockers (%d):\n" (length blockers)))
+                (dolist (blocker blockers)
+                  (insert (format "  - %s\n" blocker))))
+              (special-mode))
+            (pop-to-buffer buffer))
+        (error
+         (message "Failed to view bead: %s" (error-message-string err))))
+    (message "No bead selected")))
+
+(defun anvillm-tasks-add-dependency ()
+  "Add a dependency to the selected bead."
+  (interactive)
+  (if-let ((child-id (anvillm--get-selected-bead)))
+      (let ((parent-id (read-string "Parent bead ID: ")))
+        (when (> (length parent-id) 0)
+          (condition-case err
+              (progn
+                (anvillm--9p-write (concat anvillm-agent-path "/beads/ctl")
+                                  (format "dep %s %s" child-id parent-id))
+                (message "Added dependency: %s blocks %s" parent-id child-id)
+                (anvillm--refresh-tasks))
+            (error
+             (message "Failed to add dependency: %s" (error-message-string err))))))
+    (message "No bead selected")))
+
+(defun anvillm-tasks-remove-dependency ()
+  "Remove a dependency from the selected bead."
+  (interactive)
+  (if-let ((child-id (anvillm--get-selected-bead)))
+      (let ((parent-id (read-string "Parent bead ID to remove: ")))
+        (when (> (length parent-id) 0)
+          (condition-case err
+              (progn
+                (anvillm--9p-write (concat anvillm-agent-path "/beads/ctl")
+                                  (format "undep %s %s" child-id parent-id))
+                (message "Removed dependency: %s no longer blocks %s" parent-id child-id)
+                (anvillm--refresh-tasks))
+            (error
+             (message "Failed to remove dependency: %s" (error-message-string err))))))
+    (message "No bead selected")))
+
+(defun anvillm-tasks-add-label ()
+  "Add a label to the selected bead."
+  (interactive)
+  (if-let ((bead-id (anvillm--get-selected-bead)))
+      (let ((label (read-string "Label: ")))
+        (when (> (length label) 0)
+          (condition-case err
+              (progn
+                (anvillm--9p-write (concat anvillm-agent-path "/beads/ctl")
+                                  (format "label %s '%s'" bead-id label))
+                (message "Added label '%s' to %s" label bead-id)
+                (anvillm--refresh-tasks))
+            (error
+             (message "Failed to add label: %s" (error-message-string err))))))
+    (message "No bead selected")))
+
+(defun anvillm-tasks-remove-label ()
+  "Remove a label from the selected bead."
+  (interactive)
+  (if-let ((bead-id (anvillm--get-selected-bead)))
+      (let ((label (read-string "Label to remove: ")))
+        (when (> (length label) 0)
+          (condition-case err
+              (progn
+                (anvillm--9p-write (concat anvillm-agent-path "/beads/ctl")
+                                  (format "unlabel %s '%s'" bead-id label))
+                (message "Removed label '%s' from %s" label bead-id)
+                (anvillm--refresh-tasks))
+            (error
+             (message "Failed to remove label: %s" (error-message-string err))))))
+    (message "No bead selected")))
+
+(defun anvillm-tasks-comment ()
+  "Add a comment to the selected bead."
+  (interactive)
+  (if-let ((bead-id (anvillm--get-selected-bead)))
+      (let ((comment (read-string "Comment: ")))
+        (when (> (length comment) 0)
+          (condition-case err
+              (progn
+                (anvillm--9p-write (concat anvillm-agent-path "/beads/ctl")
+                                  (format "comment %s '%s'" bead-id comment))
+                (message "Added comment to %s" bead-id))
+            (error
+             (message "Failed to add comment: %s" (error-message-string err))))))
+    (message "No bead selected")))
+
+(defun anvillm-tasks-help ()
+  "Show help for AnviLLM tasks mode."
+  (interactive)
+  (with-help-window "*AnviLLM Tasks Help*"
+    (princ "AnviLLM Tasks - Beads Management
+
+Keybindings:
+n - Create new bead
+c - Claim selected bead
+C - Complete selected bead
+f - Fail selected bead (with reason)
+v - View bead details
+d - Add dependency (parent blocks child)
+D - Remove dependency
+l - Add label
+L - Remove label
+m - Add comment
+r, g - Refresh tasks list
+q - Quit
+? - This help
+
+Navigation:
+n, C-n - Next line
+p, C-p - Previous line
+
+Bead Status:
+open - Not yet started
+in_progress - Currently being worked on
+closed - Completed
+
+")))
 
 ;;; Major Mode
 
@@ -299,6 +982,10 @@ Backends:
     (define-key map (kbd "a") #'anvillm-attach-session)
     (define-key map (kbd "p") #'anvillm-compose-prompt)
     (define-key map (kbd "l") #'anvillm-view-log)
+    (define-key map (kbd "c") #'anvillm-edit-context)
+    (define-key map (kbd "i") #'anvillm-inbox)
+    (define-key map (kbd "C") #'anvillm-archive)
+    (define-key map (kbd "T") #'anvillm-tasks)
     (define-key map (kbd "r") #'anvillm-refresh)
     (define-key map (kbd "g") #'anvillm-refresh)
     (define-key map (kbd "d") #'anvillm-daemon-status)
@@ -542,13 +1229,14 @@ Backends:
   "Send a prompt to the selected session (using minibuffer)."
   (interactive)
   (if-let ((session-id (anvillm--get-selected-session)))
-      (let ((prompt (read-string "Prompt: ")))
+      (let* ((prompt (read-string "Prompt: "))
+             (wrapped-prompt (anvillm--wrap-bead-id prompt)))
         (when (> (length prompt) 0)
           (condition-case err
               (let ((msg (json-encode `((to . ,session-id)
                                        (type . "PROMPT_REQUEST")
                                        (subject . "User prompt")
-                                       (body . ,prompt)))))
+                                       (body . ,wrapped-prompt)))))
                 (anvillm--9p-write (concat anvillm-agent-path "/user/mail") msg)
                 (message "Sent prompt to %s" (substring session-id 0 (min 8 (length session-id)))))
             (error
@@ -560,6 +1248,17 @@ Backends:
   (interactive)
   (when (yes-or-no-p "Abort prompt composition? ")
     (quit-window t)))
+
+(defun anvillm--is-bead-id (text)
+  "Check if TEXT matches bead ID pattern (e.g., bd-5xz or bd-5xz.1)."
+  (string-match-p "^[a-zA-Z]+-[a-z0-9]+\\(\\.[0-9]+\\)*$" text))
+
+(defun anvillm--wrap-bead-id (prompt)
+  "If PROMPT is a bead ID, wrap it with execution instructions."
+  (let ((trimmed (string-trim prompt)))
+    (if (anvillm--is-bead-id trimmed)
+        (format "Load the beads skill, and work on bead %s." trimmed)
+      prompt)))
 
 (defun anvillm--extract-prompt-text ()
   "Extract prompt text from buffer, stripping comment lines."
@@ -578,14 +1277,15 @@ Backends:
   (interactive)
   (unless anvillm--prompt-session-id
     (error "No session ID associated with this buffer"))
-  (let ((prompt (anvillm--extract-prompt-text)))
+  (let* ((prompt (anvillm--extract-prompt-text))
+         (wrapped-prompt (anvillm--wrap-bead-id prompt)))
     (if (string-empty-p (string-trim prompt))
         (message "Empty prompt, not sending")
       (condition-case err
           (let ((msg (json-encode `((to . ,anvillm--prompt-session-id)
                                    (type . "PROMPT_REQUEST")
                                    (subject . "User prompt")
-                                   (body . ,prompt)))))
+                                   (body . ,wrapped-prompt)))))
             (anvillm--9p-write (concat anvillm-agent-path "/user/mail") msg)
             (message "Sent prompt to %s" 
                     (substring anvillm--prompt-session-id 0 

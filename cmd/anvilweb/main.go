@@ -55,6 +55,12 @@ func main() {
 	http.HandleFunc("/api/inbox/count", handleInboxCount)
 	http.HandleFunc("/api/inbox/reply", handleInboxReply)
 	http.HandleFunc("/api/inbox/archive", handleInboxArchive)
+	http.HandleFunc("/api/archive", handleArchive)
+	http.HandleFunc("/api/beads", handleBeads)
+	http.HandleFunc("/api/beads/ready", handleBeadsReady)
+	http.HandleFunc("/api/beads/ctl", handleBeadsCtl)
+	http.HandleFunc("/api/beads/", handleBeadDetail)
+	http.HandleFunc("/api/daemon/status", handleDaemonStatus)
 
 	log.Printf("Starting web server on %s", *addr)
 	log.Printf("Using namespace: %s", *namespace)
@@ -708,4 +714,248 @@ func handleInboxArchive(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "archived"})
+}
+
+func handleArchive(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	fs, err := connect()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer fs.Close()
+
+	fid, err := fs.Open("user/completed", plan9.OREAD)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer fid.Close()
+
+	messages := []InboxMessage{}
+	for {
+		dirs, err := fid.Dirread()
+		if err != nil || len(dirs) == 0 {
+			break
+		}
+		for _, d := range dirs {
+			if !strings.HasSuffix(d.Name, ".json") {
+				continue
+			}
+
+			msgFid, err := fs.Open(filepath.Join("user/completed", d.Name), plan9.OREAD)
+			if err != nil {
+				continue
+			}
+			data, err := io.ReadAll(msgFid)
+			msgFid.Close()
+			if err != nil {
+				continue
+			}
+
+			var msg Message
+			if err := json.Unmarshal(data, &msg); err != nil {
+				continue
+			}
+
+			var ts int64
+			parts := strings.Split(strings.TrimSuffix(d.Name, ".json"), "-")
+			if len(parts) == 2 {
+				fmt.Sscanf(parts[1], "%d", &ts)
+			}
+
+			messages = append(messages, InboxMessage{
+				Message:   msg,
+				Filename:  d.Name,
+				Timestamp: ts,
+			})
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(messages)
+}
+
+func handleBeads(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	fs, err := connect()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer fs.Close()
+
+	fid, err := fs.Open("beads/list", plan9.OREAD)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer fid.Close()
+
+	data, err := io.ReadAll(fid)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+}
+
+func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	fs, err := connect()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer fs.Close()
+
+	fid, err := fs.Open("beads/ready", plan9.OREAD)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer fid.Close()
+
+	data, err := io.ReadAll(fid)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+}
+
+func handleBeadsCtl(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Command string `json:"command"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	fs, err := connect()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer fs.Close()
+
+	fid, err := fs.Open("beads/ctl", plan9.OWRITE)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer fid.Close()
+
+	if _, err := fid.Write([]byte(req.Command)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func handleBeadDetail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	id := strings.TrimPrefix(r.URL.Path, "/api/beads/")
+	if id == "" {
+		http.Error(w, "Invalid bead ID", http.StatusBadRequest)
+		return
+	}
+
+	fs, err := connect()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer fs.Close()
+
+	fid, err := fs.Open(filepath.Join("beads", id, "json"), plan9.OREAD)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer fid.Close()
+
+	data, err := io.ReadAll(fid)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+}
+
+func handleDaemonStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	fs, err := connect()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"running": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+	defer fs.Close()
+
+	// If we can connect, daemon is running
+	// Try to get session count
+	fid, err := fs.Open("list", plan9.OREAD)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"running":       true,
+			"session_count": 0,
+		})
+		return
+	}
+	defer fid.Close()
+
+	data, _ := io.ReadAll(fid)
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	count := 0
+	for _, line := range lines {
+		if line != "" {
+			count++
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"running":       true,
+		"session_count": count,
+	})
 }

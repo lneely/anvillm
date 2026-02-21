@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -101,10 +104,10 @@ func setupUI() {
 			case 's':
 				showBackendSelectionMenu()
 				return nil
-			case 'p':
+			case ' ':
 				showPromptDialog()
 				return nil
-			case 't':
+			case 'T':
 				stopSelectedSession()
 				return nil
 			case 'R':
@@ -113,8 +116,23 @@ func setupUI() {
 			case 'K':
 				killSelectedSession()
 				return nil
-			case 'a':
+			case 'A':
 				showAliasDialog()
+				return nil
+			case 'c':
+				showContextEditor()
+				return nil
+			case 'i':
+				showInbox()
+				return nil
+			case 'a':
+				showArchive()
+				return nil
+			case 't':
+				attachToSession()
+				return nil
+			case 'b':
+				showBeads()
 				return nil
 			case 'd':
 				showDaemonStatus()
@@ -123,12 +141,12 @@ func setupUI() {
 				showHelp()
 				return nil
 			// Vim keybindings
-			case 'j':
+			case 'j', 'n':
 				if row < sessionList.GetRowCount()-1 {
 					sessionList.Select(row+1, col)
 				}
 				return nil
-			case 'k':
+			case 'k', 'p':
 				if row > 1 { // Don't go above first data row
 					sessionList.Select(row-1, col)
 				}
@@ -236,7 +254,7 @@ func refreshSessions() {
 		sessionList.SetCell(row, 5, tview.NewTableCell(" "+sess.Cwd+" ").SetExpansion(3))
 	}
 
-	updateStatus(fmt.Sprintf("Sessions: %d | [yellow]s[white]:start [yellow]p[white]:prompt [yellow]t[white]:stop [yellow]R[white]:restart [yellow]K[white]:kill [yellow]a[white]:alias [yellow]r[white]:refresh [yellow]j/k,C-n/C-p[white]:nav [yellow]?[white]:help [yellow]q[white]:quit", len(sessions)))
+	updateStatus(fmt.Sprintf("Sessions: %d | [yellow]s[white]:start [yellow]space[white]:prompt [yellow]c[white]:context [yellow]i[white]:inbox [yellow]a[white]:archive [yellow]b[white]:beads [yellow]t[white]:attach [yellow]T[white]:stop [yellow]R[white]:restart [yellow]K[white]:kill [yellow]A[white]:alias [yellow]r[white]:refresh [yellow]?[white]:help [yellow]q[white]:quit", len(sessions)))
 }
 
 func listSessions() ([]*SessionInfo, error) {
@@ -254,29 +272,21 @@ func listSessions() ([]*SessionInfo, error) {
 			continue
 		}
 
-		// Parse: id alias state pid cwd
-		fields := strings.Fields(line)
+		// Parse: id backend state alias cwd
+		fields := strings.Split(line, "\t")
 		if len(fields) < 5 {
 			continue
 		}
 
-		var pid int
-		fmt.Sscanf(fields[3], "%d", &pid)
-
 		sess := &SessionInfo{
 			ID:      fields[0],
-			Alias:   fields[1],
+			Backend: fields[1],
 			State:   fields[2],
-			Pid:     pid,
-			Cwd:     strings.Join(fields[4:], " "),
+			Alias:   fields[3],
+			Cwd:     fields[4],
 		}
 		if sess.Alias == "-" {
 			sess.Alias = ""
-		}
-
-		// Read backend
-		if backend, err := readFile(filepath.Join(sess.ID, "backend")); err == nil {
-			sess.Backend = strings.TrimSpace(string(backend))
 		}
 
 		sessions = append(sessions, sess)
@@ -343,6 +353,9 @@ func writeFile(path string, data []byte) error {
 }
 
 func sendPrompt(id, prompt string) error {
+	// Detect and wrap bead IDs
+	prompt = wrapBeadIDs(prompt)
+
 	// Create message JSON
 	msg := map[string]interface{}{
 		"to":      id,
@@ -372,6 +385,31 @@ func sendPrompt(id, prompt string) error {
 	return nil
 }
 
+func wrapBeadIDs(text string) string {
+	// Match bead IDs like bd-5xz or bd-5xz.1
+	re := regexp.MustCompile(`\bbd-[a-z0-9]+(?:\.[0-9]+)?\b`)
+	return re.ReplaceAllStringFunc(text, func(id string) string {
+		// Read bead to get title
+		beadPath := filepath.Join("beads", id, "json")
+		data, err := readFile(beadPath)
+		if err != nil {
+			return id // Return unwrapped if can't read
+		}
+
+		var bead map[string]interface{}
+		if err := json.Unmarshal(data, &bead); err != nil {
+			return id
+		}
+
+		title := ""
+		if t, ok := bead["title"].(string); ok {
+			title = t
+		}
+
+		return fmt.Sprintf("%s (%s)", id, title)
+	})
+}
+
 func updateStatus(msg string) {
 	statusBar.Clear()
 	fmt.Fprintf(statusBar, " %s", msg)
@@ -395,6 +433,8 @@ func showBackendSelectionMenu() {
 
 	list := tview.NewList().
 		ShowSecondaryText(false)
+	list.SetSelectedBackgroundColor(tcell.ColorWhite)
+	list.SetSelectedTextColor(tcell.ColorBlack)
 
 	for _, backend := range backends {
 		b := backend // capture for closure
@@ -468,6 +508,8 @@ func showPromptDialog() {
 
 	form := tview.NewForm().
 		AddFormItem(input)
+	form.SetFieldTextColor(tcell.ColorBlack)
+	form.SetButtonTextColor(tcell.ColorBlack)
 
 	form.AddButton("Send", func() {
 		prompt := input.GetText()
@@ -583,8 +625,798 @@ func killSelectedSession() {
 }
 
 func showDaemonStatus() {
-	// TODO: Implement daemon status view
-	updateStatus("[yellow]Daemon status view not yet implemented")
+	data, err := readFile("daemon")
+	if err != nil {
+		updateStatus(fmt.Sprintf("[red]Error reading daemon status: %v", err))
+		return
+	}
+
+	textView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetText(string(data)).
+		SetScrollable(true)
+
+	textView.SetBorder(true).SetTitle(" Daemon Status ")
+	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Rune() == 'q' || event.Key() == tcell.KeyEscape {
+			pages.RemovePage("daemon")
+			return nil
+		}
+		return event
+	})
+
+	pages.AddPage("daemon", createModal(textView, 70, 20), true, true)
+}
+
+func showContextEditor() {
+	sess := getSelectedSession()
+	if sess == nil {
+		updateStatus("[yellow]No session selected")
+		return
+	}
+
+	// Read current context
+	contextPath := filepath.Join(sess.ID, "context")
+	contextData, err := readFile(contextPath)
+	if err != nil {
+		updateStatus(fmt.Sprintf("[red]Error reading context: %v", err))
+		return
+	}
+
+	textArea := tview.NewTextArea().
+		SetText(string(contextData), true)
+
+	form := tview.NewForm().
+		AddFormItem(textArea)
+	form.SetFieldTextColor(tcell.ColorBlack)
+	form.SetButtonTextColor(tcell.ColorBlack)
+
+	form.AddButton("Save", func() {
+		newContext := textArea.GetText()
+		if err := writeFile(contextPath, []byte(newContext)); err != nil {
+			updateStatus(fmt.Sprintf("[red]Error saving context: %v", err))
+		} else {
+			updateStatus(fmt.Sprintf("[green]Context saved for %s", sess.ID[:8]))
+		}
+		pages.RemovePage("context")
+	})
+
+	form.AddButton("Cancel", func() {
+		pages.RemovePage("context")
+	})
+
+	form.SetBorder(true).
+		SetTitle(fmt.Sprintf(" Edit Context - %s ", sess.ID[:8])).
+		SetTitleAlign(tview.AlignLeft).
+		SetBorderColor(tcell.ColorBlue)
+
+	pages.AddPage("context", createModalDynamic(form, 4, 30), true, true)
+}
+
+func showInbox() {
+	// Read inbox directory
+	fid, err := fs.Open("user/inbox", plan9.OREAD)
+	if err != nil {
+		updateStatus(fmt.Sprintf("[red]Error opening inbox: %v", err))
+		return
+	}
+	defer fid.Close()
+
+	var messages []map[string]interface{}
+	for {
+		dirs, err := fid.Dirread()
+		if err != nil || len(dirs) == 0 {
+			break
+		}
+		for _, d := range dirs {
+			if !strings.HasSuffix(d.Name, ".json") {
+				continue
+			}
+
+			msgPath := filepath.Join("user/inbox", d.Name)
+			msgData, err := readFile(msgPath)
+			if err != nil {
+				continue
+			}
+
+			var msg map[string]interface{}
+			if err := json.Unmarshal(msgData, &msg); err != nil {
+				continue
+			}
+
+			messages = append(messages, msg)
+		}
+	}
+
+	list := tview.NewList().ShowSecondaryText(true)
+	list.SetSelectedBackgroundColor(tcell.ColorWhite)
+	list.SetSelectedTextColor(tcell.ColorBlack)
+
+	for i, msg := range messages {
+		idx := i
+		from := ""
+		if f, ok := msg["from"].(string); ok {
+			from = f
+		}
+		subject := ""
+		if s, ok := msg["subject"].(string); ok {
+			subject = s
+		}
+		msgType := ""
+		if t, ok := msg["type"].(string); ok {
+			msgType = t
+		}
+
+		list.AddItem(
+			fmt.Sprintf("(%s) %s", from, subject),
+			msgType,
+			0,
+			func() {
+				showMessage(messages[idx])
+			},
+		)
+	}
+
+	list.SetBorder(true).
+		SetTitle(fmt.Sprintf(" Inbox (%d messages) ", len(messages))).
+		SetTitleAlign(tview.AlignLeft).
+		SetBorderColor(tcell.ColorBlue)
+
+	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Rune() == 'q' || event.Key() == tcell.KeyEscape {
+			pages.RemovePage("inbox")
+			return nil
+		}
+		return event
+	})
+
+	pages.AddPage("inbox", createModalDynamic(list, 8, 16), true, true)
+}
+
+func showArchive() {
+	// Read completed directory (archive)
+	fid, err := fs.Open("user/completed", plan9.OREAD)
+	if err != nil {
+		updateStatus(fmt.Sprintf("[red]Error opening archive: %v", err))
+		return
+	}
+	defer fid.Close()
+
+	var messages []map[string]interface{}
+	for {
+		dirs, err := fid.Dirread()
+		if err != nil || len(dirs) == 0 {
+			break
+		}
+		for _, d := range dirs {
+			if !strings.HasSuffix(d.Name, ".json") {
+				continue
+			}
+
+			msgPath := filepath.Join("user/completed", d.Name)
+			msgData, err := readFile(msgPath)
+			if err != nil {
+				continue
+			}
+
+			var msg map[string]interface{}
+			if err := json.Unmarshal(msgData, &msg); err != nil {
+				continue
+			}
+
+			messages = append(messages, msg)
+		}
+	}
+
+	list := tview.NewList().ShowSecondaryText(true)
+	list.SetSelectedBackgroundColor(tcell.ColorWhite)
+	list.SetSelectedTextColor(tcell.ColorBlack)
+
+	for i, msg := range messages {
+		idx := i
+		from := ""
+		if f, ok := msg["from"].(string); ok {
+			from = f
+		}
+		subject := ""
+		if s, ok := msg["subject"].(string); ok {
+			subject = s
+		}
+		msgType := ""
+		if t, ok := msg["type"].(string); ok {
+			msgType = t
+		}
+
+		list.AddItem(
+			fmt.Sprintf("(%s) %s", from, subject),
+			msgType,
+			0,
+			func() {
+				showMessage(messages[idx])
+			},
+		)
+	}
+
+	list.SetBorder(true).
+		SetTitle(fmt.Sprintf(" Archive (%d messages) ", len(messages))).
+		SetTitleAlign(tview.AlignLeft).
+		SetBorderColor(tcell.ColorBlue)
+
+	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Rune() == 'q' || event.Key() == tcell.KeyEscape {
+			pages.RemovePage("archive")
+			return nil
+		}
+		return event
+	})
+
+	pages.AddPage("archive", createModalDynamic(list, 8, 16), true, true)
+}
+
+func attachToSession() {
+	sess := getSelectedSession()
+	if sess == nil {
+		updateStatus("[yellow]No session selected")
+		return
+	}
+
+	// Exit TUI and attach to tmux
+	app.Suspend(func() {
+		// Read tmux session name from session
+		tmuxPath := filepath.Join(sess.ID, "tmux")
+		tmuxData, err := readFile(tmuxPath)
+		if err != nil {
+			fmt.Printf("Error reading tmux session: %v\n", err)
+			fmt.Println("Press Enter to continue...")
+			fmt.Scanln()
+			return
+		}
+
+		tmuxSession := strings.TrimSpace(string(tmuxData))
+		if tmuxSession == "" {
+			fmt.Println("No tmux session found for this agent")
+			fmt.Println("Press Enter to continue...")
+			fmt.Scanln()
+			return
+		}
+
+		// Attach to tmux
+		fmt.Printf("Attaching to tmux session: %s\n", tmuxSession)
+		fmt.Printf("Press Ctrl-b d to detach\n\n")
+
+		cmd := exec.Command("tmux", "attach-session", "-t", tmuxSession)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("Error attaching to tmux: %v\n", err)
+			fmt.Println("Press Enter to continue...")
+			fmt.Scanln()
+		}
+	})
+}
+
+func showMessage(msg map[string]interface{}) {
+	body := ""
+	if b, ok := msg["body"].(string); ok {
+		body = b
+	}
+	from := ""
+	if f, ok := msg["from"].(string); ok {
+		from = f
+	}
+	subject := ""
+	if s, ok := msg["subject"].(string); ok {
+		subject = s
+	}
+
+	text := fmt.Sprintf("[yellow]From:[-] %s\n[yellow]Subject:[-] %s\n\n%s", from, subject, body)
+
+	textView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetText(text).
+		SetScrollable(true)
+
+	textView.SetBorder(true).SetTitle(" Message ")
+	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Rune() == 'q' || event.Key() == tcell.KeyEscape {
+			pages.RemovePage("message")
+			return nil
+		}
+		return event
+	})
+
+	pages.AddPage("message", createModalDynamic(textView, 8, 16), true, true)
+}
+
+func showBeads() {
+	showBeadsFiltered("")
+}
+
+func showBeadsFiltered(searchQuery string) {
+	// Read ready beads
+	beadsData, err := readFile("beads/ready")
+	if err != nil {
+		updateStatus(fmt.Sprintf("[red]Error reading beads: %v", err))
+		return
+	}
+
+	var allBeads []map[string]interface{}
+	if err := json.Unmarshal(beadsData, &allBeads); err != nil {
+		updateStatus(fmt.Sprintf("[red]Error parsing beads: %v", err))
+		return
+	}
+
+	// Filter beads if search query provided
+	var beads []map[string]interface{}
+	searchLower := strings.ToLower(searchQuery)
+	for _, bead := range allBeads {
+		if searchQuery == "" {
+			beads = append(beads, bead)
+		} else {
+			title := ""
+			if t, ok := bead["title"].(string); ok {
+				title = strings.ToLower(t)
+			}
+			if strings.Contains(title, searchLower) {
+				beads = append(beads, bead)
+			}
+		}
+	}
+
+	list := tview.NewList().ShowSecondaryText(true)
+	list.SetSelectedBackgroundColor(tcell.ColorWhite)
+	list.SetSelectedTextColor(tcell.ColorBlack)
+
+	for i, bead := range beads {
+		idx := i
+		id := ""
+		if bid, ok := bead["id"].(string); ok {
+			id = bid
+		}
+		title := ""
+		if t, ok := bead["title"].(string); ok {
+			title = t
+		}
+		status := ""
+		if s, ok := bead["status"].(string); ok {
+			status = s
+		}
+
+		list.AddItem(
+			fmt.Sprintf("(%s) %s", id, title),
+			status,
+			0,
+			func() {
+				showBead(beads[idx])
+			},
+		)
+	}
+
+	// Get selected session info for display
+	sess := getSelectedSession()
+	sessionInfo := ""
+	if sess != nil {
+		sessionInfo = fmt.Sprintf("(%s) ", sess.ID[:8])
+	}
+
+	titleStr := fmt.Sprintf(" %sReady Beads (%d) | N:new | C:subtask | S:search | W:assign | R:refresh | Q:quit ", sessionInfo, len(beads))
+	if searchQuery != "" {
+		titleStr = fmt.Sprintf(" %sSearch: '%s' (%d) | N:new | C:subtask | S:search | W:assign | R:refresh | Q:quit ", sessionInfo, searchQuery, len(beads))
+	}
+
+	list.SetBorder(true).
+		SetTitle(titleStr).
+		SetTitleAlign(tview.AlignLeft).
+		SetBorderColor(tcell.ColorBlue)
+
+	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Rune() == 'q' || event.Key() == tcell.KeyEscape {
+			pages.RemovePage("beads")
+			return nil
+		}
+		if event.Rune() == 'w' {
+			// Get selected bead
+			idx := list.GetCurrentItem()
+			if idx >= 0 && idx < len(beads) {
+				showAssignBeadConfirm(beads[idx])
+			}
+			return nil
+		}
+		if event.Rune() == 'n' {
+			showNewBeadDialog()
+			return nil
+		}
+		if event.Rune() == 'c' {
+			// Get selected bead
+			idx := list.GetCurrentItem()
+			if idx >= 0 && idx < len(beads) {
+				parentID := ""
+				if bid, ok := beads[idx]["id"].(string); ok {
+					parentID = bid
+				}
+				if parentID != "" {
+					showNewSubtaskDialog(parentID)
+				}
+			}
+			return nil
+		}
+		if event.Rune() == 's' {
+			showBeadSearchDialog()
+			return nil
+		}
+		if event.Rune() == 'r' {
+			pages.RemovePage("beads")
+			showBeads()
+			return nil
+		}
+		return event
+	})
+
+	pages.AddPage("beads", createModalDynamic(list, 8, 16), true, true)
+}
+
+func showBeadSearchDialog() {
+	input := tview.NewInputField().
+		SetLabel("Search: ").
+		SetFieldWidth(0).
+		SetFieldTextColor(tcell.ColorBlack).
+		SetFieldBackgroundColor(tcell.ColorWhite)
+
+	input.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter {
+			query := input.GetText()
+			pages.RemovePage("bead-search")
+			pages.RemovePage("beads")
+			showBeadsFiltered(query)
+		} else {
+			pages.RemovePage("bead-search")
+		}
+	})
+
+	container := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(input, 1, 0, true)
+
+	container.SetBorder(true).
+		SetTitle(" Search Beads by Title ").
+		SetTitleAlign(tview.AlignLeft).
+		SetBorderColor(tcell.ColorBlue)
+
+	pages.AddPage("bead-search", createModal(container, 50, 5), true, true)
+}
+
+func showBead(bead map[string]interface{}) {
+	id := ""
+	if bid, ok := bead["id"].(string); ok {
+		id = bid
+	}
+	title := ""
+	if t, ok := bead["title"].(string); ok {
+		title = t
+	}
+	description := ""
+	if d, ok := bead["description"].(string); ok {
+		description = d
+	}
+	status := ""
+	if s, ok := bead["status"].(string); ok {
+		status = s
+	}
+
+	text := fmt.Sprintf("[yellow]ID:[-] %s\n[yellow]Title:[-] %s\n[yellow]Status:[-] %s\n\n%s", id, title, status, description)
+
+	textView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetText(text).
+		SetScrollable(true)
+
+	textView.SetBorder(true).SetTitle(" Bead Details | E:edit | N:new subtask | Q:quit ")
+	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Rune() == 'q' || event.Key() == tcell.KeyEscape {
+			pages.RemovePage("bead")
+			return nil
+		}
+		if event.Rune() == 'n' {
+			showNewSubtaskDialog(id)
+			return nil
+		}
+		if event.Rune() == 'e' {
+			showEditBeadDialog(bead)
+			return nil
+		}
+		return event
+	})
+
+	pages.AddPage("bead", createModalDynamic(textView, 8, 16), true, true)
+}
+
+func showNewBeadDialog() {
+	titleInput := tview.NewInputField().
+		SetLabel("Title: ").
+		SetFieldWidth(0).
+		SetFieldTextColor(tcell.ColorBlack).
+		SetFieldBackgroundColor(tcell.ColorWhite)
+
+	descArea := tview.NewTextArea().
+		SetPlaceholder("Description (optional)...")
+
+	form := tview.NewForm().
+		AddFormItem(titleInput).
+		AddFormItem(descArea)
+	form.SetFieldTextColor(tcell.ColorBlack)
+	form.SetButtonTextColor(tcell.ColorBlack)
+
+	form.AddButton("Create", func() {
+		title := titleInput.GetText()
+		desc := descArea.GetText()
+
+		if title == "" {
+			updateStatus("[red]Title cannot be empty")
+			return
+		}
+
+		// Escape single quotes in title and description
+		title = strings.ReplaceAll(title, "'", "\\'")
+		desc = strings.ReplaceAll(desc, "'", "\\'")
+
+		cmd := fmt.Sprintf("new '%s' '%s'", title, desc)
+		if err := writeFile("beads/ctl", []byte(cmd)); err != nil {
+			updateStatus(fmt.Sprintf("[red]Error creating bead: %v", err))
+		} else {
+			updateStatus(fmt.Sprintf("[green]Created bead: %s", title))
+			pages.RemovePage("new-bead")
+			// Refresh beads view if it's open
+			if pages.HasPage("beads") {
+				pages.RemovePage("beads")
+				showBeads()
+			}
+		}
+	})
+
+	form.AddButton("Cancel", func() {
+		pages.RemovePage("new-bead")
+	})
+
+	form.SetBorder(true).
+		SetTitle(" Create New Bead ").
+		SetTitleAlign(tview.AlignLeft).
+		SetBorderColor(tcell.ColorBlue)
+
+	pages.AddPage("new-bead", createModal(form, 80, 15), true, true)
+}
+
+func showNewSubtaskDialog(parentID string) {
+	titleInput := tview.NewInputField().
+		SetLabel("Title: ").
+		SetFieldWidth(0).
+		SetFieldTextColor(tcell.ColorBlack).
+		SetFieldBackgroundColor(tcell.ColorWhite)
+
+	descArea := tview.NewTextArea().
+		SetPlaceholder("Description (optional)...")
+
+	form := tview.NewForm().
+		AddFormItem(titleInput).
+		AddFormItem(descArea)
+	form.SetFieldTextColor(tcell.ColorBlack)
+	form.SetButtonTextColor(tcell.ColorBlack)
+
+	form.AddButton("Create", func() {
+		title := titleInput.GetText()
+		desc := descArea.GetText()
+
+		if title == "" {
+			updateStatus("[red]Title cannot be empty")
+			return
+		}
+
+		// Escape single quotes in title and description
+		title = strings.ReplaceAll(title, "'", "\\'")
+		desc = strings.ReplaceAll(desc, "'", "\\'")
+
+		cmd := fmt.Sprintf("new '%s' '%s' %s", title, desc, parentID)
+		if err := writeFile("beads/ctl", []byte(cmd)); err != nil {
+			updateStatus(fmt.Sprintf("[red]Error creating subtask: %v", err))
+		} else {
+			updateStatus(fmt.Sprintf("[green]Created subtask under %s: %s", parentID, title))
+			pages.RemovePage("new-subtask")
+			pages.RemovePage("bead")
+		}
+	})
+
+	form.AddButton("Cancel", func() {
+		pages.RemovePage("new-subtask")
+	})
+
+	form.SetBorder(true).
+		SetTitle(fmt.Sprintf(" Create Subtask (parent: %s) ", parentID)).
+		SetTitleAlign(tview.AlignLeft).
+		SetBorderColor(tcell.ColorBlue)
+
+	pages.AddPage("new-subtask", createModal(form, 80, 15), true, true)
+}
+
+func showEditBeadDialog(bead map[string]interface{}) {
+	id := ""
+	if bid, ok := bead["id"].(string); ok {
+		id = bid
+	}
+	title := ""
+	if t, ok := bead["title"].(string); ok {
+		title = t
+	}
+	description := ""
+	if d, ok := bead["description"].(string); ok {
+		description = d
+	}
+	status := ""
+	if s, ok := bead["status"].(string); ok {
+		status = s
+	}
+	priority := 0
+	if p, ok := bead["priority"].(float64); ok {
+		priority = int(p)
+	}
+
+	titleInput := tview.NewInputField().
+		SetLabel("Title: ").
+		SetText(title).
+		SetFieldWidth(0).
+		SetFieldTextColor(tcell.ColorBlack).
+		SetFieldBackgroundColor(tcell.ColorWhite)
+
+	descArea := tview.NewTextArea().
+		SetText(description, false)
+
+	statusInput := tview.NewInputField().
+		SetLabel("Status: ").
+		SetText(status).
+		SetFieldWidth(0).
+		SetFieldTextColor(tcell.ColorBlack).
+		SetFieldBackgroundColor(tcell.ColorWhite)
+
+	priorityInput := tview.NewInputField().
+		SetLabel("Priority: ").
+		SetText(fmt.Sprintf("%d", priority)).
+		SetFieldWidth(0).
+		SetFieldTextColor(tcell.ColorBlack).
+		SetFieldBackgroundColor(tcell.ColorWhite)
+
+	form := tview.NewForm().
+		AddFormItem(titleInput).
+		AddFormItem(descArea).
+		AddFormItem(statusInput).
+		AddFormItem(priorityInput)
+	form.SetFieldTextColor(tcell.ColorBlack)
+	form.SetButtonTextColor(tcell.ColorBlack)
+
+	form.AddButton("Save", func() {
+		newTitle := titleInput.GetText()
+		newDesc := descArea.GetText()
+		newStatus := statusInput.GetText()
+		newPriorityStr := priorityInput.GetText()
+
+		if newTitle == "" {
+			updateStatus("[red]Title cannot be empty")
+			return
+		}
+
+		// Update title if changed
+		if newTitle != title {
+			cmd := fmt.Sprintf("update %s title '%s'", id, strings.ReplaceAll(newTitle, "'", "\\'"))
+			if err := writeFile("beads/ctl", []byte(cmd)); err != nil {
+				updateStatus(fmt.Sprintf("[red]Error updating title: %v", err))
+				return
+			}
+		}
+
+		// Update description if changed
+		if newDesc != description {
+			cmd := fmt.Sprintf("update %s description '%s'", id, strings.ReplaceAll(newDesc, "'", "\\'"))
+			if err := writeFile("beads/ctl", []byte(cmd)); err != nil {
+				updateStatus(fmt.Sprintf("[red]Error updating description: %v", err))
+				return
+			}
+		}
+
+		// Update status if changed
+		if newStatus != status {
+			cmd := fmt.Sprintf("update %s status %s", id, newStatus)
+			if err := writeFile("beads/ctl", []byte(cmd)); err != nil {
+				updateStatus(fmt.Sprintf("[red]Error updating status: %v", err))
+				return
+			}
+		}
+
+		// Update priority if changed
+		if newPriorityStr != fmt.Sprintf("%d", priority) {
+			cmd := fmt.Sprintf("update %s priority %s", id, newPriorityStr)
+			if err := writeFile("beads/ctl", []byte(cmd)); err != nil {
+				updateStatus(fmt.Sprintf("[red]Error updating priority: %v", err))
+				return
+			}
+		}
+
+		updateStatus(fmt.Sprintf("[green]Updated bead %s", id))
+		pages.RemovePage("edit-bead")
+		pages.RemovePage("bead")
+		// Refresh beads view if it's open
+		if pages.HasPage("beads") {
+			pages.RemovePage("beads")
+			showBeads()
+		}
+	})
+
+	form.AddButton("Cancel", func() {
+		pages.RemovePage("edit-bead")
+	})
+
+	form.SetBorder(true).
+		SetTitle(fmt.Sprintf(" Edit Bead: %s ", id)).
+		SetTitleAlign(tview.AlignLeft).
+		SetBorderColor(tcell.ColorBlue)
+
+	pages.AddPage("edit-bead", createModal(form, 80, 20), true, true)
+}
+
+func showAssignBeadConfirm(bead map[string]interface{}) {
+	// Get currently selected session
+	sess := getSelectedSession()
+	if sess == nil {
+		updateStatus("[yellow]No session selected")
+		return
+	}
+
+	beadID := ""
+	if bid, ok := bead["id"].(string); ok {
+		beadID = bid
+	}
+	beadTitle := ""
+	if t, ok := bead["title"].(string); ok {
+		beadTitle = t
+	}
+
+	if beadID == "" {
+		updateStatus("[red]Invalid bead")
+		return
+	}
+
+	message := fmt.Sprintf("Agent %s will work on %s (%s).\n\nContinue?", sess.ID[:8], beadID, beadTitle)
+
+	textView := tview.NewTextView().
+		SetText(message).
+		SetTextAlign(tview.AlignCenter)
+
+	form := tview.NewForm()
+	form.SetButtonTextColor(tcell.ColorBlack)
+	form.AddButton("Yes", func() {
+		// Send prompt to work on the bead
+		prompt := fmt.Sprintf("Work on bead %s", beadID)
+		if err := sendPrompt(sess.ID, prompt); err != nil {
+			updateStatus(fmt.Sprintf("[red]Error sending prompt: %v", err))
+		} else {
+			updateStatus(fmt.Sprintf("[green]Assigned bead %s to %s", beadID, sess.ID[:8]))
+		}
+		pages.RemovePage("assign-confirm")
+	})
+
+	form.AddButton("No", func() {
+		pages.RemovePage("assign-confirm")
+	})
+
+	layout := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(textView, 0, 1, false).
+		AddItem(form, 3, 0, true)
+
+	layout.SetBorder(true).
+		SetTitle(" Assign Bead ").
+		SetTitleAlign(tview.AlignLeft).
+		SetBorderColor(tcell.ColorBlue)
+
+	pages.AddPage("assign-confirm", createModal(layout, 60, 10), true, true)
 }
 
 func showHelp() {
@@ -593,25 +1425,39 @@ func showHelp() {
 
 [yellow]Session Management:[-]
   s       Start new session (shows backend menu)
-  t       Stop selected session
+  T       Stop selected session
   R       Restart selected session
   K       Kill selected session
-  a       Set session alias
+  A       Set session alias
+  t       Attach to session tmux
 
 [yellow]Interaction:[-]
-  p       Send prompt to session
-  l       View session log (press 'r' to refresh, 'q' to close)
+  space   Send prompt to session
+  c       Edit session context
+  i       View inbox
+  a       View archive
+  b       View/claim beads (tasks)
   r       Refresh session list
 
 [yellow]Navigation:[-]
   ↑/↓     Select session (arrow keys)
-  j/k     Select session (vim-style)
+  j/n     Select next session (down)
+  k/p     Select previous session (up)
   C-n/C-p Select session (emacs-style)
 
 [yellow]Other:[-]
   d       Daemon status
   ?       Show this help
   q       Quit (or ESC in dialogs)
+
+[yellow]Beads:[-]
+  b       View ready beads
+  n       Create new bead
+  c       Create subtask of SELECTED bead
+  e       Edit bead (in bead detail view)
+  s       Search beads by title (blank = show all)
+  w       Assign SELECTED bead to CURRENTLY SELECTED SESSION (sends prompt)
+  r       Refresh / clear search
 
 [yellow]9P Filesystem:[-]
 All operations read/write the 9P filesystem at $NAMESPACE/agent
@@ -649,12 +1495,12 @@ func createModal(p tview.Primitive, width, height int) tview.Primitive {
 		AddItem(nil, 0, 1, false)
 }
 
-func createModalDynamic(p tview.Primitive, widthProportion, height int) tview.Primitive {
+func createModalDynamic(p tview.Primitive, widthProportion, heightProportion int) tview.Primitive {
 	return tview.NewFlex().
 		AddItem(nil, 0, 1, false).
 		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(nil, 0, 1, false).
-			AddItem(p, height, 1, true).
+			AddItem(p, 0, heightProportion, true).
 			AddItem(nil, 0, 1, false), 0, widthProportion, true).
 		AddItem(nil, 0, 1, false)
 }
