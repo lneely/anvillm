@@ -31,6 +31,7 @@ build:V:
 	chmod +x $HOME/.claude/hooks/*.sh
 	bash claude/install-hooks.sh
 	bash kiro-cli/install-mcp.sh
+	cp ./ollama/mcp.json $HOME/.config/anvillm/ollama-mcp.json
 
 install:V: build
 

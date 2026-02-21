@@ -14,7 +14,7 @@ AnviLLM uses 9P because orchestration becomes file manipulation (`read`, `write`
 
 ## Requirements
 
-Go 1.21+, plan9port, tmux, [landrun](https://github.com/zouuup/landrun) (kernel 5.13+), backend ([Claude Code](https://github.com/anthropics/claude-code) or [Kiro](https://kiro.dev))
+Go 1.21+, plan9port, tmux, [landrun](https://github.com/zouuup/landrun) (kernel 5.13+), backend ([Claude Code](https://github.com/anthropics/claude-code), [Kiro](https://kiro.dev), or [Ollama](https://ollama.com) + [ollie](https://github.com/lneely/ollie))
 
 ## Installation
 
@@ -65,7 +65,7 @@ NAMESPACE=/tmp/ns.$USER.:1 Assist          # connect
 | Command | Action |
 |---------|--------|
 | `Get` | Refresh session list |
-| `Kiro <dir>` / `Claude <dir>` | Start session |
+| `Kiro <dir>` / `Claude <dir>` / `Ollama <dir>` | Start session |
 | `Attach <id>` | Open tmux |
 | `Stop <id>` / `Restart <id>` / `Kill <id>` | Control session |
 | `Alias <id> <name>` | Name session |
@@ -85,6 +85,7 @@ NAMESPACE=/tmp/ns.$USER.:1 Assist          # connect
 | `ANTHROPIC_API_KEY` | — | Claude API key (optional if using `claude /login`) |
 | `CLAUDE_AGENT_NAME` | `anvillm-agent` | Claude agent configuration name |
 | `KIRO_API_KEY` | — | Kiro API key (optional if using `kiro-cli login`) |
+| `ANVILLM_OLLAMA_MODEL` | `qwen3:8b` | Ollama model to use for ollama backend |
 
 ### Sandbox Config Templates
 
@@ -105,7 +106,34 @@ Available in sandbox YAML files (`~/.config/anvillm/`):
 
 ## Backends & Sandboxing
 
-**Backends:** Claude (`npm install -g @anthropic-ai/claude-code`), Kiro ([kiro.dev](https://kiro.dev)) — Sandboxed with network access
+**Backends:** Claude (`npm install -g @anthropic-ai/claude-code`), Kiro ([kiro.dev](https://kiro.dev)), Ollama (local models via [ollie](https://github.com/lneely/ollie)) — Sandboxed with network access
+
+### Ollama Backend
+
+Run local LLMs via Ollama:
+
+**Requirements:**
+1. **Ollama:** Install from [ollama.com](https://ollama.com)
+   ```sh
+   curl -fsSL https://ollama.com/install.sh | sh
+   ollama serve  # Start server (default: localhost:11434)
+   ollama pull qwen2.5-coder:7b  # Download a model
+   ```
+
+2. **Ollie CLI:** Install from [github.com/lneely/ollie](https://github.com/lneely/ollie)
+   ```sh
+   git clone https://github.com/lneely/ollie && cd ollie && go install
+   ```
+
+**Usage:**
+```sh
+echo 'new ollama /path/to/project' | 9p write agent/ctl
+```
+
+**Configuration:** Set model via environment variable (default: `qwen3:8b`)
+```sh
+ANVILLM_OLLAMA_MODEL=llama3.2 echo 'new ollama /path' | 9p write agent/ctl
+```
 
 **Add:** Implement `CommandHandler`/`StateInspector` in `internal/backends/yourbackend.go`, register in `main.go`
 

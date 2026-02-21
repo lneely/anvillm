@@ -1,0 +1,18 @@
+# Claude backend requirements
+filesystem:
+  rw:
+    - "{HOME}/.claude"
+    - "{HOME}/.mcp.json"
+    - "{HOME}/.claude.json"
+    - "{HOME}/.config/anvillm"
+    - "{HOME}/.ollama"
+    - "{HOME}/.mcphost.yml"
+  rwx:
+    - "{HOME}/.claude/hooks"
+    - "{HOME}/.pyenv"
+    - "{HOME}/.local/lib"
+network:
+  unrestricted: true
+env:
+  - ANTHROPIC_API_KEY
+  - CLAUDE_AGENT_NAME=anvillm-agent

@@ -147,6 +147,16 @@ func main() {
 					continue
 				}
 				refreshList(w)
+			case "Ollama":
+				if arg == "" {
+					fmt.Fprintf(os.Stderr, "Error: Ollama requires a path argument\n")
+					continue
+				}
+				if err := createSession("ollama", arg); err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					continue
+				}
+				refreshList(w)
 			case "Stop":
 				if arg == "" {
 					fmt.Fprintf(os.Stderr, "Usage: Stop <session-id>\n")
@@ -298,7 +308,7 @@ func main() {
 // parseCommand extracts command and argument from input text
 // Handles cases like "Kiro /path" -> ("Kiro", "/path")
 func parseCommand(cmd, arg string) (string, string) {
-	commandsWithArgs := []string{"Kiro", "Claude", "Stop", "Restart", "Kill", "Alias", "Context"}
+	commandsWithArgs := []string{"Kiro", "Claude", "Ollama", "Stop", "Restart", "Kill", "Alias", "Context"}
 
 	for _, cmdName := range commandsWithArgs {
 		prefix := cmdName + " "
@@ -546,7 +556,7 @@ func writeFile(path string, data []byte) error {
 
 func refreshList(w *acme.Win) {
 	var buf strings.Builder
-	buf.WriteString("Backends: [Kiro] [Claude]\n\n")
+	buf.WriteString("Backends: [Kiro] [Claude] [Ollama]\n\n")
 
 	if !isConnected() {
 		buf.WriteString("Not connected to anvilsrv daemon.\n")

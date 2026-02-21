@@ -129,6 +129,25 @@ func main() {
 							Required: []string{"agent_id", "state"},
 						},
 					},
+					{
+						Name:        "load_skill",
+						Description: "Load a skill file into context from $ANVILLM_SKILLS_PATH/{skill_name}/SKILL.md",
+						InputSchema: InputSchema{
+							Type: "object",
+							Properties: map[string]Property{
+								"skill_name": {Type: "string", Description: "Name of the skill to load"},
+							},
+							Required: []string{"skill_name"},
+						},
+					},
+					{
+						Name:        "list_skills",
+						Description: "List all available skills from $ANVILLM_SKILLS_PATH",
+						InputSchema: InputSchema{
+							Type:       "object",
+							Properties: map[string]Property{},
+						},
+					},
 				},
 			})
 		case "tools/call":
@@ -216,6 +235,36 @@ func handleToolCall(req MCPRequest) {
 		sendResponse(req.ID, map[string]interface{}{
 			"content": []map[string]string{
 				{"type": "text", "text": "State set"},
+			},
+		})
+	case "load_skill":
+		skillName, _ := params.Arguments["skill_name"].(string)
+		
+		fmt.Fprintf(os.Stderr, "[anvilmcp] Loading skill: %s\n", skillName)
+		result, err := loadSkill(skillName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[anvilmcp] Error: %v\n", err)
+			sendError(req.ID, -32000, err.Error())
+			return
+		}
+		fmt.Fprintf(os.Stderr, "[anvilmcp] Skill loaded: %d bytes\n", len(result))
+		sendResponse(req.ID, map[string]interface{}{
+			"content": []map[string]string{
+				{"type": "text", "text": result},
+			},
+		})
+	case "list_skills":
+		fmt.Fprintf(os.Stderr, "[anvilmcp] Listing skills\n")
+		result, err := listSkills()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[anvilmcp] Error: %v\n", err)
+			sendError(req.ID, -32000, err.Error())
+			return
+		}
+		fmt.Fprintf(os.Stderr, "[anvilmcp] Skills listed: %d bytes\n", len(result))
+		sendResponse(req.ID, map[string]interface{}{
+			"content": []map[string]string{
+				{"type": "text", "text": result},
 			},
 		})
 	default:
@@ -327,6 +376,70 @@ func setState(agentID, state string) error {
 	cmd := exec.Command("9p", "write", statePath)
 	cmd.Stdin = strings.NewReader(state)
 	return cmd.Run()
+}
+
+func loadSkill(skillName string) (string, error) {
+	skillsPath := os.Getenv("ANVILLM_SKILLS_PATH")
+	if skillsPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to get home directory: %v", err)
+		}
+		skillsPath = fmt.Sprintf("%s/.config/anvillm/skills", home)
+	}
+	
+	skillPath := fmt.Sprintf("%s/%s/SKILL.md", skillsPath, skillName)
+	data, err := os.ReadFile(skillPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read skill file: %v", err)
+	}
+	
+	return string(data), nil
+}
+
+func listSkills() (string, error) {
+	skillsPath := os.Getenv("ANVILLM_SKILLS_PATH")
+	if skillsPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to get home directory: %v", err)
+		}
+		skillsPath = fmt.Sprintf("%s/.config/anvillm/skills", home)
+	}
+	
+	var result strings.Builder
+	for _, dir := range strings.Split(skillsPath, ":") {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			
+			skillPath := fmt.Sprintf("%s/%s/SKILL.md", dir, entry.Name())
+			data, err := os.ReadFile(skillPath)
+			if err != nil {
+				continue
+			}
+			
+			desc := "No description"
+			scanner := bufio.NewScanner(strings.NewReader(string(data)))
+			for scanner.Scan() {
+				line := scanner.Text()
+				if strings.HasPrefix(line, "description: ") {
+					desc = strings.TrimPrefix(line, "description: ")
+					break
+				}
+			}
+			
+			result.WriteString(fmt.Sprintf("%s: %s\n", entry.Name(), desc))
+		}
+	}
+	
+	return result.String(), nil
 }
 
 func sendResponse(id interface{}, result interface{}) {

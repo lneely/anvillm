@@ -46,7 +46,7 @@ agent/
         pid             (read)  process id
         cwd             (read)  working directory
         alias           (r/w)   session alias
-        backend         (read)  backend name (e.g., "kiro-cli", "claude")
+        backend         (read)  backend name (e.g., "kiro-cli", "claude", "ollama")
         context         (r/w)   text prepended to every prompt
 
 Communication:
@@ -357,7 +357,7 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			if s.mgr.Get(sessID) == nil {
 				return errFcall(fc, "session not found")
 			}
-			
+
 			// Check if it's a mailbox directory
 			if name == "inbox" {
 				qid = plan9.Qid{Type: QTDir, Path: qidInboxBase + hashID(sessID)}
@@ -382,11 +382,11 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 			sessID := parts[0]
 			mailbox := parts[1]
-			
+
 			if s.mgr.Get(sessID) == nil {
 				return errFcall(fc, "session not found")
 			}
-			
+
 			// Message file (msg-*.json)
 			qid = plan9.Qid{Type: QTFile, Path: qidMessageBase + hashID(sessID+mailbox+name)}
 			newPath = path + "/" + name
@@ -451,7 +451,7 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 
 	input := strings.TrimSpace(string(fc.Data))
 	parts := strings.Split(strings.TrimPrefix(f.path, "/"), "/")
-	
+
 	fmt.Fprintf(os.Stderr, "[DEBUG] write: path=%q parts=%v len=%d\n", f.path, parts, len(parts))
 
 	// Handle beads writes
@@ -481,12 +481,12 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		if len(args) < 2 || args[0] != "new" {
 			return errFcall(fc, "usage: new <backend> <cwd> [role=<role>] [tasks=<task1,task2>]")
 		}
-		
+
 		backendName := args[1]
 		cwd, _ := os.Getwd()
 		var role string
 		var tasks []string
-		
+
 		// Parse remaining arguments: first non-key=value is cwd, rest are options
 		cwdSet := false
 		for i := 2; i < len(args); i++ {
@@ -562,7 +562,7 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			}
 			return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 		}
-		
+
 		sess := s.mgr.Get(parts[0])
 		if sess == nil {
 			return errFcall(fc, "session not found")
@@ -662,59 +662,59 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 				return errFcall(fc, fmt.Sprintf("invalid state transition: %v", err))
 			}
 		}
-		
+
 		// Track this connection's session ID
 		cs.mu.Lock()
 		if cs.sessionID == "" {
 			cs.sessionID = sessID
 		}
 		cs.mu.Unlock()
-		
+
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
 	// /{id}/mail - write message to outbox (generates UUID filename)
 	if len(parts) == 2 && parts[1] == "mail" {
 		sessID := parts[0]
-		
+
 		// Track this connection's session ID
 		cs.mu.Lock()
 		if cs.sessionID == "" {
 			cs.sessionID = sessID
 		}
 		cs.mu.Unlock()
-		
+
 		// Parse JSON message
 		msg, err := mailbox.FromJSON(fc.Data)
 		if err != nil {
 			return errFcall(fc, fmt.Sprintf("invalid message JSON: %v", err))
 		}
-		
+
 		// Validate message type
 		if err := mailbox.ValidateMessageType(msg.Type); err != nil {
 			return errFcall(fc, err.Error())
 		}
-		
+
 		// Generate UUID for message
 		msg.ID = uuid.New().String()
-		
+
 		// Add to outbox
 		mailMgr := s.mgr.GetMailManager()
 		if mailMgr == nil {
 			return errFcall(fc, "mailbox not available")
 		}
-		
+
 		if err := mailMgr.AddToOutbox(sessID, msg); err != nil {
 			return errFcall(fc, fmt.Sprintf("failed to add message: %v", err))
 		}
-		
+
 		// Transition sender to idle after sending any outbox message
 		if sess := s.mgr.Get(sessID); sess != nil {
 			if tmuxSess, ok := sess.(*tmux.Session); ok {
 				tmuxSess.TransitionTo("idle")
 			}
 		}
-		
+
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
@@ -725,28 +725,28 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		if err != nil {
 			return errFcall(fc, fmt.Sprintf("invalid message JSON: %v", err))
 		}
-		
+
 		// Validate message type
 		if err := mailbox.ValidateMessageType(msg.Type); err != nil {
 			return errFcall(fc, err.Error())
 		}
-		
+
 		// Set from field to "user"
 		msg.From = "user"
-		
+
 		// Generate UUID for message
 		msg.ID = uuid.New().String()
-		
+
 		// Add to user's outbox
 		mailMgr := s.mgr.GetMailManager()
 		if mailMgr == nil {
 			return errFcall(fc, "mailbox not available")
 		}
-		
+
 		if err := mailMgr.AddToOutbox("user", msg); err != nil {
 			return errFcall(fc, fmt.Sprintf("failed to add message: %v", err))
 		}
-		
+
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
@@ -756,34 +756,34 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		if s.mgr.Get(sessID) == nil {
 			return errFcall(fc, "session not found")
 		}
-		
+
 		// Parse JSON message
 		msg, err := mailbox.FromJSON(fc.Data)
 		if err != nil {
 			return errFcall(fc, fmt.Sprintf("invalid message JSON: %v", err))
 		}
-		
+
 		// Validate message type
 		if err := mailbox.ValidateMessageType(msg.Type); err != nil {
 			return errFcall(fc, err.Error())
 		}
-		
+
 		// Set from field to session ID
 		msg.From = sessID
-		
+
 		// Generate UUID for message
 		msg.ID = uuid.New().String()
-		
+
 		// Add to agent's outbox
 		mailMgr := s.mgr.GetMailManager()
 		if mailMgr == nil {
 			return errFcall(fc, "mailbox not available")
 		}
-		
+
 		if err := mailMgr.AddToOutbox(sessID, msg); err != nil {
 			return errFcall(fc, fmt.Sprintf("failed to add message: %v", err))
 		}
-		
+
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
@@ -811,34 +811,34 @@ func (s *Server) remove(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	if !ok {
 		return errFcall(fc, "bad fid")
 	}
-	
+
 	// Only support removing inbox messages (marks them as completed)
 	parts := strings.Split(strings.TrimPrefix(f.path, "/"), "/")
 	if len(parts) == 3 && parts[1] == "inbox" && strings.HasSuffix(parts[2], ".json") {
 		sessID := parts[0]
 		msgID := strings.TrimSuffix(parts[2], ".json")
-		
+
 		// Validate ownership: only allow removing from own inbox or user inbox
 		if sessionID == "" || (sessID != "user" && sessID != sessionID) {
 			return errFcall(fc, "permission denied: can only remove from own inbox")
 		}
-		
+
 		mailMgr := s.mgr.GetMailManager()
 		if mailMgr == nil {
 			return errFcall(fc, "mailbox not available")
 		}
-		
+
 		if err := mailMgr.CompleteMessage(sessID, msgID); err != nil {
 			return errFcall(fc, err.Error())
 		}
-		
+
 		cs.mu.Lock()
 		delete(cs.fids, fc.Fid)
 		cs.mu.Unlock()
-		
+
 		return &plan9.Fcall{Type: plan9.Rremove, Tag: fc.Tag}
 	}
-	
+
 	return errFcall(fc, "remove not supported for this file")
 }
 
@@ -915,7 +915,7 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 	} else if strings.HasPrefix(path, "/user/") && strings.Count(path, "/") == 2 {
 		// User mailbox directory (inbox/outbox/completed)
 		mailboxType := strings.TrimPrefix(path, "/user/")
-		
+
 		mailMgr := s.mgr.GetMailManager()
 		if mailMgr != nil {
 			var messages []*mailbox.Message
@@ -926,12 +926,12 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 			} else if mailboxType == "completed" {
 				messages = mailMgr.GetCompleted("user")
 			}
-			
+
 			// Sort messages by ID (which is now timestamp-based)
 			sort.Slice(messages, func(i, j int) bool {
 				return messages[i].ID < messages[j].ID
 			})
-			
+
 			for _, msg := range messages {
 				data, _ := msg.ToJSON()
 				dirs = append(dirs, plan9.Dir{
@@ -992,12 +992,12 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 		parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 		sessID := parts[0]
 		mailboxType := parts[1]
-		
+
 		mailMgr := s.mgr.GetMailManager()
 		if mailMgr == nil {
 			return nil
 		}
-		
+
 		var messages []*mailbox.Message
 		if mailboxType == "inbox" {
 			messages = mailMgr.GetInbox(sessID)
@@ -1006,12 +1006,12 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 		} else if mailboxType == "completed" {
 			messages = mailMgr.GetCompleted(sessID)
 		}
-		
+
 		// Sort messages by ID (which is now timestamp-based)
 		sort.Slice(messages, func(i, j int) bool {
 			return messages[i].ID < messages[j].ID
 		})
-		
+
 		for _, msg := range messages {
 			data, _ := msg.ToJSON()
 			dirs = append(dirs, plan9.Dir{
@@ -1082,7 +1082,7 @@ func (s *Server) readFile(path string) string {
 				state := sess.State()
 				idleSince := "-"
 				inboxCount := 0
-				
+
 				if tmuxSess, ok := sess.(*tmux.Session); ok {
 					if state == "idle" {
 						idleDuration := tmuxSess.IdleDuration()
@@ -1091,11 +1091,11 @@ func (s *Server) readFile(path string) string {
 						}
 					}
 				}
-				
+
 				if mailMgr != nil {
 					inboxCount = len(mailMgr.GetInbox(id))
 				}
-				
+
 				lines = append(lines, fmt.Sprintf("%s %s %s %d", id, state, idleSince, inboxCount))
 			}
 		}
@@ -1103,47 +1103,47 @@ func (s *Server) readFile(path string) string {
 	}
 
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
-	
+
 	// User message file: /user/mailbox/msg-*.json
 	if len(parts) == 3 && parts[0] == "user" && (parts[1] == "inbox" || parts[1] == "outbox" || parts[1] == "completed") {
 		msgFile := parts[2]
 		msgID := strings.TrimSuffix(msgFile, ".json")
-		
+
 		mailMgr := s.mgr.GetMailManager()
 		if mailMgr == nil {
 			return ""
 		}
-		
+
 		msg, err := mailMgr.GetMessage("user", msgID)
 		if err != nil {
 			return ""
 		}
-		
+
 		data, _ := msg.ToJSON()
 		return string(data)
 	}
-	
+
 	// Message file: /sessID/mailbox/msg-*.json
 	if len(parts) == 3 && (parts[1] == "inbox" || parts[1] == "outbox" || parts[1] == "completed") {
 		sessID := parts[0]
 		_ = parts[1] // mailboxType (not used, just for validation)
 		msgFile := parts[2]
 		msgID := strings.TrimSuffix(msgFile, ".json")
-		
+
 		mailMgr := s.mgr.GetMailManager()
 		if mailMgr == nil {
 			return ""
 		}
-		
+
 		msg, err := mailMgr.GetMessage(sessID, msgID)
 		if err != nil {
 			return ""
 		}
-		
+
 		data, _ := msg.ToJSON()
 		return string(data)
 	}
-	
+
 	// Regular session file
 	if len(parts) != 2 {
 		return ""
