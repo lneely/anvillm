@@ -1467,9 +1467,8 @@ func refreshTasksWindowWithBeads(w *acme.Win, beads []Bead) {
 	w.Write("data", []byte(buf.String()))
 	w.Addr("0")
 	w.Ctl("dot=addr")
-	w.Show()
 	w.Ctl("clean")
-
+	w.Ctl("show")
 }
 
 func listBeadsWithFilter(statusFilter string) ([]Bead, error) {
