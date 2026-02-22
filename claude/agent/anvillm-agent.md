@@ -31,7 +31,7 @@ The tool will return all pending messages in your inbox. After processing a mess
 Messages are JSON with these fields:
 - `from`: Sender's session ID or "user"
 - `to`: Your session ID
-- `type`: Message type (QUESTION, REVIEW_REQUEST, STATUS_UPDATE, etc.)
+- `type`: Message type (PROMPT_REQUEST, REVIEW_REQUEST, QUERY_REQUEST, etc.)
 - `subject`: Brief subject line
 - `body`: Message content
 - `id`: Unique message ID
