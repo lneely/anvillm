@@ -22,7 +22,8 @@ graph TB
     Assist -->|9P| anvilsrv
     TUI -->|9P| anvilsrv
     Emacs -->|9P| anvilsrv
-    Web -->|9P| anvilsrv
+    Web -->|HTTP| anvilwebgw
+    anvilwebgw -->|9P| anvilsrv
     
     anvilsrv --> Claude
     anvilsrv --> Kiro
