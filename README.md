@@ -294,11 +294,11 @@ Templates set up context, roles, and initial configuration. Interact via any cli
 
 **Creating Templates:** Shell scripts that write to `agent/ctl` and configure `context`, `role`, `tasks`. See existing templates for examples.
 
-## Automating Development
+## Autonomous Workflows
 
 Automate workflows with Taskmaster and Conductor bots. Input project plan → Taskmaster creates tasks with dependencies → Conductor orchestrates parallel execution.
 
-![Automation Workflow](docs/diagrams/automation-workflow.svg?v=2)
+<p align="center"><img src="docs/diagrams/automation-workflow.svg?v=2" width="250"></p>
 
 Conductor receives the top-level bead ID, analyzes dependencies, and spawns agents to work in parallel. Agents notify Conductor when blocked; Conductor signals them to resume when dependencies resolve.
 
