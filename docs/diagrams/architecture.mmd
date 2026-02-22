@@ -1,0 +1,30 @@
+graph TB
+    subgraph Clients
+        Assist["Assist<br/>(Acme)"]
+        TUI["TUI"]
+        Emacs["Emacs"]
+        Web["Web"]
+    end
+    
+    subgraph Core["Core Services"]
+        anvilsrv["anvilsrv<br/>(9P daemon)"]
+        anvilmcp["anvilmcp<br/>(MCP server)"]
+        anvilwebgw["anvilwebgw<br/>(API proxy)"]
+    end
+    
+    subgraph Backends
+        Claude["Claude"]
+        Kiro["Kiro"]
+        ollie["ollie"]
+        Ollama["Ollama"]
+    end
+    
+    Assist -->|9P| anvilsrv
+    TUI -->|9P| anvilsrv
+    Emacs -->|9P| anvilsrv
+    Web -->|9P| anvilsrv
+    
+    anvilsrv --> Claude
+    anvilsrv --> Kiro
+    anvilsrv --> ollie
+    ollie --> Ollama

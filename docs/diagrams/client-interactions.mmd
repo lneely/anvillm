@@ -1,0 +1,9 @@
+graph TB
+    Assist["Assist"]
+    TUI["TUI"]
+    Script["Script"]
+    FS["agent/<br/>(9P filesystem)"]
+    
+    Assist -->|9p read<br/>agent/list| FS
+    TUI -->|9p write<br/>agent/ctl| FS
+    Script -->|9p read<br/>agent/events| FS

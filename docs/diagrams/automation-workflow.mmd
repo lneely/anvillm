@@ -1,0 +1,36 @@
+sequenceDiagram
+    participant User
+    participant Taskmaster
+    participant Beads
+    participant Conductor
+    participant Bot1 as Bot 1
+    participant Bot2 as Bot 2
+    participant Bot3 as Bot 3
+    
+    User->>Taskmaster: Project plan
+    Taskmaster->>Beads: Create task graph
+    Beads-->>Taskmaster: Top-level bead ID
+    Taskmaster-->>User: Tasks created
+    
+    User->>Conductor: Top-level bead ID
+    Conductor->>Beads: Analyze dependencies
+    
+    Conductor->>Bot1: Assign task (no blockers)
+    Conductor->>Bot2: Assign task (no blockers)
+    
+    Bot1->>Bot1: Work on task
+    Bot1-->>Conductor: Task complete
+    
+    Conductor->>Beads: Check dependencies
+    Conductor->>Bot3: Assign task (blockers resolved)
+    
+    Bot2->>Bot2: Work on task
+    Bot2-->>Conductor: Task complete
+    
+    Bot3->>Bot3: Work on task
+    Bot3-->>Conductor: Task complete
+    
+    Conductor->>Beads: Check all child beads
+    Beads-->>Conductor: All complete
+    Conductor->>Beads: Mark top-level complete
+    Conductor-->>User: All work done
