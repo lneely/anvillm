@@ -1300,7 +1300,30 @@ func showBead(bead map[string]interface{}) {
 		status = s
 	}
 
-	text := fmt.Sprintf("[yellow]ID:[-] %s\n[yellow]Title:[-] %s\n[yellow]Status:[-] %s\n\n%s", id, title, status, description)
+	requiresApproval := false
+	requiresReview := false
+	if labels, ok := bead["labels"].([]interface{}); ok {
+		for _, l := range labels {
+			if s, ok := l.(string); ok {
+				if s == "requires_approval" {
+					requiresApproval = true
+				}
+				if s == "requires_review" {
+					requiresReview = true
+				}
+			}
+		}
+	}
+	approvalStr := "no"
+	if requiresApproval {
+		approvalStr = "[green]YES[-]"
+	}
+	reviewStr := "no"
+	if requiresReview {
+		reviewStr = "[green]YES[-]"
+	}
+
+	text := fmt.Sprintf("[yellow]ID:[-] %s\n[yellow]Title:[-] %s\n[yellow]Status:[-] %s\n[yellow]Requires Approval:[-] %s\n[yellow]Requires Review:[-] %s\n\n%s", id, title, status, approvalStr, reviewStr, description)
 
 	textView := tview.NewTextView().
 		SetDynamicColors(true).
@@ -1454,6 +1477,20 @@ func showEditBeadDialog(bead map[string]interface{}) {
 	if p, ok := bead["priority"].(float64); ok {
 		priority = int(p)
 	}
+	requiresApproval := false
+	requiresReview := false
+	if labels, ok := bead["labels"].([]interface{}); ok {
+		for _, l := range labels {
+			if s, ok := l.(string); ok {
+				if s == "requires_approval" {
+					requiresApproval = true
+				}
+				if s == "requires_review" {
+					requiresReview = true
+				}
+			}
+		}
+	}
 
 	titleInput := tview.NewInputField().
 		SetLabel("Title: ").
@@ -1479,11 +1516,21 @@ func showEditBeadDialog(bead map[string]interface{}) {
 		SetFieldTextColor(tcell.ColorBlack).
 		SetFieldBackgroundColor(tcell.ColorWhite)
 
+	approvalCheck := tview.NewCheckbox().
+		SetLabel("Requires Approval: ").
+		SetChecked(requiresApproval)
+
+	reviewCheck := tview.NewCheckbox().
+		SetLabel("Requires Review: ").
+		SetChecked(requiresReview)
+
 	form := tview.NewForm().
 		AddFormItem(titleInput).
 		AddFormItem(descArea).
 		AddFormItem(statusInput).
-		AddFormItem(priorityInput)
+		AddFormItem(priorityInput).
+		AddFormItem(approvalCheck).
+		AddFormItem(reviewCheck)
 	form.SetFieldTextColor(tcell.ColorBlack)
 	form.SetButtonTextColor(tcell.ColorBlack)
 
@@ -1492,6 +1539,8 @@ func showEditBeadDialog(bead map[string]interface{}) {
 		newDesc := descArea.GetText()
 		newStatus := statusInput.GetText()
 		newPriorityStr := priorityInput.GetText()
+		newRequiresApproval := approvalCheck.IsChecked()
+		newRequiresReview := reviewCheck.IsChecked()
 
 		if newTitle == "" {
 			updateStatus("[red]Title cannot be empty")
@@ -1531,6 +1580,24 @@ func showEditBeadDialog(bead map[string]interface{}) {
 			if err := writeFile("beads/ctl", []byte(cmd)); err != nil {
 				updateStatus(fmt.Sprintf("[red]Error updating priority: %v", err))
 				return
+			}
+		}
+
+		// Toggle requires_approval label
+		if newRequiresApproval != requiresApproval {
+			if newRequiresApproval {
+				writeFile("beads/ctl", []byte(fmt.Sprintf("label %s requires_approval", id)))
+			} else {
+				writeFile("beads/ctl", []byte(fmt.Sprintf("unlabel %s requires_approval", id)))
+			}
+		}
+
+		// Toggle requires_review label
+		if newRequiresReview != requiresReview {
+			if newRequiresReview {
+				writeFile("beads/ctl", []byte(fmt.Sprintf("label %s requires_review", id)))
+			} else {
+				writeFile("beads/ctl", []byte(fmt.Sprintf("unlabel %s requires_review", id)))
 			}
 		}
 

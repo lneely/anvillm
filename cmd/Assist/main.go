@@ -1440,13 +1440,23 @@ func sendReply(to, msgType, subject, body string) error {
 }
 
 type Bead struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Status      string   `json:"status"`
-	Assignee    string   `json:"assignee"`
-	Priority    int      `json:"priority"`
-	Blockers    []string `json:"blockers,omitempty"`
+	ID               string   `json:"id"`
+	Title            string   `json:"title"`
+	Description      string   `json:"description"`
+	Status           string   `json:"status"`
+	Assignee         string   `json:"assignee"`
+	Priority         int      `json:"priority"`
+	Blockers         []string `json:"blockers,omitempty"`
+	Labels           []string `json:"labels,omitempty"`
+}
+
+func (b *Bead) HasLabel(label string) bool {
+	for _, l := range b.Labels {
+		if l == label {
+			return true
+		}
+	}
+	return false
 }
 
 func openTasksWindow() error {
@@ -1804,6 +1814,16 @@ func refreshViewBeadWindow(w *acme.Win, beadID string) {
 		buf.WriteString(fmt.Sprintf("priority: %d\n", bead.Priority))
 	}
 	buf.WriteString(fmt.Sprintf("blockers: %s\n", strings.Join(bead.Blockers, ", ")))
+	if bead.HasLabel("requires_approval") {
+		buf.WriteString("requires_approval: yes\n")
+	} else {
+		buf.WriteString("requires_approval: no\n")
+	}
+	if bead.HasLabel("requires_review") {
+		buf.WriteString("requires_review: yes\n")
+	} else {
+		buf.WriteString("requires_review: no\n")
+	}
 	buf.WriteString("---\n")
 	if bead.Description != "" {
 		desc, _ := strconv.Unquote(`"` + bead.Description + `"`)
@@ -1882,6 +1902,8 @@ func updateBead(beadID, content string, origBlockers []string) error {
 	// Parse frontmatter
 	var title string
 	var newBlockers []string
+	requiresApproval := -1 // -1=unset, 0=false, 1=true
+	requiresReview := -1
 	for _, line := range strings.Split(frontmatter, "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "title:") {
@@ -1895,6 +1917,20 @@ func updateBead(beadID, content string, origBlockers []string) error {
 						newBlockers = append(newBlockers, b)
 					}
 				}
+			}
+		} else if strings.HasPrefix(line, "requires_approval:") {
+			val := strings.TrimSpace(strings.TrimPrefix(line, "requires_approval:"))
+			if val == "yes" || val == "true" || val == "1" {
+				requiresApproval = 1
+			} else {
+				requiresApproval = 0
+			}
+		} else if strings.HasPrefix(line, "requires_review:") {
+			val := strings.TrimSpace(strings.TrimPrefix(line, "requires_review:"))
+			if val == "yes" || val == "true" || val == "1" {
+				requiresReview = 1
+			} else {
+				requiresReview = 0
 			}
 		}
 	}
@@ -1928,6 +1964,20 @@ func updateBead(beadID, content string, origBlockers []string) error {
 		if !newSet[b] {
 			removeBlocksDep(beadID, b)
 		}
+	}
+
+	// Toggle requires_approval label
+	if requiresApproval == 1 {
+		writeFile("beads/ctl", []byte(fmt.Sprintf("label %s requires_approval", beadID)))
+	} else if requiresApproval == 0 {
+		writeFile("beads/ctl", []byte(fmt.Sprintf("unlabel %s requires_approval", beadID)))
+	}
+
+	// Toggle requires_review label
+	if requiresReview == 1 {
+		writeFile("beads/ctl", []byte(fmt.Sprintf("label %s requires_review", beadID)))
+	} else if requiresReview == 0 {
+		writeFile("beads/ctl", []byte(fmt.Sprintf("unlabel %s requires_review", beadID)))
 	}
 
 	return nil

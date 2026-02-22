@@ -1481,6 +1481,15 @@ ${msg.body}`;
                     content += `<p><strong>Blockers:</strong> ${bead.blockers.map(b => escapeHtml(b)).join(', ')}</p>`;
                 }
 
+                const hasApproval = bead.labels && bead.labels.includes('requires_approval');
+                const hasReview = bead.labels && bead.labels.includes('requires_review');
+                content += `<p><strong>Requires Approval:</strong> <span style="color:${hasApproval ? 'green' : 'inherit'}">${hasApproval ? 'Yes' : 'No'}</span>
+                    <button class="outline" style="margin-left:0.5rem; padding:0.1rem 0.5rem; font-size:0.8rem;"
+                        onclick="toggleBeadFlag('${escapeHtml(bead.id)}', 'requires_approval', ${hasApproval})">${hasApproval ? 'Unset' : 'Set'}</button></p>`;
+                content += `<p><strong>Requires Review:</strong> <span style="color:${hasReview ? 'green' : 'inherit'}">${hasReview ? 'Yes' : 'No'}</span>
+                    <button class="outline" style="margin-left:0.5rem; padding:0.1rem 0.5rem; font-size:0.8rem;"
+                        onclick="toggleBeadFlag('${escapeHtml(bead.id)}', 'requires_review', ${hasReview})">${hasReview ? 'Unset' : 'Set'}</button></p>`;
+
                 document.getElementById('bead-detail-title').textContent = bead.title;
                 document.getElementById('bead-detail-content').innerHTML = content;
                 document.getElementById('bead-detail-dialog').showModal();
@@ -1492,6 +1501,26 @@ ${msg.body}`;
         function closeBeadDetailDialog() {
             document.getElementById('bead-detail-dialog').close();
             currentBead = null;
+        }
+
+        async function toggleBeadFlag(id, flag, currentlySet) {
+            const cmd = currentlySet ? `unlabel ${id} ${flag}` : `label ${id} ${flag}`;
+            try {
+                const response = await fetch('/api/beads/ctl', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: cmd })
+                });
+                if (response.ok) {
+                    // Re-open the detail dialog with refreshed data
+                    document.getElementById('bead-detail-dialog').close();
+                    await viewBead(id);
+                } else {
+                    showError(await apiError(response), `Failed to toggle ${flag}`);
+                }
+            } catch (error) {
+                showError(error.message, `Failed to toggle ${flag}`);
+            }
         }
 
         async function claimBead(id) {
