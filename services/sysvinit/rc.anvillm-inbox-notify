@@ -1,0 +1,143 @@
+#!/bin/sh
+# /etc/rc.d/rc.anvillm-inbox-notify
+#
+# Start/stop/restart the AnviLLM inbox notification daemon.
+#
+# This script follows Slackware rc conventions:
+#   - Enable service:  chmod 755 /etc/rc.d/rc.anvillm-inbox-notify
+#   - Disable service: chmod 644 /etc/rc.d/rc.anvillm-inbox-notify
+#
+# To start automatically at boot, add to /etc/rc.d/rc.local:
+#   if [ -x /etc/rc.d/rc.anvillm-inbox-notify ]; then
+#     /etc/rc.d/rc.anvillm-inbox-notify start
+#   fi
+#
+# To stop cleanly at shutdown, add to /etc/rc.d/rc.local_shutdown:
+#   if [ -x /etc/rc.d/rc.anvillm-inbox-notify ]; then
+#     /etc/rc.d/rc.anvillm-inbox-notify stop
+#   fi
+#
+# ── configuration ─────────────────────────────────────────────────────────────
+#
+# ANVILLM_USER  Login name of the desktop user who receives notifications.
+#               The daemon monitors that user's AnviLLM event stream and fires
+#               notify-send desktop notifications for APPROVAL_REQUEST and
+#               REVIEW_REQUEST messages (configurable in
+#               ~/.config/anvillm/notifications.yaml).
+#
+ANVILLM_USER="${ANVILLM_USER:-}"
+
+DAEMON="/usr/local/bin/anvillm-inbox-notify"
+PIDFILE="/var/run/anvillm-inbox-notify.pid"
+LOGFILE="/var/log/anvillm-inbox-notify.log"
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+# get_user_env VAR
+# Reads an environment variable from a running process owned by $ANVILLM_USER.
+# Tries the Xorg/X process first (most likely to have DISPLAY set), then any
+# process owned by that user.
+get_user_env() {
+    local var="$1"
+    local pid
+
+    pid=$(pgrep -u "$ANVILLM_USER" -x Xorg 2>/dev/null | head -1)
+    [ -z "$pid" ] && pid=$(pgrep -u "$ANVILLM_USER" -x X 2>/dev/null | head -1)
+    [ -z "$pid" ] && pid=$(pgrep -u "$ANVILLM_USER" 2>/dev/null | head -1)
+    [ -z "$pid" ] && return 1
+
+    tr '\0' '\n' < "/proc/${pid}/environ" 2>/dev/null | \
+        grep "^${var}=" | head -1 | cut -d= -f2-
+}
+
+anvillm_start() {
+    # Guard: already running?
+    if [ -s "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        echo "anvillm-inbox-notify is already running."
+        return
+    fi
+
+    if [ -z "$ANVILLM_USER" ]; then
+        echo "anvillm-inbox-notify: ANVILLM_USER is not set — edit this script or set the variable." >&2
+        return
+    fi
+
+    if [ ! -x "$DAEMON" ]; then
+        echo "anvillm-inbox-notify: ${DAEMON} not found or not executable." >&2
+        return
+    fi
+
+    # Discover the user's X11 display and D-Bus session bus address.
+    DISPLAY_VAL=$(get_user_env DISPLAY)
+    [ -z "$DISPLAY_VAL" ] && DISPLAY_VAL=":0"
+
+    DBUS_VAL=$(get_user_env DBUS_SESSION_BUS_ADDRESS)
+    if [ -z "$DBUS_VAL" ]; then
+        local uid
+        uid=$(id -u "$ANVILLM_USER" 2>/dev/null)
+        [ -n "$uid" ] && DBUS_VAL="unix:path=/run/user/${uid}/bus"
+    fi
+
+    echo "Starting anvillm-inbox-notify (user=${ANVILLM_USER}, DISPLAY=${DISPLAY_VAL})..."
+
+    su -s /bin/sh -l "$ANVILLM_USER" -c "
+        export DISPLAY='${DISPLAY_VAL}'
+        export DBUS_SESSION_BUS_ADDRESS='${DBUS_VAL}'
+        nohup '${DAEMON}' >> '${LOGFILE}' 2>&1 &
+        echo \$! > '${PIDFILE}'
+    "
+}
+
+anvillm_stop() {
+    if [ ! -s "$PIDFILE" ]; then
+        echo "anvillm-inbox-notify is not running (no PID file)."
+        return
+    fi
+
+    local pid
+    pid=$(cat "$PIDFILE")
+
+    if ! kill -0 "$pid" 2>/dev/null; then
+        echo "anvillm-inbox-notify: stale PID file — removing."
+        rm -f "$PIDFILE"
+        return
+    fi
+
+    echo "Stopping anvillm-inbox-notify (PID ${pid})..."
+    kill "$pid" 2>/dev/null
+    rm -f "$PIDFILE"
+}
+
+anvillm_restart() {
+    anvillm_stop
+    sleep 1
+    anvillm_start
+}
+
+anvillm_status() {
+    if [ -s "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        echo "anvillm-inbox-notify is running (PID $(cat "$PIDFILE"))."
+    else
+        echo "anvillm-inbox-notify is not running."
+    fi
+}
+
+# ── dispatch ──────────────────────────────────────────────────────────────────
+
+case "$1" in
+    start)
+        anvillm_start
+        ;;
+    stop)
+        anvillm_stop
+        ;;
+    restart)
+        anvillm_restart
+        ;;
+    status)
+        anvillm_status
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        ;;
+esac

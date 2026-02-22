@@ -1,0 +1,152 @@
+#!/bin/bash
+# anvillm-inbox-notify — Desktop notification daemon for AnviLLM inbox messages.
+#
+# Monitors the AnviLLM event stream for incoming messages addressed to the human
+# user and fires desktop notifications for configurable message types.
+#
+# Usage:
+#   anvillm-inbox-notify [--help]
+#
+# Configuration (~/.config/anvillm/notifications.yaml):
+#   notify_on:
+#     - APPROVAL_REQUEST
+#     - REVIEW_REQUEST
+#
+# Default notify_on types: APPROVAL_REQUEST, REVIEW_REQUEST
+# Add QUERY_REQUEST, PROMPT_RESPONSE, etc. as desired.
+#
+# State file (deduplication):
+#   ~/.local/share/anvillm/notified-ids.txt
+#   Message IDs are persisted here so restarts do not re-notify.
+#
+# Environment:
+#   NAMESPACE  — 9P namespace path (default: /tmp/ns.$USER.:0)
+
+set -euo pipefail
+
+# ── help ──────────────────────────────────────────────────────────────────────
+
+if [[ "${1:-}" == "--help" ]]; then
+    cat <<'EOF'
+anvillm-inbox-notify — Desktop notification daemon for AnviLLM inbox messages.
+
+USAGE
+  anvillm-inbox-notify [--help]
+
+CONFIGURATION
+  ~/.config/anvillm/notifications.yaml
+    notify_on:
+      - APPROVAL_REQUEST   # default
+      - REVIEW_REQUEST     # default
+      - QUERY_REQUEST      # optional
+
+STATE FILE
+  ~/.local/share/anvillm/notified-ids.txt
+  Persists seen message IDs across restarts to prevent duplicate notifications.
+
+ENVIRONMENT
+  NAMESPACE   9P namespace directory (default: /tmp/ns.$USER.:0)
+EOF
+    exit 0
+fi
+
+# ── paths ─────────────────────────────────────────────────────────────────────
+
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/anvillm/notifications.yaml"
+STATE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/anvillm"
+STATE_FILE="$STATE_DIR/notified-ids.txt"
+
+mkdir -p "$STATE_DIR"
+touch "$STATE_FILE"
+
+# ── namespace ─────────────────────────────────────────────────────────────────
+
+NAMESPACE="${NAMESPACE:-/tmp/ns.${USER}.:0}"
+export NAMESPACE
+
+# ── load config ───────────────────────────────────────────────────────────────
+
+# Parse notify_on list from YAML config, falling back to defaults.
+# Expected YAML format (subset):
+#   notify_on:
+#     - APPROVAL_REQUEST
+#     - REVIEW_REQUEST
+load_notify_on() {
+    if [[ -f "$CONFIG_FILE" ]]; then
+        # Extract lines under notify_on: that start with "  - "
+        awk '/^notify_on:/{found=1; next} found && /^  - /{gsub(/^  - /, ""); print; next} found && /^[^ ]/{exit}' "$CONFIG_FILE"
+    fi
+}
+
+NOTIFY_ON_ARRAY=()
+while IFS= read -r line; do
+    [[ -n "$line" ]] && NOTIFY_ON_ARRAY+=("$line")
+done < <(load_notify_on)
+
+# Fall back to defaults if config is absent or empty.
+if [[ ${#NOTIFY_ON_ARRAY[@]} -eq 0 ]]; then
+    NOTIFY_ON_ARRAY=("APPROVAL_REQUEST" "REVIEW_REQUEST")
+fi
+
+# Build a jq expression for type matching: (.data.type | IN("T1","T2",...))
+JQ_TYPES=$(printf '"%s",' "${NOTIFY_ON_ARRAY[@]}")
+JQ_TYPES="${JQ_TYPES%,}"  # strip trailing comma
+
+echo "anvillm-inbox-notify: watching for types: ${NOTIFY_ON_ARRAY[*]}"
+echo "anvillm-inbox-notify: namespace: $NAMESPACE"
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+already_notified() {
+    grep -qxF "$1" "$STATE_FILE" 2>/dev/null
+}
+
+mark_notified() {
+    echo "$1" >> "$STATE_FILE"
+}
+
+send_notification() {
+    local from="$1" subject="$2" body="$3" msg_type="$4"
+    local urgency="normal"
+    if [[ "$msg_type" == "APPROVAL_REQUEST" ]]; then
+        urgency="critical"
+    fi
+    notify-send \
+        --urgency="$urgency" \
+        --app-name="AnviLLM" \
+        --icon=dialog-information \
+        "AnviLLM [${from}]: ${subject}" \
+        "${body}"
+}
+
+# ── event loop ────────────────────────────────────────────────────────────────
+
+# Stream events and filter with jq.  The jq filter selects UserRecv events
+# addressed to the human user whose message type is in the notify_on list.
+#
+# Full event shape:
+#   {"id":"...", "ts":..., "agent":"user", "type":"UserRecv",
+#    "data":{"id":"...", "from":"agent-id", "to":"user",
+#            "type":"APPROVAL_REQUEST", "subject":"...", "body":"..."}}
+
+JQ_FILTER="
+  select(
+    .type == \"UserRecv\"
+    and .data.to == \"user\"
+    and (.data.type | IN(${JQ_TYPES}))
+  )
+"
+
+9p read agent/events | jq --unbuffered -c "$JQ_FILTER" | while IFS= read -r event; do
+    msg_id=$(printf '%s' "$event"  | jq -r '.data.id // .id')
+    from=$(printf '%s' "$event"    | jq -r '.data.from // "unknown"')
+    subject=$(printf '%s' "$event" | jq -r '.data.subject // "(no subject)"')
+    body=$(printf '%s' "$event"    | jq -r '.data.body // ""')
+    msg_type=$(printf '%s' "$event"| jq -r '.data.type // "UNKNOWN"')
+
+    if already_notified "$msg_id"; then
+        continue
+    fi
+
+    send_notification "$from" "$subject" "$body" "$msg_type" && mark_notified "$msg_id"
+done

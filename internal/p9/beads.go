@@ -12,6 +12,24 @@ import (
 	bd "github.com/steveyegge/beads"
 )
 
+// Approval gate statuses extend the beads status set locally.
+// These statuses are not surfaced by GetReadyWork (which only returns
+// open/in_progress), ensuring bots do not claim work that is pending
+// human approval or review.
+const (
+	StatusPendingApproval = bd.Status("pending_approval") // Awaiting APPROVAL_RESPONSE from human
+	StatusPendingReview   = bd.Status("pending_review")   // Awaiting REVIEW_RESPONSE from human
+)
+
+// requiresApprovalLabel and requiresReviewLabel are label conventions for
+// marking beads that must pass through a human gate before they can be closed.
+// Agents should send an APPROVAL_REQUEST (or REVIEW_REQUEST) to the user and
+// call `pending-approval <id>` (or `pending-review <id>`) before completing.
+const (
+	requiresApprovalLabel = "requires_approval"
+	requiresReviewLabel   = "requires_review"
+)
+
 // BeadsFS handles beads filesystem operations.
 type BeadsFS struct {
 	store       bd.Storage
@@ -39,6 +57,8 @@ func (b *BeadsFS) Read(path string) ([]byte, error) {
 		return b.readList()
 	case len(parts) == 1 && parts[0] == "ready":
 		return b.readReady("")
+	case len(parts) == 1 && parts[0] == "pending":
+		return b.readPending()
 	case len(parts) == 1 && parts[0] == "stats":
 		return b.readStats()
 	case len(parts) == 1 && parts[0] == "blocked":
@@ -178,6 +198,22 @@ func (b *BeadsFS) readBlocked() ([]byte, error) {
 		return nil, err
 	}
 	return json.MarshalIndent(blocked, "", "  ")
+}
+
+// readPending returns beads in pending_approval or pending_review status,
+// i.e. those awaiting a human APPROVAL_RESPONSE or REVIEW_RESPONSE.
+func (b *BeadsFS) readPending() ([]byte, error) {
+	issues, err := b.store.SearchIssues(b.ctx, "", bd.IssueFilter{})
+	if err != nil {
+		return nil, err
+	}
+	var pending []*bd.Issue
+	for _, issue := range issues {
+		if issue.Status == StatusPendingApproval || issue.Status == StatusPendingReview {
+			pending = append(pending, issue)
+		}
+	}
+	return json.MarshalIndent(pending, "", "  ")
 }
 
 func (b *BeadsFS) readDependenciesMeta(beadID string) ([]byte, error) {
@@ -391,13 +427,19 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		if len(args) < 1 {
 			return fmt.Errorf("usage: complete <bead-id>")
 		}
-		return b.store.CloseIssue(b.ctx, args[0], "completed", actor, "")
-		
+		if err := b.store.CloseIssue(b.ctx, args[0], "completed", actor, ""); err != nil {
+			return err
+		}
+		return b.store.UpdateIssue(b.ctx, args[0], map[string]interface{}{"assignee": ""}, actor)
+
 	case "fail":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: fail <bead-id> 'reason'")
 		}
-		return b.store.CloseIssue(b.ctx, args[0], args[1], actor, "")
+		if err := b.store.CloseIssue(b.ctx, args[0], args[1], actor, ""); err != nil {
+			return err
+		}
+		return b.store.UpdateIssue(b.ctx, args[0], map[string]interface{}{"assignee": ""}, actor)
 		
 	case "dep", "add-dep":
 		if len(args) < 2 {
@@ -459,9 +501,74 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 			return fmt.Errorf("invalid JSON: %w", err)
 		}
 		return b.store.CreateIssues(b.ctx, issues, actor)
-		
+
+	// Approval gate commands.
+	// Bots should call these after sending an APPROVAL_REQUEST or REVIEW_REQUEST
+	// to the user.  The human responds via the inbox UI; on approve/reject the
+	// bot calls "resume" or "fail" to continue or abort work.
+
+	case "pending-approval":
+		// Atomically set status=pending_approval and assignee (defaults to "user").
+		// Usage: pending-approval <bead-id> [assignee]
+		// Canonical workflow:
+		//   1. Bot sends APPROVAL_REQUEST to user mailbox
+		//   2. Bot calls: echo "pending-approval <id>" | 9p write agent/beads/ctl
+		//   3. Human approves → bot calls: echo "resume <id> <bot-id>" | 9p write agent/beads/ctl
+		//   4. Human rejects → bot calls: echo "fail <id> 'rejected'" | 9p write agent/beads/ctl
+		if len(args) < 1 {
+			return fmt.Errorf("usage: pending-approval <bead-id> [assignee]")
+		}
+		assignee := "user"
+		if len(args) > 1 {
+			assignee = args[1]
+		}
+		updates := map[string]interface{}{
+			"status":   StatusPendingApproval,
+			"assignee": assignee,
+		}
+		return b.store.UpdateIssue(b.ctx, args[0], updates, actor)
+
+	case "pending-review":
+		// Atomically set status=pending_review and assignee (defaults to "user").
+		// Usage: pending-review <bead-id> [assignee]
+		// Canonical workflow:
+		//   1. Bot sends REVIEW_REQUEST to user mailbox
+		//   2. Bot calls: echo "pending-review <id>" | 9p write agent/beads/ctl
+		//   3. Human responds → bot calls: echo "resume <id> <bot-id>" | 9p write agent/beads/ctl
+		//   4. Human rejects → bot calls: echo "fail <id> 'review failed'" | 9p write agent/beads/ctl
+		if len(args) < 1 {
+			return fmt.Errorf("usage: pending-review <bead-id> [assignee]")
+		}
+		assignee := "user"
+		if len(args) > 1 {
+			assignee = args[1]
+		}
+		updates := map[string]interface{}{
+			"status":   StatusPendingReview,
+			"assignee": assignee,
+		}
+		return b.store.UpdateIssue(b.ctx, args[0], updates, actor)
+
+	case "resume":
+		// Atomically set status=in_progress and assignee after human approval/review.
+		// Usage: resume <bead-id> [assignee]
+		// Assignee defaults to "user"; pass the bot's agent ID to hand work back to a bot.
+		// Use "fail" instead if the human rejected.
+		if len(args) < 1 {
+			return fmt.Errorf("usage: resume <bead-id> [assignee]")
+		}
+		assignee := "user"
+		if len(args) > 1 {
+			assignee = args[1]
+		}
+		updates := map[string]interface{}{
+			"status":   bd.StatusInProgress,
+			"assignee": assignee,
+		}
+		return b.store.UpdateIssue(b.ctx, args[0], updates, actor)
+
 	default:
-		return fmt.Errorf("unknown command: %s (supported: init, new, update, delete, claim, complete, fail, dep, undep)", command)
+		return fmt.Errorf("unknown command: %s (supported: init, new, update, delete, claim, complete, fail, dep, undep, pending-approval, pending-review, resume)", command)
 	}
 }
 

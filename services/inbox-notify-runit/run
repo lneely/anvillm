@@ -1,0 +1,32 @@
+#!/bin/sh
+# runit service script for anvillm-inbox-notify
+#
+# Monitors the AnviLLM event stream and fires desktop notifications when
+# messages of configured types (default: APPROVAL_REQUEST, REVIEW_REQUEST)
+# arrive in the user's inbox.
+#
+# To install this service:
+#   1. Copy this directory to /etc/sv/anvillm-inbox-notify
+#   2. Create symlink: ln -s /etc/sv/anvillm-inbox-notify /var/service/anvillm-inbox-notify
+#
+# Or for per-user service management with runit:
+#   mkdir -p ~/.config/service
+#   cp -r services/inbox-notify-runit ~/.config/service/anvillm-inbox-notify
+#   sv up anvillm-inbox-notify
+
+exec 2>&1
+
+export HOME="${HOME:-/home/$(whoami)}"
+export PATH="${HOME}/bin:/usr/local/bin:/usr/bin:/bin"
+export NAMESPACE="${NAMESPACE:-/tmp/ns.$(whoami).:0}"
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+
+# Make DISPLAY available for desktop notifications.
+# Adjust if your display is different (e.g., :1, wayland, etc.)
+export DISPLAY="${DISPLAY:-:0}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/$(id -u)/bus}"
+
+echo "Starting anvillm-inbox-notify..."
+
+exec chpst -u "$(whoami)" anvillm-inbox-notify
