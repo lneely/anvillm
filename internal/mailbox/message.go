@@ -10,11 +10,11 @@ import (
 type MessageType string
 
 const (
-	// Ephemeral message types (log only, auto-complete)
-	MessageTypePromptResponse MessageType = "PROMPT_RESPONSE" // Bot response to user prompt
-	MessageTypeLogError       MessageType = "LOG_ERROR"       // Errors
+	// Auto-complete message types (log only)
+	MessageTypeLogError MessageType = "LOG_ERROR" // Errors
 
-	// Persistent message types (inbox only)
+	// Inbox message types
+	MessageTypePromptResponse   MessageType = "PROMPT_RESPONSE"   // Bot response to user prompt
 	MessageTypePromptRequest    MessageType = "PROMPT_REQUEST"    // User instructions to bot
 	MessageTypeQueryRequest     MessageType = "QUERY_REQUEST"     // Request information
 	MessageTypeQueryResponse    MessageType = "QUERY_RESPONSE"    // Provide information

@@ -228,20 +228,7 @@ func (m *Manager) processMailboxes() {
 		}
 	}
 	
-	// 2. Process user inbox with type-based routing
-	userMessages, _ := m.mailManager.GetPendingMessages("user")
-	for _, msg := range userMessages {
-		// Route based on message type
-		switch msg.Type {
-		case mailbox.MessageTypePromptResponse:
-			// Auto-complete
-			m.mailManager.CompleteMessage("user", msg.ID)
-
-		default:
-			// All other types: inbox only, DON'T auto-complete
-			// Message stays in inbox for user to review
-		}
-	}
+	// 2. Process user inbox — all message types stay in inbox for user to review
 	
 	// 3. Prompt idle agents with pending messages (after 15 seconds of idle)
 	for _, sess := range sessions {

@@ -24,7 +24,7 @@ Use the `send_message` tool with these parameters:
 ### Message Types
 
 **To User:**
-- `PROMPT_RESPONSE` - Status update/answer (auto-completed, doesn't clutter inbox)
+- `PROMPT_RESPONSE` - Status update/answer to user prompt
 - `QUERY_REQUEST` - Need information from user (stays until answered)
 - `APPROVAL_REQUEST` - Need user approval (stays until answered)
 - `REVIEW_REQUEST` - Need user to review something (stays until answered)
