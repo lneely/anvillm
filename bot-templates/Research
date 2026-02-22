@@ -1,6 +1,6 @@
 #!/bin/bash
 # Research - Single research agent workflow
-# Usage: ./workflows/Research <backend> <workdir>
+# Usage: ./bot-templates/Research <backend> <workdir>
 
 set -e
 

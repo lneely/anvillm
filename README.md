@@ -246,7 +246,7 @@ See `SECURITY.md`
 
 **Skills:** `anvillm-skills list`, `anvillm-skills load anvillm-communication`
 
-**Examples:** `./workflows/DevReview claude /path` (dev/reviewer loop), `./workflows/Planning kiro /path` (research/eng/editor)
+**Examples:** `./bot-templates/DevReview claude /path` (dev/reviewer loop), `./bot-templates/Planning kiro /path` (research/eng/editor)
 
 **Pattern:**
 
@@ -258,7 +258,7 @@ echo '{"to":"...","type":"...","subject":"...","body":"..."}' | 9p write agent/$
 echo 'new "Task"' | 9p write agent/beads/ctl
 ```
 
-See `workflows/`, `kiro-cli/SKILLS_PROMPT.md`
+See `bot-templates/`, `kiro-cli/SKILLS_PROMPT.md`
 
 ## MCP Integration
 
