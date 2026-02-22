@@ -312,7 +312,7 @@ func listSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var sessions []Session
+	sessions := []Session{}
 	for _, line := range strings.Split(string(data), "\n") {
 		if line == "" {
 			continue
