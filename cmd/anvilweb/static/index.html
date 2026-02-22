@@ -7,22 +7,22 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <style>
         body { padding: 0; }
-        header { 
+        header {
             background: var(--pico-primary-background);
             padding: 0.75rem 2rem;
             margin-bottom: 1rem;
             position: relative;
         }
-        header h1 { 
-            margin: 0; 
+        header h1 {
+            margin: 0;
             font-size: 1.25rem;
             color: white;
         }
         main { padding: 0 2rem; }
-        .state-badge { 
-            display: inline-block; 
-            padding: 0.25rem 0.5rem; 
-            border-radius: 0.25rem; 
+        .state-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
             font-size: 0.875rem;
             font-weight: 600;
         }
@@ -32,13 +32,13 @@
         .state-error { background: #ef4444; color: white; }
         .state-starting { background: #f97316; color: white; }
         .state-exited { background: #9ca3af; color: white; }
-        
+
         table { margin-top: 1rem; }
         table button { margin: 0 0.25rem; padding: 0.25rem 0.5rem; font-size: 0.875rem; }
         table td { vertical-align: middle; }
         .actions-cell { white-space: nowrap; }
         .session-id { font-family: monospace; font-size: 0.875rem; color: var(--pico-muted-color); }
-        
+
         .action-menu { position: relative; display: inline-block; }
         .action-menu-btn { min-width: 2rem; }
         .action-menu-content {
@@ -62,7 +62,7 @@
         }
         .action-menu-content button:hover { background: var(--pico-secondary-background); }
         .action-menu.open .action-menu-content { display: block; }
-        
+
         #prompt-area { min-height: 100px; }
         .hidden { display: none; }
 
@@ -76,7 +76,7 @@
             background: #3b82f6 !important;
             color: white !important;
         }
-        
+
         .inbox-btn {
             position: absolute;
             top: 50%;
@@ -156,6 +156,60 @@
         }
         .daemon-running { background: #22c55e; }
         .daemon-stopped { background: #ef4444; }
+
+        /* ── Error banner (top-of-main dismissible notification) ── */
+        #error-banner {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            border-left: 4px solid #ef4444;
+            border-radius: 0.375rem;
+            color: #991b1b;
+            font-size: 0.875rem;
+            animation: fadeIn 0.15s ease;
+        }
+        #error-banner .error-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 0.05rem; }
+        #error-banner .error-body { flex: 1; }
+        #error-banner .error-title { font-weight: 700; margin-bottom: 0.2rem; }
+        #error-banner .error-detail { font-family: monospace; word-break: break-all; }
+        #error-banner .error-dismiss {
+            background: none;
+            border: none;
+            color: #991b1b;
+            font-size: 1.1rem;
+            cursor: pointer;
+            padding: 0 0.25rem;
+            opacity: 0.6;
+            flex-shrink: 0;
+            margin: 0;
+            width: auto;
+            line-height: 1;
+        }
+        #error-banner .error-dismiss:hover { opacity: 1; }
+
+        /* ── Inline error inside containers ── */
+        .error-container {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.6rem;
+            padding: 0.75rem 1rem;
+            margin-top: 1rem;
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            border-left: 4px solid #ef4444;
+            border-radius: 0.375rem;
+            color: #991b1b;
+            font-size: 0.875rem;
+        }
+        .error-container .error-icon { flex-shrink: 0; font-size: 1rem; margin-top: 0.05rem; }
+        .error-container .error-detail { font-family: monospace; word-break: break-all; }
+
+        #error-banner.hidden { display: none; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
     </style>
 </head>
 <body>
@@ -173,6 +227,16 @@
     </header>
 
     <main>
+        <!-- Global error banner -->
+        <div id="error-banner" class="hidden" role="alert">
+            <span class="error-icon">⛔</span>
+            <div class="error-body">
+                <div class="error-title" id="error-title">Error</div>
+                <div class="error-detail" id="error-detail"></div>
+            </div>
+            <button class="error-dismiss" onclick="dismissError()" aria-label="Dismiss">✕</button>
+        </div>
+
         <section id="sessions-tab">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <h2>Sessions</h2>
@@ -411,7 +475,42 @@
         let sortAsc = true;
         let previousStates = {};
 
-        // Request notification permission on load
+        // ── Error handling ─────────────────────────────────────────────
+
+        // Extract a meaningful error message from a non-OK Response.
+        async function apiError(res) {
+            let body = '';
+            try { body = (await res.text()).trim(); } catch (_) {}
+            const status = `${res.status} ${res.statusText}`.trim();
+            return body ? `${status}: ${body}` : status;
+        }
+
+        // Show the global dismissible error banner.
+        let errorDismissTimer = null;
+        function showError(detail, title = 'Error') {
+            clearTimeout(errorDismissTimer);
+            document.getElementById('error-title').textContent = title;
+            document.getElementById('error-detail').textContent = detail;
+            document.getElementById('error-banner').classList.remove('hidden');
+            // Auto-dismiss after 10 s
+            errorDismissTimer = setTimeout(dismissError, 10000);
+        }
+
+        function dismissError() {
+            clearTimeout(errorDismissTimer);
+            document.getElementById('error-banner').classList.add('hidden');
+        }
+
+        // Returns HTML for an inline error inside a container.
+        function errorHTML(detail) {
+            return `<div class="error-container" role="alert">
+                <span class="error-icon">⛔</span>
+                <span class="error-detail">${escapeHtml(detail)}</span>
+            </div>`;
+        }
+
+        // ── Notifications ──────────────────────────────────────────────
+
         if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission();
         }
@@ -432,6 +531,8 @@
             return div.innerHTML;
         }
 
+        // ── Action menu ────────────────────────────────────────────────
+
         let openMenuSessionId = null;
 
         function toggleMenu(btn) {
@@ -451,6 +552,8 @@
             }
         });
 
+        // ── Sessions ───────────────────────────────────────────────────
+
         function filterSessions() {
             const query = document.getElementById('search-box').value.toLowerCase();
             const filtered = allSessions.filter(s => {
@@ -464,7 +567,6 @@
                 return searchText.includes(query);
             });
             renderSessions(filtered);
-            // Restore open menu after render
             if (openMenuSessionId) {
                 const btn = document.querySelector(`[data-session-id="${openMenuSessionId}"]`)?.closest('tr')?.querySelector('.action-menu-btn');
                 if (btn) btn.closest('.action-menu').classList.add('open');
@@ -541,16 +643,20 @@
                     </tbody>
                 </table>
             `;
-            
+
             container.innerHTML = table;
         }
 
         async function loadSessions() {
             try {
                 const res = await fetch('/api/sessions');
+                if (!res.ok) {
+                    const msg = await apiError(res);
+                    document.getElementById('sessions-container').innerHTML = errorHTML('Failed to load sessions: ' + msg);
+                    return;
+                }
                 const sessions = await res.json();
-                
-                // Check for state transitions and notify
+
                 for (const s of sessions) {
                     const oldState = previousStates[s.id];
                     if (oldState && oldState !== s.state) {
@@ -558,12 +664,11 @@
                     }
                     previousStates[s.id] = s.state;
                 }
-                
+
                 allSessions = sessions;
                 filterSessions();
             } catch (err) {
-                console.error('Failed to load sessions:', err);
-                document.getElementById('sessions-container').innerHTML = '<p>Failed to connect to server</p>';
+                document.getElementById('sessions-container').innerHTML = errorHTML('Failed to connect to server: ' + err.message);
             }
         }
 
@@ -580,7 +685,7 @@
             e.preventDefault();
             const form = e.target;
             const data = new FormData(form);
-            
+
             try {
                 const res = await fetch('/api/sessions', {
                     method: 'POST',
@@ -590,16 +695,16 @@
                         cwd: data.get('cwd')
                     })
                 });
-                
+
                 if (res.ok) {
                     form.reset();
                     closeNewSessionDialog();
                     setTimeout(loadSessions, 500);
                 } else {
-                    alert('Failed to create session');
+                    showError(await apiError(res), 'Failed to create session');
                 }
             } catch (err) {
-                alert('Error: ' + err.message);
+                showError(err.message, 'Failed to create session');
             }
         });
 
@@ -617,34 +722,31 @@
         document.getElementById('prompt-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             let prompt = document.getElementById('prompt-area').value;
-            
-            // Check if prompt is a bead ID and wrap it
+
             const trimmedPrompt = prompt.trim();
             if (isBeadID(trimmedPrompt)) {
                 prompt = `Load the beads skill, and work on bead ${trimmedPrompt}.`;
             }
-            
+
             try {
                 const res = await fetch(`/api/session/${currentSessionId}/prompt`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ prompt })
                 });
-                
+
                 if (res.ok) {
                     closePromptDialog();
                     loadSessions();
                 } else {
-                    alert('Failed to send prompt');
+                    showError(await apiError(res), 'Failed to send prompt');
                 }
             } catch (err) {
-                alert('Error: ' + err.message);
+                showError(err.message, 'Failed to send prompt');
             }
         });
 
         function isBeadID(text) {
-            // Match bead ID pattern: prefix-xxx or prefix-xxx.yyy (hierarchical)
-            // Common prefixes: bd, task, bug, etc.
             return /^[a-zA-Z]+-[a-z0-9]+(\.[0-9]+)*$/.test(text);
         }
 
@@ -652,11 +754,15 @@
             currentSessionId = id;
             try {
                 const res = await fetch(`/api/session/${id}/context`);
+                if (!res.ok) {
+                    showError(await apiError(res), 'Failed to load context');
+                    return;
+                }
                 const data = await res.json();
                 document.getElementById('context-area').value = data.content || '';
                 document.getElementById('context-dialog').showModal();
             } catch (err) {
-                alert('Error loading context: ' + err.message);
+                showError(err.message, 'Failed to load context');
             }
         }
 
@@ -667,21 +773,21 @@
         document.getElementById('context-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const content = document.getElementById('context-area').value;
-            
+
             try {
                 const res = await fetch(`/api/session/${currentSessionId}/context`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ content })
                 });
-                
+
                 if (res.ok) {
                     closeContextDialog();
                 } else {
-                    alert('Failed to save context');
+                    showError(await apiError(res), 'Failed to save context');
                 }
             } catch (err) {
-                alert('Error: ' + err.message);
+                showError(err.message, 'Failed to save context');
             }
         });
 
@@ -689,11 +795,15 @@
             currentSessionId = id;
             try {
                 const res = await fetch(`/api/session/${id}/alias`);
+                if (!res.ok) {
+                    showError(await apiError(res), 'Failed to load alias');
+                    return;
+                }
                 const data = await res.json();
                 document.getElementById('alias-input').value = data.content || '';
                 document.getElementById('alias-dialog').showModal();
             } catch (err) {
-                alert('Error loading alias: ' + err.message);
+                showError(err.message, 'Failed to load alias');
             }
         }
 
@@ -704,22 +814,22 @@
         document.getElementById('alias-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const content = document.getElementById('alias-input').value;
-            
+
             try {
                 const res = await fetch(`/api/session/${currentSessionId}/alias`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ content })
                 });
-                
+
                 if (res.ok) {
                     closeAliasDialog();
                     loadSessions();
                 } else {
-                    alert('Failed to save alias');
+                    showError(await apiError(res), 'Failed to save alias');
                 }
             } catch (err) {
-                alert('Error: ' + err.message);
+                showError(err.message, 'Failed to save alias');
             }
         });
 
@@ -730,14 +840,14 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ command: cmd })
                 });
-                
+
                 if (res.ok) {
                     setTimeout(loadSessions, 500);
                 } else {
-                    alert(`Failed to ${cmd} session`);
+                    showError(await apiError(res), `Failed to ${cmd} session`);
                 }
             } catch (err) {
-                alert('Error: ' + err.message);
+                showError(err.message, `Failed to ${cmd} session`);
             }
         }
 
@@ -752,14 +862,13 @@
                     body: JSON.stringify({ command: 'attach' })
                 });
                 if (!res.ok) {
-                    const text = await res.text();
-                    alert(text || 'Session does not support attach (not tmux-based)');
+                    showError(await apiError(res), 'Failed to attach session');
                 }
             } catch (err) {
-                alert('Error: ' + err.message);
+                showError(err.message, 'Failed to attach session');
             }
         }
-        
+
         // Auto-refresh every 5 seconds
         setInterval(() => {
             loadSessions();
@@ -790,10 +899,10 @@
         document.addEventListener('click', (e) => {
             const btn = e.target.closest('button[data-session-id]');
             if (!btn || btn.disabled) return;
-            
+
             const id = btn.dataset.sessionId;
             const action = btn.dataset.action;
-            
+
             switch (action) {
                 case 'attach': attachSession(id); break;
                 case 'prompt': openPromptDialog(id); break;
@@ -806,7 +915,8 @@
             }
         });
 
-        // Work On dialog functionality
+        // ── Work On dialog ─────────────────────────────────────────────
+
         let selectedBeadId = null;
 
         async function openWorkOnDialog(sessionId) {
@@ -815,14 +925,16 @@
             document.getElementById('work-on-start-btn').disabled = true;
             document.getElementById('work-on-dialog').showModal();
 
-            // Load ready beads
             try {
-                const response = await fetch('/api/beads/ready');
-                const readyBeads = await response.json();
+                const res = await fetch('/api/beads/ready');
+                if (!res.ok) {
+                    document.getElementById('work-on-content').innerHTML = errorHTML('Failed to load ready tasks: ' + await apiError(res));
+                    return;
+                }
+                const readyBeads = await res.json();
                 renderWorkOnBeads(readyBeads);
             } catch (error) {
-                console.error('Failed to load ready beads:', error);
-                document.getElementById('work-on-content').innerHTML = '<p>Failed to load ready tasks</p>';
+                document.getElementById('work-on-content').innerHTML = errorHTML('Failed to load ready tasks: ' + error.message);
             }
         }
 
@@ -852,7 +964,6 @@
         function selectBeadForWork(beadId) {
             selectedBeadId = beadId;
 
-            // Highlight selected row
             document.querySelectorAll('#work-on-content tr[data-bead-id]').forEach(row => {
                 if (row.dataset.beadId === beadId) {
                     row.classList.add('selected');
@@ -880,10 +991,10 @@
                     closeWorkOnDialog();
                     loadSessions();
                 } else {
-                    alert('Failed to send prompt');
+                    showError(await apiError(res), 'Failed to send prompt');
                 }
             } catch (err) {
-                alert('Error: ' + err.message);
+                showError(err.message, 'Failed to send prompt');
             }
         }
 
@@ -893,7 +1004,8 @@
             document.getElementById('work-on-start-btn').disabled = true;
         }
 
-        // Tab switching
+        // ── Tab switching ──────────────────────────────────────────────
+
         function showTab(tab) {
             document.getElementById('sessions-tab').classList.toggle('hidden', tab !== 'sessions');
             document.getElementById('inbox-tab').classList.toggle('hidden', tab !== 'inbox');
@@ -905,7 +1017,6 @@
             } else if (tab === 'archive') {
                 loadArchive();
             } else if (tab === 'tasks') {
-                // Update filter button styles to match current filter
                 document.querySelectorAll('[id^="filter-"]').forEach(btn => {
                     btn.className = 'secondary';
                 });
@@ -914,7 +1025,8 @@
             }
         }
 
-        // Inbox functionality
+        // ── Inbox ──────────────────────────────────────────────────────
+
         let currentMessage = null;
         let inboxMessages = [];
         let archiveMessages = [];
@@ -922,6 +1034,7 @@
         async function updateInboxBadge() {
             try {
                 const response = await fetch('/api/inbox/count');
+                if (!response.ok) return; // silent — badge is non-critical
                 const data = await response.json();
                 const badge = document.getElementById('inbox-badge');
                 if (data.count > 0) {
@@ -930,23 +1043,28 @@
                 } else {
                     badge.classList.add('hidden');
                 }
-            } catch (error) {
-                console.error('Failed to update inbox badge:', error);
+            } catch (_) {
+                // Non-critical; swallow silently
             }
         }
 
         async function loadInbox() {
             try {
                 const response = await fetch('/api/inbox');
+                if (!response.ok) {
+                    document.getElementById('inbox-container').innerHTML = errorHTML('Failed to load inbox: ' + await apiError(response));
+                    return;
+                }
                 const messages = await response.json();
                 renderInbox(messages);
                 updateInboxBadge();
             } catch (error) {
-                console.error('Failed to load inbox:', error);
+                document.getElementById('inbox-container').innerHTML = errorHTML('Failed to load inbox: ' + error.message);
             }
         }
 
         function renderInbox(messages) {
+            messages = messages || [];
             messages.sort((a, b) => b.timestamp - a.timestamp);
             inboxMessages = messages;
 
@@ -980,14 +1098,19 @@
         async function loadArchive() {
             try {
                 const response = await fetch('/api/archive');
+                if (!response.ok) {
+                    document.getElementById('archive-container').innerHTML = errorHTML('Failed to load archive: ' + await apiError(response));
+                    return;
+                }
                 const messages = await response.json();
                 renderArchive(messages);
             } catch (error) {
-                console.error('Failed to load archive:', error);
+                document.getElementById('archive-container').innerHTML = errorHTML('Failed to load archive: ' + error.message);
             }
         }
 
         function renderArchive(messages) {
+            messages = messages || [];
             messages.sort((a, b) => b.timestamp - a.timestamp);
             archiveMessages = messages;
 
@@ -1060,15 +1183,15 @@ ${msg.body}`;
 
         function replyToMessage() {
             if (!currentMessage) return;
-            
+
             const replyType = getReplyType(currentMessage.type);
             const replySubject = `Re: ${currentMessage.subject}`;
-            
+
             document.getElementById('reply-to').value = currentMessage.from;
             document.getElementById('reply-type').value = replyType;
             document.getElementById('reply-subject').value = replySubject;
             document.getElementById('reply-body').value = '';
-            
+
             closeMessageDialog();
             document.getElementById('reply-dialog').showModal();
         }
@@ -1088,11 +1211,10 @@ ${msg.body}`;
                 if (response.ok) {
                     await loadInbox();
                 } else {
-                    alert('Failed to archive message');
+                    showError(await apiError(response), 'Failed to archive message');
                 }
             } catch (error) {
-                console.error('Failed to archive message:', error);
-                alert('Failed to archive message');
+                showError(error.message, 'Failed to archive message');
             }
         }
 
@@ -1127,15 +1249,15 @@ ${msg.body}`;
                     closeReplyDialog();
                     loadInbox();
                 } else {
-                    alert('Failed to send reply');
+                    showError(await apiError(response), 'Failed to send reply');
                 }
             } catch (error) {
-                console.error('Failed to send reply:', error);
-                alert('Failed to send reply');
+                showError(error.message, 'Failed to send reply');
             }
         });
 
-        // Tasks/Beads functionality
+        // ── Tasks / Beads ──────────────────────────────────────────────
+
         let allBeads = [];
         let currentBead = null;
         let beadStatusFilter = 'open';
@@ -1143,19 +1265,21 @@ ${msg.body}`;
         async function loadBeads() {
             try {
                 const response = await fetch('/api/beads');
+                if (!response.ok) {
+                    document.getElementById('tasks-container').innerHTML = errorHTML('Failed to load tasks: ' + await apiError(response));
+                    return;
+                }
                 const beads = await response.json();
                 allBeads = beads;
                 filterBeads();
             } catch (error) {
-                console.error('Failed to load beads:', error);
-                document.getElementById('tasks-container').innerHTML = '<p>Failed to load tasks</p>';
+                document.getElementById('tasks-container').innerHTML = errorHTML('Failed to load tasks: ' + error.message);
             }
         }
 
         function setBeadFilter(status) {
             beadStatusFilter = status;
 
-            // Update button styles
             document.querySelectorAll('[id^="filter-"]').forEach(btn => {
                 btn.className = 'secondary';
             });
@@ -1167,12 +1291,10 @@ ${msg.body}`;
         function filterBeads() {
             const query = document.getElementById('tasks-search-box').value.toLowerCase();
             const filtered = allBeads.filter(b => {
-                // Filter by status
                 if (beadStatusFilter !== 'all' && b.status !== beadStatusFilter) {
                     return false;
                 }
 
-                // Filter by search query
                 const searchText = [
                     b.id || '',
                     b.title || '',
@@ -1193,7 +1315,7 @@ ${msg.body}`;
             }
 
             let html = '<table><thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Priority</th><th>Assignee</th><th>Actions</th></tr></thead><tbody>';
-            
+
             for (const bead of beads) {
                 const statusClass = `bead-status-${bead.status}`;
                 html += `<tr>
@@ -1209,7 +1331,7 @@ ${msg.body}`;
                     </td>
                 </tr>`;
             }
-            
+
             html += '</tbody></table>';
             container.innerHTML = html;
         }
@@ -1228,9 +1350,9 @@ ${msg.body}`;
             const formData = new FormData(e.target);
             const title = formData.get('title');
             const description = formData.get('description');
-            
+
             const command = `new '${title.replace(/'/g, "\\'")}' '${description.replace(/'/g, "\\'")}'`;
-            
+
             try {
                 const response = await fetch('/api/beads/ctl', {
                     method: 'POST',
@@ -1242,20 +1364,23 @@ ${msg.body}`;
                     closeNewBeadDialog();
                     setTimeout(loadBeads, 500);
                 } else {
-                    alert('Failed to create task');
+                    showError(await apiError(response), 'Failed to create task');
                 }
             } catch (error) {
-                console.error('Failed to create task:', error);
-                alert('Failed to create task');
+                showError(error.message, 'Failed to create task');
             }
         });
 
         async function viewBead(id) {
             try {
                 const response = await fetch(`/api/beads/${id}`);
+                if (!response.ok) {
+                    showError(await apiError(response), 'Failed to load task details');
+                    return;
+                }
                 const bead = await response.json();
                 currentBead = bead;
-                
+
                 const statusClass = `bead-status-${bead.status}`;
                 let content = `<p><strong>ID:</strong> ${escapeHtml(bead.id)}</p>`;
                 content += `<p><strong>Status:</strong> <span class="bead-status ${statusClass}">${escapeHtml(bead.status)}</span></p>`;
@@ -1265,17 +1390,16 @@ ${msg.body}`;
                 content += `<p><strong>Created:</strong> ${new Date(bead.created_at).toLocaleString()}</p>`;
                 content += `<p><strong>Updated:</strong> ${new Date(bead.updated_at).toLocaleString()}</p>`;
                 content += `<p><strong>Description:</strong></p><p>${escapeHtml(bead.description || '')}</p>`;
-                
+
                 if (bead.blockers && bead.blockers.length > 0) {
                     content += `<p><strong>Blockers:</strong> ${bead.blockers.map(b => escapeHtml(b)).join(', ')}</p>`;
                 }
-                
+
                 document.getElementById('bead-detail-title').textContent = bead.title;
                 document.getElementById('bead-detail-content').innerHTML = content;
                 document.getElementById('bead-detail-dialog').showModal();
             } catch (error) {
-                console.error('Failed to load bead details:', error);
-                alert('Failed to load task details');
+                showError(error.message, 'Failed to load task details');
             }
         }
 
@@ -1295,11 +1419,10 @@ ${msg.body}`;
                 if (response.ok) {
                     setTimeout(loadBeads, 500);
                 } else {
-                    alert('Failed to claim task');
+                    showError(await apiError(response), 'Failed to claim task');
                 }
             } catch (error) {
-                console.error('Failed to claim task:', error);
-                alert('Failed to claim task');
+                showError(error.message, 'Failed to claim task');
             }
         }
 
@@ -1314,25 +1437,30 @@ ${msg.body}`;
                 if (response.ok) {
                     setTimeout(loadBeads, 500);
                 } else {
-                    alert('Failed to complete task');
+                    showError(await apiError(response), 'Failed to complete task');
                 }
             } catch (error) {
-                console.error('Failed to complete task:', error);
-                alert('Failed to complete task');
+                showError(error.message, 'Failed to complete task');
             }
         }
 
         // Tasks search box filtering
         document.getElementById('tasks-search-box').addEventListener('input', filterBeads);
 
-        // Daemon status
+        // ── Daemon status ──────────────────────────────────────────────
+
         async function updateDaemonStatus() {
             try {
                 const response = await fetch('/api/daemon/status');
+                if (!response.ok) {
+                    document.getElementById('daemon-indicator').className = 'daemon-status-indicator daemon-stopped';
+                    document.getElementById('daemon-text').textContent = 'Daemon: Error';
+                    return;
+                }
                 const data = await response.json();
                 const indicator = document.getElementById('daemon-indicator');
                 const text = document.getElementById('daemon-text');
-                
+
                 if (data.running) {
                     indicator.className = 'daemon-status-indicator daemon-running';
                     text.textContent = `Daemon: ${data.session_count} sessions`;
@@ -1340,15 +1468,12 @@ ${msg.body}`;
                     indicator.className = 'daemon-status-indicator daemon-stopped';
                     text.textContent = 'Daemon: Stopped';
                 }
-            } catch (error) {
-                const indicator = document.getElementById('daemon-indicator');
-                const text = document.getElementById('daemon-text');
-                indicator.className = 'daemon-status-indicator daemon-stopped';
-                text.textContent = 'Daemon: Error';
+            } catch (_) {
+                document.getElementById('daemon-indicator').className = 'daemon-status-indicator daemon-stopped';
+                document.getElementById('daemon-text').textContent = 'Daemon: Unreachable';
             }
         }
 
-        // Update daemon status on load and periodically
         updateDaemonStatus();
         setInterval(updateDaemonStatus, 5000);
     </script>

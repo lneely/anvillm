@@ -4,7 +4,7 @@ package session
 import (
 	"anvillm/internal/backend"
 	"anvillm/internal/backend/tmux"
-	"anvillm/internal/events"
+	"anvillm/internal/eventbus"
 	"anvillm/internal/mailbox"
 	"context"
 	"fmt"
@@ -19,7 +19,7 @@ type Manager struct {
 	backends      map[string]backend.Backend
 	sessions      map[string]backend.Session
 	mailManager   *mailbox.Manager
-	eventQueue    *events.Queue
+	eventBus      *eventbus.Bus
 	OnStateChange func(sessionID, oldState, newState string)
 	mu            sync.RWMutex
 	stopCh        chan struct{}
@@ -29,46 +29,46 @@ type Manager struct {
 // NewManager creates a session manager with the given backends
 func NewManager(backends map[string]backend.Backend) *Manager {
 	mailMgr := mailbox.NewManager()
-	
+
 	m := &Manager{
 		backends:    backends,
 		sessions:    make(map[string]backend.Session),
 		mailManager: mailMgr,
-		eventQueue:  nil, // Set via SetEventQueue
+		eventBus: nil, // Set via SetEventBus
 		stopCh:      make(chan struct{}),
 	}
-	
+
 	// Set session getter for alias lookup
 	mailMgr.SetSessionGetter(m)
-	
+
 	// Set state change callback
 	m.OnStateChange = func(sessionID, oldState, newState string) {
-		if m.eventQueue != nil {
-			m.eventQueue.Push(sessionID, events.EventStateChange, map[string]string{
+		if m.eventBus != nil {
+			m.eventBus.Publish(sessionID, eventbus.EventStateChange, map[string]string{
 				"old_state": oldState,
 				"new_state": newState,
 			})
 		}
 	}
-	
+
 	// Wire up mailbox event callbacks
 	mailMgr.SetEventCallbacks(
 		func(senderID string, msg *mailbox.Message) {
-			if m.eventQueue != nil {
-				eventType := events.EventBotSend
+			if m.eventBus != nil {
+				evType := eventbus.EventBotSend
 				if senderID == "user" {
-					eventType = events.EventUserSend
+					evType = eventbus.EventUserSend
 				}
-				m.eventQueue.Push(senderID, eventType, msg)
+				m.eventBus.Publish(senderID, evType, msg)
 			}
 		},
 		func(receiverID string, msg *mailbox.Message) {
-			if m.eventQueue != nil {
-				eventType := events.EventBotRecv
+			if m.eventBus != nil {
+				evType := eventbus.EventBotRecv
 				if receiverID == "user" {
-					eventType = events.EventUserRecv
+					evType = eventbus.EventUserRecv
 				}
-				m.eventQueue.Push(receiverID, eventType, msg)
+				m.eventBus.Publish(receiverID, evType, msg)
 			}
 		},
 	)
@@ -228,20 +228,7 @@ func (m *Manager) processMailboxes() {
 		}
 	}
 	
-	// 2. Process user inbox with type-based routing
-	userMessages, _ := m.mailManager.GetPendingMessages("user")
-	for _, msg := range userMessages {
-		// Route based on message type
-		switch msg.Type {
-		case mailbox.MessageTypePromptResponse:
-			// Auto-complete
-			m.mailManager.CompleteMessage("user", msg.ID)
-
-		default:
-			// All other types: inbox only, DON'T auto-complete
-			// Message stays in inbox for user to review
-		}
-	}
+	// 2. Process user inbox — all message types stay in inbox for user to review
 	
 	// 3. Prompt idle agents with pending messages (after 15 seconds of idle)
 	for _, sess := range sessions {
@@ -276,9 +263,9 @@ func (m *Manager) GetMailManager() *mailbox.Manager {
 	return m.mailManager
 }
 
-// SetEventQueue sets the event queue for emitting events
-func (m *Manager) SetEventQueue(eq *events.Queue) {
+// SetEventBus sets the event bus for emitting events.
+func (m *Manager) SetEventBus(bus *eventbus.Bus) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.eventQueue = eq
+	m.eventBus = bus
 }

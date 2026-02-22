@@ -4,7 +4,7 @@ package p9
 import (
 	"anvillm/internal/backend"
 	"anvillm/internal/backend/tmux"
-	"anvillm/internal/events"
+	"anvillm/internal/eventbus"
 	"anvillm/internal/mailbox"
 	"anvillm/internal/session"
 	"context"
@@ -113,7 +113,7 @@ type Server struct {
 	mgr           *session.Manager
 	listener      net.Listener
 	socketPath    string
-	events        *events.Queue
+	events        *eventbus.Bus
 	beads         *BeadsFS
 	OnAliasChange func(backend.Session) // Called when session alias changes
 	mu            sync.RWMutex
@@ -126,10 +126,13 @@ type connState struct {
 }
 
 type fid struct {
-	qid    plan9.Qid
-	path   string
-	mode   uint8
-	offset int64
+	qid        plan9.Qid
+	path       string
+	mode       uint8
+	offset     int64
+	// For streaming /events endpoint
+	eventCh    <-chan *eventbus.Event
+	eventUnsub func()
 }
 
 // NewServer creates and starts the 9P server.
@@ -166,7 +169,7 @@ func NewServer(mgr *session.Manager, beadsStore bd.Storage) (*Server, error) {
 		mgr:        mgr,
 		listener:   listener,
 		socketPath: sockPath,
-		events:     events.NewQueue(),
+		events:     eventbus.New(),
 		beads:      beadsFS,
 	}
 	go s.acceptLoop()
@@ -178,8 +181,8 @@ func (s *Server) SocketPath() string {
 	return s.socketPath
 }
 
-// Events returns the event queue for pushing events.
-func (s *Server) Events() *events.Queue {
+// Events returns the event bus for publishing events.
+func (s *Server) Events() *eventbus.Bus {
 	return s.events
 }
 
@@ -199,6 +202,18 @@ func (s *Server) acceptLoop() {
 func (s *Server) serve(conn net.Conn) {
 	defer conn.Close()
 	cs := &connState{fids: make(map[uint32]*fid)}
+
+	// Cancel any outstanding event subscriptions when the connection drops.
+	defer func() {
+		cs.mu.Lock()
+		for _, f := range cs.fids {
+			if f.eventUnsub != nil {
+				f.eventUnsub()
+				f.eventUnsub = nil
+			}
+		}
+		cs.mu.Unlock()
+	}()
 
 	for {
 		fc, err := plan9.ReadFcall(conn)
@@ -241,6 +256,11 @@ func (s *Server) handle(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return s.stat(cs, fc)
 	case plan9.Tclunk:
 		cs.mu.Lock()
+		if f, ok := cs.fids[fc.Fid]; ok && f.eventUnsub != nil {
+			// Cancel event subscription before dropping the fid.
+			f.eventUnsub()
+			f.eventUnsub = nil
+		}
 		delete(cs.fids, fc.Fid)
 		cs.mu.Unlock()
 		return &plan9.Fcall{Type: plan9.Rclunk, Tag: fc.Tag}
@@ -411,6 +431,14 @@ func (s *Server) open(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	}
 	f.mode = fc.Mode
 	f.offset = 0
+
+	// For the /events streaming endpoint, subscribe to the event bus.
+	if f.path == "/events" {
+		ch, cancel := s.events.Subscribe()
+		f.eventCh = ch
+		f.eventUnsub = cancel
+	}
+
 	return &plan9.Fcall{Type: plan9.Ropen, Tag: fc.Tag, Qid: f.qid}
 }
 
@@ -424,6 +452,17 @@ func (s *Server) read(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	cs.mu.Unlock()
 	if !ok {
 		return errFcall(fc, "bad fid")
+	}
+
+	// Streaming /events: block until next event arrives (or channel closed).
+	if f.eventCh != nil {
+		e, ok := <-f.eventCh
+		if !ok {
+			// Channel closed (subscription cancelled); signal EOF.
+			return &plan9.Fcall{Type: plan9.Rread, Tag: fc.Tag, Count: 0}
+		}
+		data := eventbus.MarshalEvent(e)
+		return &plan9.Fcall{Type: plan9.Rread, Tag: fc.Tag, Count: uint32(len(data)), Data: data}
 	}
 
 	var data []byte
@@ -463,14 +502,6 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 		}
 		return errFcall(fc, "beads not initialized")
-	}
-
-	// /events - ack events
-	if f.path == "/events" {
-		if err := s.events.Ack(fc.Data); err != nil {
-			return errFcall(fc, err.Error())
-		}
-		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
 	// /ctl - create new session
@@ -1067,10 +1098,6 @@ func (s *Server) readFile(path string) string {
 			}
 		}
 		return strings.Join(lines, "\n") + "\n"
-	}
-
-	if path == "/events" {
-		return string(s.events.Read())
 	}
 
 	if path == "/status" {
