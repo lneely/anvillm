@@ -1,6 +1,6 @@
 #!/bin/bash
 # Taskmaster - Task management agent workflow
-# Usage: ./workflows/Taskmaster <backend> <workdir>
+# Usage: ./bot-templates/Taskmaster <backend> <workdir>
 
 set -e
 

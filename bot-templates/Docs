@@ -1,6 +1,6 @@
 #!/bin/bash
 # Docs - Documentation workflow (writer + techeditor)
-# Usage: ./workflows/Docs <backend> <workdir>
+# Usage: ./bot-templates/Docs <backend> <workdir>
 
 set -e
 
