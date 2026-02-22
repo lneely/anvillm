@@ -1,6 +1,25 @@
 # Events System
 
-The events system provides a real-time text stream of all AnviLLM activity.
+The events system provides a real-time text stream of all AnviLLM activity using [github.com/simonfxr/pubsub](https://github.com/simonfxr/pubsub) as the event bus.
+
+## Architecture
+
+```
+                    ┌─────────────────┐
+                    │  agent/events   │
+                    │ (event stream)  │
+                    └────────┬────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+              ▼              ▼              ▼
+      ┌──────────────┐ ┌──────────┐ ┌────────────┐
+      │ Notification │ │  Logger  │ │    etc.    │
+      │              │ │  (audit) │ │            │
+      └──────────────┘ └──────────┘ └────────────┘
+```
+
+Multiple clients can read from `agent/events` simultaneously, each consuming the same event stream for different purposes: notifications (desktop, SMS, WhatsApp), logging/auditing, custom integrations, etc.
 
 ## Reading Events
 

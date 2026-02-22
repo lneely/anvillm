@@ -4,13 +4,46 @@ LLM orchestrator using 9P — scriptable, multi-backend, crash-resilient
 
 ## Architecture
 
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         Clients                             │
+│  ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐           │
+│  │ Assist │  │  TUI   │  │ Emacs  │  │  Web   │           │
+│  │ (Acme) │  │        │  │        │  │        │           │
+│  └───┬────┘  └───┬────┘  └───┬────┘  └───┬────┘           │
+└──────┼───────────┼───────────┼───────────┼────────────────┘
+       │           │           │           │
+       └───────────┴───────────┴───────────┘
+                       │ 9P
+       ┌───────────────┴───────────────┐
+       │                               │
+┌──────▼──────────────────────────────────────────────────────┐
+│                      Core Services                          │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐                 │
+│  │ anvilsrv │  │ anvilmcp │  │anvilwebgw│                 │
+│  │(9P daemon)  │(MCP server) │(API proxy)│                 │
+│  └─────┬────┘  └──────────┘  └──────────┘                 │
+└────────┼───────────────────────────────────────────────────┘
+         │
+    ┌────┴────┬────────┐
+    │         │        │
+┌───▼───┐ ┌──▼────┐ ┌─▼─────┐
+│ Claude│ │ Kiro  │ │ ollie │
+└───────┘ └───────┘ └───┬───┘
+                        │
+                    ┌───▼────┐
+                    │ Ollama │
+                    └────────┘
+  Backends
+```
+
 **Core:** anvilsrv (9P daemon), anvilmcp (MCP server), anvilwebgw (API proxy)  
 **Clients:** Assist (Acme), anvillm.el (Emacs), anvillm (TUI), anvilweb (web)  
 **Benefits:** Shared sessions, crash recovery, scriptable via 9P, cross-backend agent communication
 
 ## Why 9P?
 
-9P turns orchestration into file operations (`read`, `write`, `ls`, `stat`). Control agents with standard tools: `cat`, `echo`, shell scripts, or any language with file I/O. Compose workflows with Unix pipes, `grep`, `awk`, `jq`. Only requirement: a 9P client (plan9port's `9p` or compatible).
+9P turns orchestration into file operations (`read`, `write`, `ls`, `stat`). Control agents with standard tools: `cat`, `echo`, shell scripts, or any language with file I/O. Compose workflows with Unix pipes, `grep`, `awk`, `jq`. Only requirement: a 9P client (plan9port's `9p` or compatible). Built with [9fans.net/go](https://9fans.net/go).
 
 ## Requirements
 
@@ -117,7 +150,28 @@ Templates use `{VARNAME}` syntax. Any environment variable can be referenced.
 **Sandbox:** [landrun](https://github.com/zouuup/landrun) (always enabled) — Defaults: CWD/`/tmp`/config (rw), `/usr`/`/lib`/`/bin` (ro+exec), no network
 
 **Config** (`~/.config/anvillm/`): Layered YAML files, most permissive wins:
-- `global.yaml` → `backends/<name>.yaml` → `roles/<name>.yaml` → `tasks/<name>.yaml`
+
+```
+┌─────────────────┐
+│  global.yaml    │  Base configuration
+└────────┬────────┘
+         │ (override)
+┌────────▼────────┐
+│ backends/*.yaml │  Backend-specific
+└────────┬────────┘
+         │ (override)
+┌────────▼────────┐
+│  roles/*.yaml   │  Role-specific (default: roles/default.yaml)
+└────────┬────────┘
+         │ (override)
+┌────────▼────────┐
+│  tasks/*.yaml   │  Task-specific
+└────────┬────────┘
+         │
+         ▼
+   Final Config (most permissive wins)
+```
+
 - Default role: `roles/default.yaml`
 
 ```yaml
@@ -130,7 +184,62 @@ filesystem: {rw: ["{CWD}", "{HOME}/.npm"]}
 **Kernel requirements:** 5.13+ (Landlock v1), 6.7+ (v4), 6.10+ (v5 network)  
 Set `best_effort: true` for unsandboxed fallback (⚠️ if no Landlock support)
 
+**Session lifecycle:**
+
+```
+          ┌─────────────────────────┐
+          │                         │
+          │     ┌──────────┐        │
+          │     │ starting │        │
+          │     └─────┬────┘        │
+          │           │             │
+          │           ▼             │
+          │     ┌─────────┐         │
+          └────►│  idle   │◄────┐   │
+                └────┬────┘     │   │
+                     │          │   │
+                     │ userPromptSubmit hook
+                     │ (user sends prompt)
+                     │          │   │
+                     ▼          │   │
+                ┌─────────┐    │   │
+                │ running │    │   │
+                └────┬────┘    │   │
+                     │          │   │
+                     │ stop hook│   │
+                     │ (agent finishes)
+                     │          │   │
+                     └──────────┘   │
+                     │              │
+                     │ crash        │
+                     ▼              │
+                ┌───────┐  restart  │
+                │ error │───────────┘
+                └───────┘
+```
+
+State transitions: `idle` ↔ `running` cycle via CLI hooks (`userPromptSubmit` when user sends prompt, `stop` when agent finishes). Crash → `error` → auto-restart → `starting`. Note: any state can transition to `stopped` or `killed` (not shown); `stopped` can restart → `starting`.
+
 **Self-healing:** Auto-restarts crashes every 5s (preserves context/alias/cwd), skips intentional stops
+
+```
+┌─────────┐  crash   ┌─────────┐  5s wait  ┌─────────┐
+│ running │─────────►│  error  │──────────►│ running │
+└─────────┘          └─────────┘           └─────────┘
+                          │                      ▲
+                          │                      │
+                    (preserves)            (restored +
+                          │                auto-resume)
+                          ▼                      │
+                   ┌──────────────┐              │
+                   │ context      │──────────────┘
+                   │ alias        │
+                   │ cwd          │
+                   │ conversation │
+                   └──────────────┘
+```
+
+Restored sessions automatically resume the latest conversation (kiro: `-r`, claude: `-c`).
 
 **Add backend:** Implement `CommandHandler`/`StateInspector` in `internal/backends/yourbackend.go`, register in `main.go`
 
@@ -197,6 +306,26 @@ agent/
     └── mail        # Write messages (convenience)
 ```
 
+**Client Interactions:**
+
+```
+┌─────────┐         ┌─────────┐         ┌─────────┐
+│  Assist │         │   TUI   │         │  Script │
+└────┬────┘         └────┬────┘         └────┬────┘
+     │                   │                   │
+     │ 9p read           │ 9p write          │ 9p read
+     │ agent/list        │ agent/ctl         │ agent/events
+     │                   │                   │
+     └───────────────────┴───────────────────┘
+                         │
+                    ┌────▼────┐
+                    │ agent/  │
+                    │ (9P fs) │
+                    └─────────┘
+```
+
+Different clients interact with different parts of the filesystem: frontends read state, control files manage sessions, scripts consume events.
+
 ### Beads
 
 Persistent task tracking via [beads](https://github.com/steveyegge/beads) — Dependency-aware graph
@@ -213,6 +342,50 @@ echo 'dep bd-child bd-parent' | 9p write agent/beads/ctl  # child blocks parent
 Config: `~/.beads/` (override: `ANVILLM_BEADS_PATH`) — Shared across namespaces — See `internal/beads/README.md`
 
 ### Events & Mailbox
+
+**Mailbox Flow:**
+
+```
+User writes to Agent A:
+  echo '{"to":"agent-a",...}' | 9p write user/mail
+                    │
+                    ▼
+            [mailbox system]
+                    │
+                    ▼
+            agent-a/inbox (Agent A reads)
+
+Agent A writes to Agent B:
+  echo '{"to":"agent-b",...}' | 9p write agent/agent-a/mail
+                    │
+                    ▼
+            [mailbox system]
+                    │
+                    ▼
+            agent-b/inbox (Agent B reads)
+
+Agent B replies to Agent A:
+  echo '{"to":"agent-a",...}' | 9p write agent/agent-b/mail
+                    │
+                    ▼
+            [mailbox system]
+                    │
+                    ▼
+            agent-a/inbox (Agent A reads)
+
+Agent B replies to User:
+  echo '{"to":"user",...}' | 9p write agent/agent-b/mail
+                    │
+                    ▼
+            [mailbox system]
+                    │
+                    ▼
+            user/inbox (User reads)
+```
+
+Cross-backend communication: messages route between any participants (user, Claude agents, Kiro agents, Ollama agents) via the mailbox system.
+
+**Examples:**
 
 ```sh
 # Events
@@ -269,6 +442,38 @@ Templates set up context, roles, and initial configuration. Interact via any cli
 ## Automating Development
 
 Automate workflows with Taskmaster and Conductor bots. Input project plan → Taskmaster creates tasks with dependencies → Conductor orchestrates parallel execution.
+
+```
+┌──────────────┐
+│ Project Plan │
+└──────┬───────┘
+       │
+       ▼
+┌──────────────┐     ┌─────────────────────────────┐
+│  Taskmaster  │────►│  Beads (dependency graph)   │
+└──────────────┘     │  ┌─────────────────────┐    │
+                     │  │ Top-level bead ID   │    │
+                     │  │ (represents project)│    │
+                     │  └──────────┬──────────┘    │
+                     └─────────────┼────────────────┘
+                                   │
+                                   ▼
+                        ┌──────────────────┐
+                        │    Conductor     │
+                        │ (coordinates     │
+                        │  dependencies)   │
+                        └────────┬─────────┘
+                                 │
+                 ┌───────────────┼───────────────┐
+                 │               │               │
+                 ▼               ▼               ▼
+          ┌──────────┐    ┌──────────┐   ┌──────────┐
+          │ Agent 1  │    │ Agent 2  │   │ Agent 3  │
+          │          │    │          │   │          │
+          └──────────┘    └──────────┘   └──────────┘
+```
+
+Conductor receives the top-level bead ID, analyzes dependencies, and spawns agents to work in parallel. Agents notify Conductor when blocked; Conductor signals them to resume when dependencies resolve.
 
 ### Usage
 
