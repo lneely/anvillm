@@ -4,7 +4,7 @@ LLM orchestrator using 9P — scriptable, multi-backend, crash-resilient
 
 ## Architecture
 
-![Architecture](docs/diagrams/architecture.svg)
+![Architecture](docs/diagrams/architecture.svg?v=2)
 
 **Core:** anvilsrv (9P daemon), anvilmcp (MCP server), anvilwebgw (API proxy)  
 **Clients:** Assist (Acme), anvillm.el (Emacs), anvillm (TUI), anvilweb (web)  
@@ -120,7 +120,7 @@ Templates use `{VARNAME}` syntax. Any environment variable can be referenced.
 
 **Config** (`~/.config/anvillm/`): Layered YAML files, most permissive wins:
 
-![Sandbox Config Layering](docs/diagrams/sandbox-config.svg)
+![Sandbox Config Layering](docs/diagrams/sandbox-config.svg?v=2)
 
 - Default role: `roles/default.yaml`
 
@@ -136,13 +136,13 @@ Set `best_effort: true` for unsandboxed fallback (⚠️ if no Landlock support)
 
 **Session lifecycle:**
 
-![Session Lifecycle](docs/diagrams/session-lifecycle.svg)
+![Session Lifecycle](docs/diagrams/session-lifecycle.svg?v=2)
 
 State transitions: `idle` ↔ `running` cycle via CLI hooks (`userPromptSubmit` when user sends prompt, `stop` when agent finishes). Crash → `error` → auto-restart → `starting`. Note: any state can transition to `stopped` or `killed` (not shown); `stopped` can restart → `starting`.
 
 **Self-healing:** Auto-restarts crashes every 5s (preserves context/alias/cwd), skips intentional stops
 
-![Crash Recovery](docs/diagrams/crash-recovery.svg)
+![Crash Recovery](docs/diagrams/crash-recovery.svg?v=2)
 ┌─────────┐  crash   ┌─────────┐  5s wait  ┌─────────┐
 │ running │─────────►│  error  │──────────►│ running │
 └─────────┘          └─────────┘           └─────────┘
@@ -228,7 +228,7 @@ agent/
 
 **Client Interactions:**
 
-![Client Interactions](docs/diagrams/client-interactions.svg)
+![Client Interactions](docs/diagrams/client-interactions.svg?v=2)
 
 Different clients interact with different parts of the filesystem: frontends read state, control files manage sessions, scripts consume events.
 
@@ -251,7 +251,7 @@ Config: `~/.beads/` (override: `ANVILLM_BEADS_PATH`) — Shared across namespace
 
 **Mailbox Flow:**
 
-![Mailbox Flow](docs/diagrams/mailbox-flow.svg)
+![Mailbox Flow](docs/diagrams/mailbox-flow.svg?v=2)
 
 Cross-backend communication: messages route between any participants (user, Claude agents, Kiro agents, Ollama agents) via the mailbox system.
 
@@ -313,7 +313,7 @@ Templates set up context, roles, and initial configuration. Interact via any cli
 
 Automate workflows with Taskmaster and Conductor bots. Input project plan → Taskmaster creates tasks with dependencies → Conductor orchestrates parallel execution.
 
-![Automation Workflow](docs/diagrams/automation-workflow.svg)
+![Automation Workflow](docs/diagrams/automation-workflow.svg?v=2)
 
 Conductor receives the top-level bead ID, analyzes dependencies, and spawns agents to work in parallel. Agents notify Conductor when blocked; Conductor signals them to resume when dependencies resolve.
 
