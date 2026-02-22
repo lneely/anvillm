@@ -120,7 +120,7 @@ Templates use `{VARNAME}` syntax. Any environment variable can be referenced.
 
 **Config** (`~/.config/anvillm/`): Layered YAML files, most permissive wins:
 
-![Sandbox Config Layering](docs/diagrams/sandbox-config.svg?v=2)
+<img src="docs/diagrams/sandbox-config.svg?v=2" width="400">
 
 - Default role: `roles/default.yaml`
 
@@ -136,13 +136,13 @@ Set `best_effort: true` for unsandboxed fallback (⚠️ if no Landlock support)
 
 **Session lifecycle:**
 
-![Session Lifecycle](docs/diagrams/session-lifecycle.svg?v=2)
+<img src="docs/diagrams/session-lifecycle.svg?v=2" width="500">
 
 State transitions: `idle` ↔ `running` cycle via CLI hooks (`userPromptSubmit` when user sends prompt, `stop` when agent finishes). Crash → `error` → auto-restart → `starting`. Note: any state can transition to `stopped` or `killed` (not shown); `stopped` can restart → `starting`.
 
 **Self-healing:** Auto-restarts crashes every 5s (preserves context/alias/cwd), skips intentional stops
 
-![Crash Recovery](docs/diagrams/crash-recovery.svg?v=2)
+<img src="docs/diagrams/crash-recovery.svg?v=2" width="500">
 ┌─────────┐  crash   ┌─────────┐  5s wait  ┌─────────┐
 │ running │─────────►│  error  │──────────►│ running │
 └─────────┘          └─────────┘           └─────────┘
@@ -228,7 +228,7 @@ agent/
 
 **Client Interactions:**
 
-![Client Interactions](docs/diagrams/client-interactions.svg?v=2)
+<img src="docs/diagrams/client-interactions.svg?v=2" width="400">
 
 Different clients interact with different parts of the filesystem: frontends read state, control files manage sessions, scripts consume events.
 
