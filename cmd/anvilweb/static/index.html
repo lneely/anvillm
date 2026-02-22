@@ -210,6 +210,27 @@
 
         #error-banner.hidden { display: none; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+        /* ── Approval / Review highlights in inbox ── */
+        tr.msg-needs-action td { background: rgba(245, 158, 11, 0.08) !important; }
+        .msg-type-tag {
+            display: inline-block;
+            padding: 0.1rem 0.35rem;
+            border-radius: 0.2rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            vertical-align: middle;
+            margin-left: 0.3rem;
+        }
+        .msg-tag-approval { background: #f59e0b; color: white; }
+        .msg-tag-review   { background: #8b5cf6; color: white; }
+
+        /* ── Approve / Reject buttons ── */
+        .btn-approve { background: #22c55e; border-color: #22c55e; color: white; }
+        .btn-approve:hover { background: #16a34a; border-color: #16a34a; }
+        .btn-reject  { background: #ef4444; border-color: #ef4444; color: white; }
+        .btn-reject:hover  { background: #dc2626; border-color: #dc2626; }
     </style>
 </head>
 <body>
@@ -408,6 +429,8 @@
                 </header>
                 <div id="message-content" style="white-space: pre-wrap;"></div>
                 <footer style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    <button onclick="approveCurrentMessage()" id="message-approve-btn" class="btn-approve hidden">✓ Approve</button>
+                    <button onclick="rejectCurrentMessage()" id="message-reject-btn" class="btn-reject hidden">✗ Reject</button>
                     <button onclick="replyToMessage()" id="message-reply-btn">Reply</button>
                     <button onclick="archiveCurrentMessage()" class="secondary">Archive</button>
                     <button onclick="closeMessageDialog()" class="secondary">Close</button>
@@ -1028,6 +1051,7 @@
         // ── Inbox ──────────────────────────────────────────────────────
 
         let currentMessage = null;
+        let pendingArchiveId = null; // set when reject opens reply dialog, cleared on send
         let inboxMessages = [];
         let archiveMessages = [];
 
@@ -1079,10 +1103,18 @@
             for (let i = 0; i < messages.length; i++) {
                 const msg = messages[i];
                 const date = new Date(msg.timestamp * 1000).toLocaleString();
-                html += `<tr>
+                const needsAction = msg.type === 'APPROVAL_REQUEST' || msg.type === 'REVIEW_REQUEST';
+                const rowClass = needsAction ? ' class="msg-needs-action"' : '';
+                let typeHtml = escapeHtml(msg.type);
+                if (msg.type === 'APPROVAL_REQUEST') {
+                    typeHtml += ' <span class="msg-type-tag msg-tag-approval">Approval</span>';
+                } else if (msg.type === 'REVIEW_REQUEST') {
+                    typeHtml += ' <span class="msg-type-tag msg-tag-review">Review</span>';
+                }
+                html += `<tr${rowClass}>
                     <td>${escapeHtml(date)}</td>
                     <td>${escapeHtml(msg.from || '-')}</td>
-                    <td>${escapeHtml(msg.type)}</td>
+                    <td>${typeHtml}</td>
                     <td>${escapeHtml(msg.subject)}</td>
                     <td>
                         <button onclick='viewInboxMessage(${i})'>View</button>
@@ -1152,6 +1184,12 @@ Date: ${date}
 ${msg.body}`;
 
             document.getElementById('message-content').textContent = content;
+
+            // Show Approve / Reject buttons only for actionable message types
+            const needsApproval = msg.type === 'APPROVAL_REQUEST' || msg.type === 'REVIEW_REQUEST';
+            document.getElementById('message-approve-btn').classList.toggle('hidden', !needsApproval);
+            document.getElementById('message-reject-btn').classList.toggle('hidden', !needsApproval);
+
             document.getElementById('message-dialog').showModal();
         }
 
@@ -1194,6 +1232,48 @@ ${msg.body}`;
 
             closeMessageDialog();
             document.getElementById('reply-dialog').showModal();
+        }
+
+        async function approveCurrentMessage() {
+            if (!currentMessage) return;
+            const replyType = getReplyType(currentMessage.type);
+            const data = {
+                to: currentMessage.from,
+                type: replyType,
+                subject: `Re: ${currentMessage.subject}`,
+                body: 'Approved'
+            };
+            try {
+                const response = await fetch('/api/inbox/reply', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (response.ok) {
+                    const msgId = currentMessage.id;
+                    closeMessageDialog();
+                    await archiveMessage(msgId); // auto-archive; archiveMessage calls loadInbox
+                } else {
+                    showError(await apiError(response), 'Failed to send approval');
+                }
+            } catch (error) {
+                showError(error.message, 'Failed to send approval');
+            }
+        }
+
+        function rejectCurrentMessage() {
+            if (!currentMessage) return;
+            pendingArchiveId = currentMessage.id; // auto-archive when reply is sent
+            const replyType = getReplyType(currentMessage.type);
+            document.getElementById('reply-to').value = currentMessage.from;
+            document.getElementById('reply-type').value = replyType;
+            document.getElementById('reply-subject').value = `Re: ${currentMessage.subject}`;
+            document.getElementById('reply-body').value = 'Rejected: ';
+            closeMessageDialog();
+            document.getElementById('reply-dialog').showModal();
+            const textarea = document.getElementById('reply-body');
+            textarea.focus();
+            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
         }
 
         function closeReplyDialog() {
@@ -1247,7 +1327,13 @@ ${msg.body}`;
 
                 if (response.ok) {
                     closeReplyDialog();
-                    loadInbox();
+                    if (pendingArchiveId) {
+                        const idToArchive = pendingArchiveId;
+                        pendingArchiveId = null;
+                        await archiveMessage(idToArchive); // auto-archive; calls loadInbox
+                    } else {
+                        loadInbox();
+                    }
                 } else {
                     showError(await apiError(response), 'Failed to send reply');
                 }
