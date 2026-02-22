@@ -35,8 +35,6 @@ Use the `send_message` tool with these parameters:
 - `REVIEW_REQUEST` / `REVIEW_RESPONSE` - Request/provide reviews
 - `APPROVAL_REQUEST` / `APPROVAL_RESPONSE` - Request/provide approvals
 
-**Error Reporting:**
-- `LOG_ERROR` - Report errors (auto-completed)
 
 ### Examples
 
