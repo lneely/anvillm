@@ -1,0 +1,25 @@
+[Unit]
+Description=AnviLLM Inbox Notification Daemon
+Documentation=https://github.com/lkn/anvillm
+After=default.target
+
+[Service]
+Type=simple
+
+# Inherit DISPLAY and DBUS from user session for desktop notifications.
+# Uncomment and set if your session differs from :0.
+# Environment="DISPLAY=:0"
+# Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus"
+
+# Namespace for 9P mount (default matches anvilsrv default).
+# Override if you use a non-default namespace.
+# Environment="NAMESPACE=/tmp/ns.%u.:0"
+
+ExecStart=%h/bin/anvillm-inbox-notify
+
+# Restart if the daemon exits (e.g. anvilsrv restarted and the 9p read broke).
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target

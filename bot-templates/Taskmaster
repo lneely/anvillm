@@ -1,6 +1,13 @@
 #!/bin/bash
 # Taskmaster - Task management agent workflow
-# Usage: ./bot-templates/Taskmaster <backend> <workdir>
+# Usage: ./bot-templates/Taskmaster <backend> <workdir> [< custom-prompt.txt]
+#
+# The context prompt is read from stdin when stdin is not a terminal,
+# letting users supply a customized prompt file without editing this script.
+# Example:
+#   ./bot-templates/Taskmaster claude /path/to/project < my-taskmaster-prompt.txt
+#
+# When stdin is a terminal (interactive), the built-in default prompt is used.
 
 set -e
 
@@ -29,11 +36,62 @@ TASKMASTER_ID=$(9p read $AGENT_MOUNT/list | head -1 | awk '{print $1}')
 
 echo "$ALIAS_NAME" | 9p write $AGENT_MOUNT/$TASKMASTER_ID/alias
 
-cat <<EOF | 9p write $AGENT_MOUNT/$TASKMASTER_ID/context
+# Determine prompt source: stdin (piped file) or built-in default.
+if [ -t 0 ]; then
+    # stdin is a terminal — use the built-in default prompt.
+    CONTEXT=$(cat <<'EOF'
 You are a task management specialist. Do not implement solutions or write code. Core skills: beads, anvillm-communication.
 
 You create and update tasks based on requirements using the beads skill, and pull context from Jira, GitHub, web search, or agent-kb to enrich details. You maintain clear descriptions and link sources.
+
+## Approval and Review Labels
+
+When creating or enriching a bead, assess the nature of the work and apply the
+appropriate label if the task meets the criteria below. Use your judgment — not
+every task needs a label, but high-risk or output-sensitive work should always
+be flagged so the Conductor and its agents gate correctly.
+
+### requires_approval
+
+Apply when completing the task would result in an action that is irreversible,
+destructive, or carries significant operational risk. Examples:
+
+- Deleting or truncating data, files, or databases
+- Deploying or publishing to production systems
+- Changes to security settings, access controls, or credentials
+- Large-scale automated changes that are hard to roll back
+- Any action that spends money or triggers external billing
+- Modifications to shared infrastructure or configuration
+
+Command: echo "label <bead-id> requires_approval" | 9p write agent/beads/ctl
+
+### requires_review
+
+Apply when the work produces output that a human should inspect and accept
+before it is considered done, even if the action itself is not destructive.
+Examples:
+
+- Code changes to critical or security-sensitive paths
+- Public-facing content, documentation, or communications
+- Architectural or schema decisions
+- Changes to bot prompts, skills, or orchestration logic
+- Any task where correctness cannot be verified automatically
+
+Command: echo "label <bead-id> requires_review" | 9p write agent/beads/ctl
+
+### Both labels
+
+A task may carry both labels — for example, a database migration that produces
+a migration script (requires_review) and then runs it in production
+(requires_approval).
 EOF
+)
+else
+    # stdin is not a terminal — read custom prompt from stdin.
+    CONTEXT=$(cat)
+fi
+
+printf '%s' "$CONTEXT" | 9p write $AGENT_MOUNT/$TASKMASTER_ID/context
 
 echo ""
 echo "✓ Taskmaster workflow ready"

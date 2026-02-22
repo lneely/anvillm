@@ -1,0 +1,117 @@
+#!/bin/sh
+# /etc/rc.d/rc.anvilsrv
+#
+# Start/stop/restart the AnviLLM backend server (anvilsrv).
+#
+# anvilsrv exposes a 9P filesystem (agent/) used by Claude Code sessions and
+# bots for session management, mailbox communication, beads task tracking, and
+# the event bus.
+#
+# This script follows Slackware rc conventions:
+#   - Enable service:  chmod 755 /etc/rc.d/rc.anvilsrv
+#   - Disable service: chmod 644 /etc/rc.d/rc.anvilsrv
+#
+# To start automatically at boot, add to /etc/rc.d/rc.local:
+#   if [ -x /etc/rc.d/rc.anvilsrv ]; then
+#     /etc/rc.d/rc.anvilsrv start
+#   fi
+#
+# To stop cleanly at shutdown, add to /etc/rc.d/rc.local_shutdown:
+#   if [ -x /etc/rc.d/rc.anvilsrv ]; then
+#     /etc/rc.d/rc.anvilsrv stop
+#   fi
+#
+# ── configuration ─────────────────────────────────────────────────────────────
+#
+# ANVILSRV_USER  Login name of the user whose AnviLLM instance to manage.
+#                The anvilsrv binary is expected at ~/bin/anvilsrv.
+#
+# NAMESPACE      9P namespace directory.  Defaults to /tmp/ns.$ANVILSRV_USER
+#                matching the Plan 9 client.Namespace() convention used by
+#                anvilsrv.  The PID file lives at $NAMESPACE/anvilsrv.pid.
+#
+ANVILSRV_USER="${ANVILSRV_USER:-}"
+NAMESPACE="${NAMESPACE:-}"
+
+# ── resolve derived paths ─────────────────────────────────────────────────────
+
+if [ -z "$NAMESPACE" ] && [ -n "$ANVILSRV_USER" ]; then
+    NAMESPACE="/tmp/ns.${ANVILSRV_USER}"
+fi
+
+DAEMON="/home/${ANVILSRV_USER}/bin/anvilsrv"
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+anvilsrv_env() {
+    # Print the environment preamble used in every su invocation.
+    printf "export NAMESPACE='%s'; export HOME='/home/%s'; export PATH='/home/%s/bin:/usr/local/bin:/usr/bin:/bin'" \
+        "$NAMESPACE" "$ANVILSRV_USER" "$ANVILSRV_USER"
+}
+
+check_config() {
+    if [ -z "$ANVILSRV_USER" ]; then
+        echo "rc.anvilsrv: ANVILSRV_USER is not set — edit this script or set the variable." >&2
+        return 1
+    fi
+    if [ ! -x "$DAEMON" ]; then
+        echo "rc.anvilsrv: ${DAEMON} not found or not executable." >&2
+        return 1
+    fi
+    return 0
+}
+
+anvilsrv_start() {
+    check_config || return
+
+    echo "Starting anvilsrv (user=${ANVILSRV_USER}, namespace=${NAMESPACE})..."
+    mkdir -p "$NAMESPACE"
+    chown "$ANVILSRV_USER" "$NAMESPACE" 2>/dev/null
+
+    # anvilsrv start daemonizes itself and writes its own PID file at
+    # $NAMESPACE/anvilsrv.pid.  It also detects if it is already running and
+    # exits with an error in that case — no extra guard needed here.
+    su -s /bin/sh -l "$ANVILSRV_USER" -c "$(anvilsrv_env); '${DAEMON}' start"
+}
+
+anvilsrv_stop() {
+    check_config || return
+
+    echo "Stopping anvilsrv (user=${ANVILSRV_USER})..."
+    su -s /bin/sh -l "$ANVILSRV_USER" -c "$(anvilsrv_env); '${DAEMON}' stop"
+
+    # Remove the 9P socket left behind by anvilsrv.
+    rm -f "${NAMESPACE}/agent" 2>/dev/null
+}
+
+anvilsrv_restart() {
+    anvilsrv_stop
+    sleep 1
+    anvilsrv_start
+}
+
+anvilsrv_status() {
+    check_config || return
+
+    su -s /bin/sh -l "$ANVILSRV_USER" -c "$(anvilsrv_env); '${DAEMON}' status"
+}
+
+# ── dispatch ──────────────────────────────────────────────────────────────────
+
+case "$1" in
+    start)
+        anvilsrv_start
+        ;;
+    stop)
+        anvilsrv_stop
+        ;;
+    restart)
+        anvilsrv_restart
+        ;;
+    status)
+        anvilsrv_status
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        ;;
+esac

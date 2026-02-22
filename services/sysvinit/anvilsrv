@@ -1,0 +1,151 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          anvilsrv
+# Required-Start:    $local_fs $syslog
+# Required-Stop:     $local_fs $syslog
+# Should-Start:      $network
+# Should-Stop:       $network
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: AnviLLM backend server
+# Description:       anvilsrv is the AnviLLM backend server daemon. It exposes
+#                    a 9P filesystem (agent/) that Claude Code sessions and bots
+#                    use for session management, mailbox communication, beads
+#                    task tracking, and the event bus.
+### END INIT INFO
+
+# ── configuration ─────────────────────────────────────────────────────────────
+#
+# ANVILSRV_USER  Login name of the user whose AnviLLM instance to manage.
+#                The anvilsrv binary is expected at ~/bin/anvilsrv.
+#
+# NAMESPACE      9P namespace directory. Defaults to /tmp/ns.$ANVILSRV_USER
+#                matching the Plan 9 client.Namespace() convention.
+#                The PID file lives at $NAMESPACE/anvilsrv.pid.
+#
+# Override in /etc/default/anvilsrv (sourced below if it exists).
+#
+ANVILSRV_USER="${ANVILSRV_USER:-}"
+NAMESPACE="${NAMESPACE:-}"
+
+# Source distro defaults (if any).
+[ -r /etc/default/anvilsrv ] && . /etc/default/anvilsrv
+
+# ── derived paths ─────────────────────────────────────────────────────────────
+
+NAME="anvilsrv"
+
+# Resolve NAMESPACE after potentially sourcing defaults.
+if [ -z "$NAMESPACE" ] && [ -n "$ANVILSRV_USER" ]; then
+    NAMESPACE="/tmp/ns.${ANVILSRV_USER}"
+fi
+
+# ── sanity checks ─────────────────────────────────────────────────────────────
+
+if [ -z "$ANVILSRV_USER" ]; then
+    echo "${NAME}: ANVILSRV_USER is not set." >&2
+    echo "  Set it in /etc/default/anvilsrv:" >&2
+    echo "    ANVILSRV_USER=yourlogin" >&2
+    exit 6   # LSB: program not configured
+fi
+
+DAEMON="/home/${ANVILSRV_USER}/bin/anvilsrv"
+
+if [ ! -x "$DAEMON" ]; then
+    echo "${NAME}: daemon not found at ${DAEMON}" >&2
+    exit 5   # LSB: program not installed
+fi
+
+# ── actions ───────────────────────────────────────────────────────────────────
+
+do_start() {
+    # anvilsrv start exits non-zero if already running.
+    # Let it decide — delegate fully.
+    echo "Starting ${NAME} (user=${ANVILSRV_USER}, namespace=${NAMESPACE})..."
+
+    mkdir -p "$NAMESPACE"
+    chown "$ANVILSRV_USER" "$NAMESPACE" 2>/dev/null || true
+
+    su -s /bin/sh -l "$ANVILSRV_USER" -c "
+        export NAMESPACE='${NAMESPACE}'
+        export HOME='/home/${ANVILSRV_USER}'
+        export PATH='/home/${ANVILSRV_USER}/bin:/usr/local/bin:/usr/bin:/bin'
+        '${DAEMON}' start
+    "
+    local rc=$?
+    if [ $rc -eq 0 ]; then
+        echo "${NAME} started."
+    else
+        echo "${NAME}: start failed (exit ${rc}) — check system logs." >&2
+    fi
+    return $rc
+}
+
+do_stop() {
+    echo "Stopping ${NAME} (user=${ANVILSRV_USER})..."
+
+    su -s /bin/sh -l "$ANVILSRV_USER" -c "
+        export NAMESPACE='${NAMESPACE}'
+        export HOME='/home/${ANVILSRV_USER}'
+        export PATH='/home/${ANVILSRV_USER}/bin:/usr/local/bin:/usr/bin:/bin'
+        '${DAEMON}' stop
+    "
+    local rc=$?
+    # Clean up the 9P socket on stop (mirrors systemd ExecStopPost).
+    rm -f "${NAMESPACE}/agent" 2>/dev/null || true
+    if [ $rc -eq 0 ]; then
+        echo "${NAME} stopped."
+    fi
+    return $rc
+}
+
+do_status() {
+    su -s /bin/sh -l "$ANVILSRV_USER" -c "
+        export NAMESPACE='${NAMESPACE}'
+        export HOME='/home/${ANVILSRV_USER}'
+        export PATH='/home/${ANVILSRV_USER}/bin:/usr/local/bin:/usr/bin:/bin'
+        '${DAEMON}' status
+    "
+    local rc=$?
+    # Map anvilsrv exit codes to LSB status codes.
+    # anvilsrv status exits 0 if running, non-zero otherwise.
+    # We also check for a stale PID file.
+    if [ $rc -ne 0 ]; then
+        local pidfile="${NAMESPACE}/anvilsrv.pid"
+        if [ -s "$pidfile" ]; then
+            return 1   # LSB: dead, pidfile exists
+        fi
+        return 3       # LSB: not running
+    fi
+    return 0
+}
+
+# ── dispatch ──────────────────────────────────────────────────────────────────
+
+case "$1" in
+    start)
+        do_start
+        ;;
+    stop)
+        do_stop
+        ;;
+    restart|force-reload)
+        do_stop
+        sleep 1
+        do_start
+        ;;
+    reload)
+        # anvilsrv does not support live config reload.
+        echo "${NAME}: reload not supported — use restart." >&2
+        exit 3   # LSB: unimplemented feature
+        ;;
+    status)
+        do_status
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|force-reload|status}" >&2
+        exit 2   # LSB: invalid argument
+        ;;
+esac
+
+exit $?
