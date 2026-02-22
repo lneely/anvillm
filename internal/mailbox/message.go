@@ -20,12 +20,6 @@ const (
 	MessageTypeApprovalRequest  MessageType = "APPROVAL_REQUEST"  // Request testing/approval
 	MessageTypeApprovalResponse MessageType = "APPROVAL_RESPONSE" // Provide test results
 
-	// Deprecated types (for backward compatibility)
-	MessageTypePrompt       MessageType = "PROMPT"        // Deprecated: use PROMPT_REQUEST
-	MessageTypeQuestion     MessageType = "QUESTION"      // Deprecated: use QUERY_REQUEST
-	MessageTypeAnswer       MessageType = "ANSWER"        // Deprecated: use QUERY_RESPONSE
-	MessageTypeStatusUpdate MessageType = "STATUS_UPDATE" // Deprecated: use PROMPT_RESPONSE
-	MessageTypeErrorReport  MessageType = "ERROR_REPORT"  // Deprecated: use PROMPT_RESPONSE
 )
 
 // Message represents a structured message between sessions
@@ -71,26 +65,14 @@ func generateID() string {
 	return fmt.Sprintf("msg-%d", time.Now().Unix())
 }
 
-// ValidateMessageType checks if the message type is valid and returns an error if deprecated or invalid
+// ValidateMessageType checks if the message type is valid
 func ValidateMessageType(msgType MessageType) error {
 	switch msgType {
-	// Valid types
 	case MessageTypePromptResponse,
 		MessageTypePromptRequest, MessageTypeQueryRequest, MessageTypeQueryResponse,
 		MessageTypeReviewRequest, MessageTypeReviewResponse,
 		MessageTypeApprovalRequest, MessageTypeApprovalResponse:
 		return nil
-	// Deprecated types
-	case MessageTypePrompt:
-		return fmt.Errorf("deprecated type: use PROMPT_REQUEST instead")
-	case MessageTypeQuestion:
-		return fmt.Errorf("deprecated type: use QUERY_REQUEST instead")
-	case MessageTypeAnswer:
-		return fmt.Errorf("deprecated type: use QUERY_RESPONSE instead")
-	case MessageTypeStatusUpdate:
-		return fmt.Errorf("deprecated type: use PROMPT_RESPONSE instead")
-	case MessageTypeErrorReport:
-		return fmt.Errorf("deprecated type: use PROMPT_RESPONSE instead")
 	default:
 		return fmt.Errorf("invalid message type. valid types are: PROMPT_RESPONSE, PROMPT_REQUEST, QUERY_REQUEST, QUERY_RESPONSE, REVIEW_REQUEST, REVIEW_RESPONSE, APPROVAL_REQUEST, APPROVAL_RESPONSE")
 	}
