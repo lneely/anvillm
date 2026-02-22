@@ -1283,11 +1283,13 @@ func openReplyWindow(originalMsg *Message) error {
 	w.Write("tag", []byte("Send "))
 	w.Ctl("clean")
 
-	go handleReplyWindow(w, originalMsg.From, replyType, replySubject)
+	// Pass "" for originalMsgID — plain replies do not auto-archive
+	go handleReplyWindow(w, originalMsg.From, replyType, replySubject, "")
 	return nil
 }
 
 // openApproveWindow opens a reply window pre-filled with "Approved." for one-click approval.
+// On Send the original message is automatically archived.
 func openApproveWindow(originalMsg *Message) error {
 	w, err := acme.New()
 	if err != nil {
@@ -1302,12 +1304,13 @@ func openApproveWindow(originalMsg *Message) error {
 	w.Write("body", []byte("Approved."))
 	w.Ctl("clean")
 
-	go handleReplyWindow(w, originalMsg.From, replyType, replySubject)
+	go handleReplyWindow(w, originalMsg.From, replyType, replySubject, originalMsg.ID)
 	return nil
 }
 
 // openRejectWindow opens a reply window pre-filled with a rejection template,
 // prompting the user to supply a reason before sending.
+// On Send the original message is automatically archived.
 func openRejectWindow(originalMsg *Message) error {
 	w, err := acme.New()
 	if err != nil {
@@ -1322,7 +1325,7 @@ func openRejectWindow(originalMsg *Message) error {
 	w.Write("body", []byte("Rejected.\n\nReason: "))
 	w.Ctl("clean")
 
-	go handleReplyWindow(w, originalMsg.From, replyType, replySubject)
+	go handleReplyWindow(w, originalMsg.From, replyType, replySubject, originalMsg.ID)
 	return nil
 }
 
@@ -1373,7 +1376,7 @@ func getReplyType(msgType string) string {
 	}
 }
 
-func handleReplyWindow(w *acme.Win, to, msgType, subject string) {
+func handleReplyWindow(w *acme.Win, to, msgType, subject, originalMsgID string) {
 	defer w.CloseFiles()
 
 	for e := range w.EventChan() {
@@ -1387,6 +1390,14 @@ func handleReplyWindow(w *acme.Win, to, msgType, subject string) {
 				if err := sendReply(to, msgType, subject, prompt); err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to send reply: %v\n", err)
 					continue
+				}
+				// Auto-archive the original message when replying from approve/reject
+				if originalMsgID != "" {
+					if err := archiveMessage(originalMsgID); err != nil {
+						fmt.Fprintf(os.Stderr, "Failed to archive original message: %v\n", err)
+					} else {
+						refreshInboxWindowByName()
+					}
 				}
 				w.Ctl("delete")
 				return

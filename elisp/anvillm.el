@@ -525,7 +525,8 @@ Automatically infers the correct reply type from the message type."
 
 (defun anvillm-inbox-approve ()
   "Approve the selected message.
-Sends an APPROVAL_RESPONSE with body \"approved\" to the sender."
+Sends an APPROVAL_RESPONSE with body \"approved\" to the sender,
+then automatically archives the message."
   (interactive)
   (if-let ((msg-id (anvillm--get-selected-message)))
       (condition-case err
@@ -541,15 +542,18 @@ Sends an APPROVAL_RESPONSE with body \"approved\" to the sender."
                                            (subject . ,(concat "Re: " subject))
                                            (body . "approved")))))
               (anvillm--9p-write (concat anvillm-agent-path "/user/mail") reply-msg)
-              (message "Approved message from %s" from)))
+              (anvillm--9p-write (concat anvillm-agent-path "/user/ctl")
+                                 (format "complete %s" msg-id))
+              (message "Approved and archived message from %s" from)
+              (anvillm--refresh-inbox)))
         (error
          (message "Failed to approve: %s" (error-message-string err))))
     (message "No message selected")))
 
 (defun anvillm-inbox-reject ()
   "Reject the selected message with a reason.
-Prompts for a rejection reason, then sends an APPROVAL_RESPONSE
-with body \"rejected: <reason>\" to the sender."
+Prompts for a rejection reason, sends a response to the sender,
+then automatically archives the message."
   (interactive)
   (if-let ((msg-id (anvillm--get-selected-message)))
       (condition-case err
@@ -569,7 +573,10 @@ with body \"rejected: <reason>\" to the sender."
                                               (subject . ,(concat "Re: " subject))
                                               (body . ,(format "rejected: %s" reason))))))
                 (anvillm--9p-write (concat anvillm-agent-path "/user/mail") reply-msg)
-                (message "Rejected message from %s" from))))
+                (anvillm--9p-write (concat anvillm-agent-path "/user/ctl")
+                                   (format "complete %s" msg-id))
+                (message "Rejected and archived message from %s" from)
+                (anvillm--refresh-inbox))))
         (error
          (message "Failed to reject: %s" (error-message-string err))))
     (message "No message selected")))

@@ -1051,6 +1051,7 @@
         // ── Inbox ──────────────────────────────────────────────────────
 
         let currentMessage = null;
+        let pendingArchiveId = null; // set when reject opens reply dialog, cleared on send
         let inboxMessages = [];
         let archiveMessages = [];
 
@@ -1249,8 +1250,9 @@ ${msg.body}`;
                     body: JSON.stringify(data)
                 });
                 if (response.ok) {
+                    const msgId = currentMessage.id;
                     closeMessageDialog();
-                    loadInbox();
+                    await archiveMessage(msgId); // auto-archive; archiveMessage calls loadInbox
                 } else {
                     showError(await apiError(response), 'Failed to send approval');
                 }
@@ -1261,6 +1263,7 @@ ${msg.body}`;
 
         function rejectCurrentMessage() {
             if (!currentMessage) return;
+            pendingArchiveId = currentMessage.id; // auto-archive when reply is sent
             const replyType = getReplyType(currentMessage.type);
             document.getElementById('reply-to').value = currentMessage.from;
             document.getElementById('reply-type').value = replyType;
@@ -1324,7 +1327,13 @@ ${msg.body}`;
 
                 if (response.ok) {
                     closeReplyDialog();
-                    loadInbox();
+                    if (pendingArchiveId) {
+                        const idToArchive = pendingArchiveId;
+                        pendingArchiveId = null;
+                        await archiveMessage(idToArchive); // auto-archive; calls loadInbox
+                    } else {
+                        loadInbox();
+                    }
                 } else {
                     showError(await apiError(response), 'Failed to send reply');
                 }
