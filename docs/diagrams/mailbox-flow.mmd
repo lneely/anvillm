@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant User
+    participant Mailbox as Mailbox System
+    participant AgentA as Agent A (Claude)
+    participant AgentB as Agent B (Kiro)
+    
+    User->>Mailbox: write user/mail<br/>{"to":"agent-a",...}
+    Mailbox->>AgentA: agent-a/inbox
+    
+    AgentA->>Mailbox: write agent/agent-a/mail<br/>{"to":"agent-b",...}
+    Mailbox->>AgentB: agent-b/inbox
+    
+    AgentB->>Mailbox: write agent/agent-b/mail<br/>{"to":"agent-a",...}
+    Mailbox->>AgentA: agent-a/inbox
+    
+    AgentB->>Mailbox: write agent/agent-b/mail<br/>{"to":"user",...}
+    Mailbox->>User: user/inbox

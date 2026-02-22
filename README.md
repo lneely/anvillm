@@ -4,38 +4,7 @@ LLM orchestrator using 9P — scriptable, multi-backend, crash-resilient
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         Clients                             │
-│  ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐           │
-│  │ Assist │  │  TUI   │  │ Emacs  │  │  Web   │           │
-│  │ (Acme) │  │        │  │        │  │        │           │
-│  └───┬────┘  └───┬────┘  └───┬────┘  └───┬────┘           │
-└──────┼───────────┼───────────┼───────────┼────────────────┘
-       │           │           │           │
-       └───────────┴───────────┴───────────┘
-                       │ 9P
-       ┌───────────────┴───────────────┐
-       │                               │
-┌──────▼──────────────────────────────────────────────────────┐
-│                      Core Services                          │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐                 │
-│  │ anvilsrv │  │ anvilmcp │  │anvilwebgw│                 │
-│  │(9P daemon)  │(MCP server) │(API proxy)│                 │
-│  └─────┬────┘  └──────────┘  └──────────┘                 │
-└────────┼───────────────────────────────────────────────────┘
-         │
-    ┌────┴────┬────────┐
-    │         │        │
-┌───▼───┐ ┌──▼────┐ ┌─▼─────┐
-│ Claude│ │ Kiro  │ │ ollie │
-└───────┘ └───────┘ └───┬───┘
-                        │
-                    ┌───▼────┐
-                    │ Ollama │
-                    └────────┘
-  Backends
-```
+![Architecture](docs/diagrams/architecture.svg)
 
 **Core:** anvilsrv (9P daemon), anvilmcp (MCP server), anvilwebgw (API proxy)  
 **Clients:** Assist (Acme), anvillm.el (Emacs), anvillm (TUI), anvilweb (web)  
@@ -151,26 +120,7 @@ Templates use `{VARNAME}` syntax. Any environment variable can be referenced.
 
 **Config** (`~/.config/anvillm/`): Layered YAML files, most permissive wins:
 
-```
-┌─────────────────┐
-│  global.yaml    │  Base configuration
-└────────┬────────┘
-         │ (override)
-┌────────▼────────┐
-│ backends/*.yaml │  Backend-specific
-└────────┬────────┘
-         │ (override)
-┌────────▼────────┐
-│  roles/*.yaml   │  Role-specific (default: roles/default.yaml)
-└────────┬────────┘
-         │ (override)
-┌────────▼────────┐
-│  tasks/*.yaml   │  Task-specific
-└────────┬────────┘
-         │
-         ▼
-   Final Config (most permissive wins)
-```
+![Sandbox Config Layering](docs/diagrams/sandbox-config.svg)
 
 - Default role: `roles/default.yaml`
 
@@ -186,43 +136,13 @@ Set `best_effort: true` for unsandboxed fallback (⚠️ if no Landlock support)
 
 **Session lifecycle:**
 
-```
-          ┌─────────────────────────┐
-          │                         │
-          │     ┌──────────┐        │
-          │     │ starting │        │
-          │     └─────┬────┘        │
-          │           │             │
-          │           ▼             │
-          │     ┌─────────┐         │
-          └────►│  idle   │◄────┐   │
-                └────┬────┘     │   │
-                     │          │   │
-                     │ userPromptSubmit hook
-                     │ (user sends prompt)
-                     │          │   │
-                     ▼          │   │
-                ┌─────────┐    │   │
-                │ running │    │   │
-                └────┬────┘    │   │
-                     │          │   │
-                     │ stop hook│   │
-                     │ (agent finishes)
-                     │          │   │
-                     └──────────┘   │
-                     │              │
-                     │ crash        │
-                     ▼              │
-                ┌───────┐  restart  │
-                │ error │───────────┘
-                └───────┘
-```
+![Session Lifecycle](docs/diagrams/session-lifecycle.svg)
 
 State transitions: `idle` ↔ `running` cycle via CLI hooks (`userPromptSubmit` when user sends prompt, `stop` when agent finishes). Crash → `error` → auto-restart → `starting`. Note: any state can transition to `stopped` or `killed` (not shown); `stopped` can restart → `starting`.
 
 **Self-healing:** Auto-restarts crashes every 5s (preserves context/alias/cwd), skips intentional stops
 
-```
+![Crash Recovery](docs/diagrams/crash-recovery.svg)
 ┌─────────┐  crash   ┌─────────┐  5s wait  ┌─────────┐
 │ running │─────────►│  error  │──────────►│ running │
 └─────────┘          └─────────┘           └─────────┘
@@ -308,21 +228,7 @@ agent/
 
 **Client Interactions:**
 
-```
-┌─────────┐         ┌─────────┐         ┌─────────┐
-│  Assist │         │   TUI   │         │  Script │
-└────┬────┘         └────┬────┘         └────┬────┘
-     │                   │                   │
-     │ 9p read           │ 9p write          │ 9p read
-     │ agent/list        │ agent/ctl         │ agent/events
-     │                   │                   │
-     └───────────────────┴───────────────────┘
-                         │
-                    ┌────▼────┐
-                    │ agent/  │
-                    │ (9P fs) │
-                    └─────────┘
-```
+![Client Interactions](docs/diagrams/client-interactions.svg)
 
 Different clients interact with different parts of the filesystem: frontends read state, control files manage sessions, scripts consume events.
 
@@ -345,43 +251,7 @@ Config: `~/.beads/` (override: `ANVILLM_BEADS_PATH`) — Shared across namespace
 
 **Mailbox Flow:**
 
-```
-User writes to Agent A:
-  echo '{"to":"agent-a",...}' | 9p write user/mail
-                    │
-                    ▼
-            [mailbox system]
-                    │
-                    ▼
-            agent-a/inbox (Agent A reads)
-
-Agent A writes to Agent B:
-  echo '{"to":"agent-b",...}' | 9p write agent/agent-a/mail
-                    │
-                    ▼
-            [mailbox system]
-                    │
-                    ▼
-            agent-b/inbox (Agent B reads)
-
-Agent B replies to Agent A:
-  echo '{"to":"agent-a",...}' | 9p write agent/agent-b/mail
-                    │
-                    ▼
-            [mailbox system]
-                    │
-                    ▼
-            agent-a/inbox (Agent A reads)
-
-Agent B replies to User:
-  echo '{"to":"user",...}' | 9p write agent/agent-b/mail
-                    │
-                    ▼
-            [mailbox system]
-                    │
-                    ▼
-            user/inbox (User reads)
-```
+![Mailbox Flow](docs/diagrams/mailbox-flow.svg)
 
 Cross-backend communication: messages route between any participants (user, Claude agents, Kiro agents, Ollama agents) via the mailbox system.
 
@@ -443,35 +313,7 @@ Templates set up context, roles, and initial configuration. Interact via any cli
 
 Automate workflows with Taskmaster and Conductor bots. Input project plan → Taskmaster creates tasks with dependencies → Conductor orchestrates parallel execution.
 
-```
-┌──────────────┐
-│ Project Plan │
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐     ┌─────────────────────────────┐
-│  Taskmaster  │────►│  Beads (dependency graph)   │
-└──────────────┘     │  ┌─────────────────────┐    │
-                     │  │ Top-level bead ID   │    │
-                     │  │ (represents project)│    │
-                     │  └──────────┬──────────┘    │
-                     └─────────────┼────────────────┘
-                                   │
-                                   ▼
-                        ┌──────────────────┐
-                        │    Conductor     │
-                        │ (coordinates     │
-                        │  dependencies)   │
-                        └────────┬─────────┘
-                                 │
-                 ┌───────────────┼───────────────┐
-                 │               │               │
-                 ▼               ▼               ▼
-          ┌──────────┐    ┌──────────┐   ┌──────────┐
-          │ Agent 1  │    │ Agent 2  │   │ Agent 3  │
-          │          │    │          │   │          │
-          └──────────┘    └──────────┘   └──────────┘
-```
+![Automation Workflow](docs/diagrams/automation-workflow.svg)
 
 Conductor receives the top-level bead ID, analyzes dependencies, and spawns agents to work in parallel. Agents notify Conductor when blocked; Conductor signals them to resume when dependencies resolve.
 

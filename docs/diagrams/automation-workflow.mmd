@@ -1,0 +1,17 @@
+graph TB
+    Plan["Project Plan"]
+    Taskmaster["Taskmaster"]
+    Beads["Beads<br/>(dependency graph)"]
+    TopBead["Top-level bead ID<br/>(represents project)"]
+    Conductor["Conductor<br/>(coordinates dependencies)"]
+    Agent1["Agent 1"]
+    Agent2["Agent 2"]
+    Agent3["Agent 3"]
+    
+    Plan --> Taskmaster
+    Taskmaster --> Beads
+    Beads --> TopBead
+    TopBead --> Conductor
+    Conductor --> Agent1
+    Conductor --> Agent2
+    Conductor --> Agent3

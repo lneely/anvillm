@@ -1,0 +1,16 @@
+stateDiagram-v2
+    [*] --> starting
+    starting --> idle
+    starting --> error
+    
+    idle --> running: userPromptSubmit hook<br/>(user sends prompt)
+    running --> idle: stop hook<br/>(agent finishes)
+    
+    running --> error: crash
+    error --> starting: restart
+    
+    note right of idle
+        Any state can transition to
+        stopped or killed (not shown)
+        stopped can restart → starting
+    end note

@@ -1,0 +1,10 @@
+graph LR
+    running1[running]
+    error[error]
+    running2[running]
+    state[context<br/>alias<br/>cwd<br/>conversation]
+    
+    running1 -->|crash| error
+    error -->|preserves| state
+    state -->|restored +<br/>auto-resume| running2
+    error -->|5s wait| running2
