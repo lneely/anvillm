@@ -838,6 +838,8 @@ p, C-p - Previous line
     (define-key map (kbd "D") #'anvillm-tasks-remove-dependency)
     (define-key map (kbd "l") #'anvillm-tasks-add-label)
     (define-key map (kbd "L") #'anvillm-tasks-remove-label)
+    (define-key map (kbd "A") #'anvillm-bead-toggle-approval)
+    (define-key map (kbd "R") #'anvillm-bead-toggle-review)
     (define-key map (kbd "m") #'anvillm-tasks-comment)
     (define-key map (kbd "r") #'anvillm-tasks-refresh)
     (define-key map (kbd "g") #'anvillm-tasks-refresh)
@@ -1027,6 +1029,12 @@ p, C-p - Previous line
                 (insert (format "\nBlockers (%d):\n" (length blockers)))
                 (dolist (blocker blockers)
                   (insert (format "  - %s\n" blocker))))
+              (let* ((labels (plist-get bead :labels))
+                     (label-list (if (vectorp labels) (append labels nil) nil))
+                     (has-approval (member "requires_approval" label-list))
+                     (has-review (member "requires_review" label-list)))
+                (insert (format "\nRequires Approval: %s\n" (if has-approval "YES" "no")))
+                (insert (format "Requires Review: %s\n" (if has-review "YES" "no"))))
               (special-mode))
             (pop-to-buffer buffer))
         (error
@@ -1095,6 +1103,54 @@ p, C-p - Previous line
                 (anvillm--refresh-tasks))
             (error
              (message "Failed to remove label: %s" (error-message-string err))))))
+    (message "No bead selected")))
+
+(defun anvillm-bead-toggle-approval ()
+  "Toggle the requires_approval flag on the selected bead."
+  (interactive)
+  (if-let ((bead-id (anvillm--get-selected-bead)))
+      (condition-case err
+          (let* ((json-str (anvillm--9p-read
+                            (concat anvillm-agent-path "/beads/" bead-id "/json")))
+                 (bead (json-read-from-string json-str))
+                 (labels (plist-get bead :labels))
+                 (label-list (if (vectorp labels) (append labels nil) nil))
+                 (has-flag (member "requires_approval" label-list)))
+            (if has-flag
+                (progn
+                  (anvillm--9p-write (concat anvillm-agent-path "/beads/ctl")
+                                    (format "unlabel %s requires_approval" bead-id))
+                  (message "Cleared requires_approval on %s" bead-id))
+              (anvillm--9p-write (concat anvillm-agent-path "/beads/ctl")
+                                (format "label %s requires_approval" bead-id))
+              (message "Set requires_approval on %s" bead-id))
+            (anvillm--refresh-tasks))
+        (error
+         (message "Failed to toggle requires_approval: %s" (error-message-string err))))
+    (message "No bead selected")))
+
+(defun anvillm-bead-toggle-review ()
+  "Toggle the requires_review flag on the selected bead."
+  (interactive)
+  (if-let ((bead-id (anvillm--get-selected-bead)))
+      (condition-case err
+          (let* ((json-str (anvillm--9p-read
+                            (concat anvillm-agent-path "/beads/" bead-id "/json")))
+                 (bead (json-read-from-string json-str))
+                 (labels (plist-get bead :labels))
+                 (label-list (if (vectorp labels) (append labels nil) nil))
+                 (has-flag (member "requires_review" label-list)))
+            (if has-flag
+                (progn
+                  (anvillm--9p-write (concat anvillm-agent-path "/beads/ctl")
+                                    (format "unlabel %s requires_review" bead-id))
+                  (message "Cleared requires_review on %s" bead-id))
+              (anvillm--9p-write (concat anvillm-agent-path "/beads/ctl")
+                                (format "label %s requires_review" bead-id))
+              (message "Set requires_review on %s" bead-id))
+            (anvillm--refresh-tasks))
+        (error
+         (message "Failed to toggle requires_review: %s" (error-message-string err))))
     (message "No bead selected")))
 
 (defun anvillm-tasks-assign-to-agent ()
