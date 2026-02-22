@@ -1,16 +1,16 @@
 # AnviLLM
 
-9P-based LLM orchestrator — Front-ends: Acme, Emacs, TUI, web
+LLM orchestrator using 9P — scriptable, multi-backend, crash-resilient
 
 ## Architecture
 
-**Core:** anvilsrv (9P daemon), anvilmcp (MCP server)
-**Clients:** Assist (Acme), anvillm.el (Emacs), anvillm (TUI), anvilweb (web)
-**Benefits:** Shared sessions, crash-resilient, scriptable via 9P, service integration, MCP support, **cross-backend agent communication**
+**Core:** anvilsrv (9P daemon), anvilmcp (MCP server), anvilwebgw (API proxy)  
+**Clients:** Assist (Acme), anvillm.el (Emacs), anvillm (TUI), anvilweb (web)  
+**Benefits:** Shared sessions, crash recovery, scriptable via 9P, cross-backend agent communication
 
 ## Why 9P?
 
-AnviLLM uses 9P because orchestration becomes file manipulation (`read`, `write`, `ls`, `stat`). Benefits: simplicity, universal access (shell, C, Go, Python, `cat`, `echo`), and composability (Unix pipes, `grep`, `awk`, `jq`). The only requirement is a 9P client (plan9port's `9p` or compatible).
+9P turns orchestration into file operations (`read`, `write`, `ls`, `stat`). Control agents with standard tools: `cat`, `echo`, shell scripts, or any language with file I/O. Compose workflows with Unix pipes, `grep`, `awk`, `jq`. Only requirement: a 9P client (plan9port's `9p` or compatible).
 
 ## Requirements
 
@@ -29,10 +29,12 @@ cp services/systemd/anvilsrv-user.service ~/.config/systemd/user/
 systemctl --user enable --now anvilsrv
 
 # systemd system
-sudo cp services/systemd/anvilsrv.service /etc/systemd/system/ && sudo systemctl enable --now anvilsrv
+sudo cp services/systemd/anvilsrv.service /etc/systemd/system/
+sudo systemctl enable --now anvilsrv
 
 # runit
-sudo cp -r services/runit /etc/sv/anvilsrv && sudo ln -s /etc/sv/anvilsrv /var/service/
+sudo cp -r services/runit /etc/sv/anvilsrv
+sudo ln -s /etc/sv/anvilsrv /var/service/
 ```
 
 ## Usage
@@ -48,8 +50,8 @@ anvilsrv stop
 
 **Namespaces:** Run multiple instances via `$NAMESPACE` (default: `/tmp/ns.$USER.:0`)
 ```sh
-NAMESPACE=/tmp/ns.$USER.:1 anvilsrv start  # :1
-NAMESPACE=/tmp/ns.$USER.:1 Assist          # connect
+NAMESPACE=/tmp/ns.$USER.:1 anvilsrv start
+NAMESPACE=/tmp/ns.$USER.:1 Assist
 ```
 
 ### Clients
@@ -60,7 +62,11 @@ NAMESPACE=/tmp/ns.$USER.:1 Assist          # connect
 
 **Web:** `anvilweb` (port :8080) — ⚠️ NO auth, localhost only — Remote: `ssh -L 8080:localhost:8080 user@remote`
 
-**Acme:** Type `Assist` and middle-click — Tag: `Get Attach Stop Restart Kill Alias Context Daemon Inbox Archive` — Right-click ID for prompt window, 2-1 chord for fire-and-forget
+**Acme:** Type `Assist` and middle-click
+
+**Tag commands:** `Get Attach Stop Restart Kill Alias Context Daemon Inbox Archive`
+
+**Interaction:** Right-click ID for prompt window, 2-1 chord for fire-and-forget
 
 | Command | Action |
 |---------|--------|
@@ -102,22 +108,42 @@ Available in sandbox YAML files (`~/.config/anvillm/`):
 | `{XDG_STATE_HOME}` | XDG state | `$XDG_STATE_HOME` or `~/.local/state` |
 | `{ANY_ENV_VAR}` | Environment variable | Any `$ENV_VAR` from the environment |
 
-**Note:** Templates use `{VARNAME}` syntax. Any environment variable can be referenced.
+Templates use `{VARNAME}` syntax. Any environment variable can be referenced.
 
 ## Backends & Sandboxing
 
-**Backends:** Claude (`npm install -g @anthropic-ai/claude-code`), Kiro ([kiro.dev](https://kiro.dev)), Ollama (local models via [ollie](https://github.com/lneely/ollie)) — Sandboxed with network access
+**Backends:** Claude (`npm install -g @anthropic-ai/claude-code`), Kiro ([kiro.dev](https://kiro.dev)), Ollama (local models via [ollie](https://github.com/lneely/ollie))
+
+**Sandbox:** [landrun](https://github.com/zouuup/landrun) (always enabled) — Defaults: CWD/`/tmp`/config (rw), `/usr`/`/lib`/`/bin` (ro+exec), no network
+
+**Config** (`~/.config/anvillm/`): Layered YAML files, most permissive wins:
+- `global.yaml` → `backends/<name>.yaml` → `roles/<name>.yaml` → `tasks/<name>.yaml`
+- Default role: `roles/default.yaml`
+
+```yaml
+network: {enabled: true, unrestricted: true}
+filesystem: {rw: ["{CWD}", "{HOME}/.npm"]}
+```
+
+**Templates:** `{CWD}`, `{HOME}`, `{TMPDIR}`, `{XDG_*}` (see Configuration)
+
+**Kernel requirements:** 5.13+ (Landlock v1), 6.7+ (v4), 6.10+ (v5 network)  
+Set `best_effort: true` for unsandboxed fallback (⚠️ if no Landlock support)
+
+**Self-healing:** Auto-restarts crashes every 5s (preserves context/alias/cwd), skips intentional stops
+
+**Add backend:** Implement `CommandHandler`/`StateInspector` in `internal/backends/yourbackend.go`, register in `main.go`
 
 ### Ollama Backend
 
-Run local LLMs via Ollama:
+Run local LLMs via Ollama.
 
 **Requirements:**
 1. **Ollama:** Install from [ollama.com](https://ollama.com)
    ```sh
    curl -fsSL https://ollama.com/install.sh | sh
-   ollama serve  # Start server (default: localhost:11434)
-   ollama pull qwen2.5-coder:7b  # Download a model
+   ollama serve
+   ollama pull qwen2.5-coder:7b
    ```
 
 2. **Ollie CLI:** Install from [github.com/lneely/ollie](https://github.com/lneely/ollie)
@@ -130,27 +156,10 @@ Run local LLMs via Ollama:
 echo 'new ollama /path/to/project' | 9p write agent/ctl
 ```
 
-**Configuration:** Set model via environment variable (default: `qwen3:8b`)
+**Configuration:** Set model via `ANVILLM_OLLAMA_MODEL` (default: `qwen3:8b`)
 ```sh
 ANVILLM_OLLAMA_MODEL=llama3.2 echo 'new ollama /path' | 9p write agent/ctl
 ```
-
-**Add:** Implement `CommandHandler`/`StateInspector` in `internal/backends/yourbackend.go`, register in `main.go`
-
-**Sandbox:** [landrun](https://github.com/zouuup/landrun) (cannot disable) — Defaults: CWD/`/tmp`/config (rw), `/usr`/`/lib`/`/bin` (ro+exec), no network
-
-**Config** (`~/.config/anvillm/`): `global.yaml` → `backends/<name>.yaml` → `roles/<name>.yaml` (default: `roles/default.yaml`) → `tasks/<name>.yaml` — Most permissive wins
-
-```yaml
-network: {enabled: true, unrestricted: true}
-filesystem: {rw: ["{CWD}", "{HOME}/.npm"]}
-```
-
-Templates: `{CWD}`, `{HOME}`, `{TMPDIR}`, `{XDG_*}` (see Configuration) — Tip: Make `roles/default.yaml` permissive
-
-**Kernel:** 5.13+ (Landlock v1), 6.7+ (v4), 6.10+ (v5 network) — Best-effort: `best_effort: true` (⚠️ unsandboxed if no Landlock)
-
-**Self-healing:** Auto-restarts crashes every 5s (preserves context/alias/cwd) — Skips intentional stops
 
 ## 9P Filesystem
 
@@ -223,7 +232,6 @@ echo 'new claude /home/user/project' | 9p write agent/ctl
 
 # List sessions (newest first)
 9p read agent/list
-# Output: <id> <backend> <state> <alias> <cwd>
 
 # Get most recent session ID
 ID=$(9p read agent/list | head -1 | awk '{print $1}')
@@ -232,41 +240,39 @@ ID=$(9p read agent/list | head -1 | awk '{print $1}')
 echo '{"to":"'$ID'","type":"PROMPT_REQUEST","subject":"User prompt","body":"Hello"}' | 9p write user/mail
 
 # Check state
-9p read agent/$ID/state  # "running" or "idle"
+9p read agent/$ID/state
 
 # Read response from inbox
-9p read user/inbox  # Lists message files
+9p read user/inbox
 ```
 
 See `SECURITY.md`
 
-## Workflows
+## Bot Templates
 
-**Multi-Agent Communication:** Agents can communicate with each other **regardless of backend** (Claude, Kiro, etc.) via the built-in mailbox system. The `anvillm-communication` skill provides a convenient interface for agent messaging, enabling heterogeneous multi-agent workflows where different specialists use different backends while collaborating seamlessly.
+Bot templates provide pre-configured agents for common tasks. Templates are shell scripts that create sessions with specialized context and configuration.
 
-**Skills:** `anvillm-skills list`, `anvillm-skills load anvillm-communication`
+**Available Templates:**
+- `Taskmaster` — Converts project plans into dependency-aware task graphs (beads)
+- `Conductor` — Orchestrates parallel execution by spawning and coordinating specialized agents
 
-**Examples:** `./bot-templates/DevReview claude /path` (dev/reviewer loop), `./bot-templates/Planning kiro /path` (research/eng/editor)
-
-**Pattern:**
-
+**Usage:**
 ```sh
-echo "new claude /project" | 9p write agent/ctl
-ID=$(9p read agent/list | tail -1 | awk '{print $1}')
-echo "You are..." | 9p write agent/$ID/context
-echo '{"to":"...","type":"...","subject":"...","body":"..."}' | 9p write agent/$ID/mail
-echo 'new "Task"' | 9p write agent/beads/ctl
+./bot-templates/Taskmaster kiro /path/to/project
+./bot-templates/Conductor kiro /path/to/project
 ```
 
-See `bot-templates/`, `kiro-cli/SKILLS_PROMPT.md`
+Templates set up context, roles, and initial configuration. Interact via any client (Assist, TUI, Emacs, Web) or directly via 9P mailbox.
+
+**Creating Templates:** Shell scripts that write to `agent/ctl` and configure `context`, `role`, `tasks`. See existing templates for examples.
 
 ## Automating Development
 
-Automate development workflows with Taskmaster and Conductor bots. Input a project plan → Taskmaster creates tasks with dependencies → Conductor orchestrates parallel execution.
+Automate workflows with Taskmaster and Conductor bots. Input project plan → Taskmaster creates tasks with dependencies → Conductor orchestrates parallel execution.
 
 ### Usage
 
-Examples below use raw 9P calls. These actions can also be performed from any front-end (Assist, TUI, Emacs, Web).
+Examples use raw 9P calls. These actions can also be performed from any front-end (Assist, TUI, Emacs, Web).
 
 **1. Taskmaster: Create tasks from project plan**
 
@@ -291,13 +297,13 @@ CONDUCTOR_ID=$(9p read agent/list | head -1 | awk '{print $1}')
 echo '{"to":"'$CONDUCTOR_ID'","type":"WORK_REQUEST","subject":"Execute","body":"Complete bead '$BEAD_ID'"}' | 9p write user/mail
 ```
 
-Conductor analyzes dependencies, spawns specialized bots (DevReview, Research, Docs), and delegates work in parallel.
+Conductor analyzes dependencies, spawns specialized bots, and delegates work in parallel.
 
 **Monitoring:** Use any front-end (Assist, TUI, Emacs, Web). For custom integrations, see `EVENTS.md`.
 
 ## MCP Integration
 
-`anvilmcp` exposes AnviLLM via Model Context Protocol for Claude Desktop, Cline, etc
+`anvilmcp` exposes AnviLLM via Model Context Protocol for Claude Desktop, Cline, etc.
 
 **Install:**
 ```sh
@@ -306,7 +312,7 @@ Conductor analyzes dependencies, spawns specialized bots (DevReview, Research, D
 
 **Tools:** `read_inbox`, `send_message`, `list_sessions`, `set_state`
 
-Enables LLM clients to control AnviLLM sessions and communicate with agents
+Enables LLM clients to discover agents and communicate via the mailbox system.
 
 ## Troubleshooting
 
