@@ -143,21 +143,6 @@ State transitions: `idle` ↔ `running` cycle via CLI hooks (`userPromptSubmit` 
 **Self-healing:** Auto-restarts crashes every 5s (preserves context/alias/cwd), skips intentional stops
 
 <img src="docs/diagrams/crash-recovery.svg?v=2" width="500">
-┌─────────┐  crash   ┌─────────┐  5s wait  ┌─────────┐
-│ running │─────────►│  error  │──────────►│ running │
-└─────────┘          └─────────┘           └─────────┘
-                          │                      ▲
-                          │                      │
-                    (preserves)            (restored +
-                          │                auto-resume)
-                          ▼                      │
-                   ┌──────────────┐              │
-                   │ context      │──────────────┘
-                   │ alias        │
-                   │ cwd          │
-                   │ conversation │
-                   └──────────────┘
-```
 
 Restored sessions automatically resume the latest conversation (kiro: `-r`, claude: `-c`).
 
