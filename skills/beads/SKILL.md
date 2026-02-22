@@ -96,10 +96,25 @@ echo "new 'Write tests' 'Add test coverage' bd-abc" | 9p write agent/beads/ctl
 ```
 
 ### Checking Blockers
-Read the blockers field to see what's blocking a bead:
+Read the blockers field to see explicit dependencies blocking a bead:
 ```bash
-9p read agent/beads/bd-abc/json | jq .blockers
-# Output: ["bd-abc.1", "bd-abc.2"]
+9p read agent/beads/bd-xyz/json | jq .blockers
+# Output: ["bd-abc"] - only shows explicit dependencies added via "dep" command
+```
+
+**Important**: The blockers field only contains beads added as explicit dependencies using `echo "dep <child> <parent>" | 9p write agent/beads/ctl`. Child beads do NOT appear in the parent's blockers field.
+
+### Checking Outstanding Child Work
+To determine if a parent bead has incomplete child tasks, query the children endpoint and filter by status:
+```bash
+# Get all non-closed children of bd-abc
+9p read agent/beads/children/bd-abc | jq '[.[] | select(.status != "closed")]'
+
+# Count open children
+9p read agent/beads/children/bd-abc | jq '[.[] | select(.status != "closed")] | length'
+
+# Check if any children remain open
+9p read agent/beads/children/bd-abc | jq 'any(.status != "closed")'
 ```
 
 ### Recommended Workflow
@@ -146,7 +161,7 @@ Each bead JSON contains:
   "priority": 2,
   "issue_type": "task",
   "assignee": "agent-123",
-  "blockers": ["bd-abc.1", "bd-abc.2"],
+  "blockers": [],
   "created_at": "2026-02-20T21:00:00Z",
   "updated_at": "2026-02-20T21:30:00Z"
 }

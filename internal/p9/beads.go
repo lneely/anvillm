@@ -317,13 +317,13 @@ func (b *BeadsFS) readBeadProperty(beadID, property string) ([]byte, error) {
 }
 
 func (b *BeadsFS) getBlockers(id string) ([]string, error) {
-	deps, err := b.store.GetDependencies(b.ctx, id)
+	deps, err := b.store.GetDependenciesWithMetadata(b.ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	var blockers []string
 	for _, dep := range deps {
-		if dep.Status != bd.StatusClosed {
+		if dep.DependencyType == bd.DepBlocks && dep.Status != bd.StatusClosed {
 			blockers = append(blockers, dep.ID)
 		}
 	}
