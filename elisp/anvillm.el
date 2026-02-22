@@ -377,6 +377,8 @@ Backends:
     (define-key map (kbd "RET") #'anvillm-inbox-view)
     (define-key map (kbd "v") #'anvillm-inbox-view)
     (define-key map (kbd "r") #'anvillm-inbox-reply)
+    (define-key map (kbd "a") #'anvillm-inbox-approve)
+    (define-key map (kbd "R") #'anvillm-inbox-reject)
     (define-key map (kbd "d") #'anvillm-inbox-archive)
     (define-key map (kbd "g") #'anvillm-inbox-refresh)
     (define-key map (kbd "q") #'quit-window)
@@ -485,8 +487,18 @@ Backends:
          (message "Failed to view message: %s" (error-message-string err))))
     (message "No message selected")))
 
+(defun anvillm--infer-reply-type (msg-type)
+  "Infer the appropriate reply type from MSG-TYPE.
+Maps APPROVAL_REQUEST to APPROVAL_RESPONSE, REVIEW_REQUEST to
+REVIEW_RESPONSE, and defaults to PROMPT_RESPONSE for all others."
+  (cond
+   ((string= msg-type "APPROVAL_REQUEST") "APPROVAL_RESPONSE")
+   ((string= msg-type "REVIEW_REQUEST") "REVIEW_RESPONSE")
+   (t "PROMPT_RESPONSE")))
+
 (defun anvillm-inbox-reply ()
-  "Reply to the selected message."
+  "Reply to the selected message.
+Automatically infers the correct reply type from the message type."
   (interactive)
   (if-let ((msg-id (anvillm--get-selected-message)))
       (condition-case err
@@ -496,17 +508,70 @@ Backends:
                  (msg-json (anvillm--9p-read msg-path))
                  (msg (json-read-from-string msg-json))
                  (from (plist-get msg :from))
+                 (msg-type (plist-get msg :type))
                  (subject (plist-get msg :subject))
+                 (reply-type (anvillm--infer-reply-type msg-type))
                  (reply-body (read-string "Reply: ")))
             (when (> (length reply-body) 0)
               (let ((reply-msg (json-encode `((to . ,from)
-                                             (type . "PROMPT_RESPONSE")
+                                             (type . ,reply-type)
                                              (subject . ,(concat "Re: " subject))
                                              (body . ,reply-body)))))
                 (anvillm--9p-write (concat anvillm-agent-path "/user/mail") reply-msg)
                 (message "Sent reply to %s" from))))
         (error
          (message "Failed to reply: %s" (error-message-string err))))
+    (message "No message selected")))
+
+(defun anvillm-inbox-approve ()
+  "Approve the selected message.
+Sends an APPROVAL_RESPONSE with body \"approved\" to the sender."
+  (interactive)
+  (if-let ((msg-id (anvillm--get-selected-message)))
+      (condition-case err
+          (let* ((json-object-type 'plist)
+                 (json-array-type 'list)
+                 (msg-path (concat anvillm-agent-path "/user/inbox/" msg-id ".json"))
+                 (msg-json (anvillm--9p-read msg-path))
+                 (msg (json-read-from-string msg-json))
+                 (from (plist-get msg :from))
+                 (subject (plist-get msg :subject)))
+            (let ((reply-msg (json-encode `((to . ,from)
+                                           (type . "APPROVAL_RESPONSE")
+                                           (subject . ,(concat "Re: " subject))
+                                           (body . "approved")))))
+              (anvillm--9p-write (concat anvillm-agent-path "/user/mail") reply-msg)
+              (message "Approved message from %s" from)))
+        (error
+         (message "Failed to approve: %s" (error-message-string err))))
+    (message "No message selected")))
+
+(defun anvillm-inbox-reject ()
+  "Reject the selected message with a reason.
+Prompts for a rejection reason, then sends an APPROVAL_RESPONSE
+with body \"rejected: <reason>\" to the sender."
+  (interactive)
+  (if-let ((msg-id (anvillm--get-selected-message)))
+      (condition-case err
+          (let* ((json-object-type 'plist)
+                 (json-array-type 'list)
+                 (msg-path (concat anvillm-agent-path "/user/inbox/" msg-id ".json"))
+                 (msg-json (anvillm--9p-read msg-path))
+                 (msg (json-read-from-string msg-json))
+                 (from (plist-get msg :from))
+                 (msg-type (plist-get msg :type))
+                 (subject (plist-get msg :subject))
+                 (reason (read-string "Rejection reason: ")))
+            (when (> (length reason) 0)
+              (let* ((reply-type (anvillm--infer-reply-type msg-type))
+                     (reply-msg (json-encode `((to . ,from)
+                                              (type . ,reply-type)
+                                              (subject . ,(concat "Re: " subject))
+                                              (body . ,(format "rejected: %s" reason))))))
+                (anvillm--9p-write (concat anvillm-agent-path "/user/mail") reply-msg)
+                (message "Rejected message from %s" from))))
+        (error
+         (message "Failed to reject: %s" (error-message-string err))))
     (message "No message selected")))
 
 (defun anvillm-inbox-archive ()
@@ -531,7 +596,9 @@ Backends:
 
 Keybindings:
 RET, v - View selected message
-r - Reply to selected message
+r - Reply to selected message (type inferred from message)
+a - Approve selected message (sends APPROVAL_RESPONSE)
+R - Reject selected message with reason (sends APPROVAL_RESPONSE)
 d - Archive (complete) selected message
 g - Refresh inbox
 q - Quit
@@ -540,6 +607,11 @@ q - Quit
 Navigation:
 n, C-n - Next line
 p, C-p - Previous line
+
+Reply Type Inference:
+APPROVAL_REQUEST -> APPROVAL_RESPONSE
+REVIEW_REQUEST   -> REVIEW_RESPONSE
+(all others)     -> PROMPT_RESPONSE
 
 ")))
 

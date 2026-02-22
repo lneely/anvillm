@@ -385,6 +385,148 @@ func sendPrompt(id, prompt string) error {
 	return nil
 }
 
+// inferReplyType returns the appropriate response type for a given request type
+func inferReplyType(msgType string) string {
+	switch msgType {
+	case "APPROVAL_REQUEST":
+		return "APPROVAL_RESPONSE"
+	case "REVIEW_REQUEST":
+		return "REVIEW_RESPONSE"
+	case "QUERY_REQUEST":
+		return "QUERY_RESPONSE"
+	default:
+		return "PROMPT_RESPONSE"
+	}
+}
+
+// completeInboxMessage moves a message from inbox to completed archive
+func completeInboxMessage(msgID string) error {
+	cmd := fmt.Sprintf("complete %s", msgID)
+	return writeFile("user/ctl", []byte(cmd))
+}
+
+// sendReply sends a reply message via user/mail
+func sendReply(to, replyType, subject, body string) error {
+	msg := map[string]interface{}{
+		"to":      to,
+		"type":    replyType,
+		"subject": subject,
+		"body":    body,
+	}
+	msgJSON, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %w", err)
+	}
+	return writeFile("user/mail", msgJSON)
+}
+
+// approveMessage sends an approval response and completes the original message
+func approveMessage(msg map[string]interface{}) error {
+	msgID := ""
+	if id, ok := msg["id"].(string); ok {
+		msgID = id
+	}
+	from := ""
+	if f, ok := msg["from"].(string); ok {
+		from = f
+	}
+	subject := ""
+	if s, ok := msg["subject"].(string); ok {
+		subject = "Re: " + s
+	}
+	msgType := ""
+	if t, ok := msg["type"].(string); ok {
+		msgType = t
+	}
+
+	replyType := inferReplyType(msgType)
+	if err := sendReply(from, replyType, subject, "Approved"); err != nil {
+		return err
+	}
+
+	if msgID != "" {
+		return completeInboxMessage(msgID)
+	}
+	return nil
+}
+
+// rejectMessage sends a rejection response and completes the original message
+func rejectMessage(msg map[string]interface{}, reason string) error {
+	msgID := ""
+	if id, ok := msg["id"].(string); ok {
+		msgID = id
+	}
+	from := ""
+	if f, ok := msg["from"].(string); ok {
+		from = f
+	}
+	subject := ""
+	if s, ok := msg["subject"].(string); ok {
+		subject = "Re: " + s
+	}
+	msgType := ""
+	if t, ok := msg["type"].(string); ok {
+		msgType = t
+	}
+
+	replyType := inferReplyType(msgType)
+	body := "Rejected"
+	if reason != "" {
+		body = "Rejected: " + reason
+	}
+	if err := sendReply(from, replyType, subject, body); err != nil {
+		return err
+	}
+
+	if msgID != "" {
+		return completeInboxMessage(msgID)
+	}
+	return nil
+}
+
+// showRejectDialog shows a text input dialog for rejection reason
+func showRejectDialog(msg map[string]interface{}) {
+	input := tview.NewInputField().
+		SetLabel("Reason: ").
+		SetFieldWidth(0).
+		SetFieldTextColor(tcell.ColorBlack).
+		SetFieldBackgroundColor(tcell.ColorWhite)
+
+	input.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter {
+			reason := input.GetText()
+			if err := rejectMessage(msg, reason); err != nil {
+				updateStatus(fmt.Sprintf("[red]Error rejecting message: %v", err))
+			} else {
+				from := ""
+				if f, ok := msg["from"].(string); ok {
+					from = f
+				}
+				updateStatus(fmt.Sprintf("[green]Rejected message from %s", from))
+				pages.RemovePage("reject-dialog")
+				pages.RemovePage("message")
+				if pages.HasPage("inbox") {
+					pages.RemovePage("inbox")
+					showInbox()
+				}
+				return
+			}
+		}
+		pages.RemovePage("reject-dialog")
+	})
+
+	container := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(input, 1, 0, true)
+
+	container.SetBorder(true).
+		SetTitle(" Reject Message - Enter Reason (Enter to confirm, Esc to cancel) ").
+		SetTitleAlign(tview.AlignLeft).
+		SetBorderColor(tcell.ColorRed)
+
+	pages.AddPage("reject-dialog", createModal(container, 70, 5), true, true)
+}
+
 func wrapBeadIDs(text string) string {
 	// Match bead IDs like bd-5xz or bd-5xz.1
 	re := regexp.MustCompile(`\bbd-[a-z0-9]+(?:\.[0-9]+)?\b`)
@@ -758,13 +900,38 @@ func showInbox() {
 	}
 
 	list.SetBorder(true).
-		SetTitle(fmt.Sprintf(" Inbox (%d messages) ", len(messages))).
+		SetTitle(fmt.Sprintf(" Inbox (%d messages) | A:approve | X:reject | Q:close ", len(messages))).
 		SetTitleAlign(tview.AlignLeft).
 		SetBorderColor(tcell.ColorBlue)
 
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Rune() == 'q' || event.Key() == tcell.KeyEscape {
 			pages.RemovePage("inbox")
+			return nil
+		}
+		if event.Rune() == 'a' {
+			idx := list.GetCurrentItem()
+			if idx >= 0 && idx < len(messages) {
+				msg := messages[idx]
+				if err := approveMessage(msg); err != nil {
+					updateStatus(fmt.Sprintf("[red]Error approving message: %v", err))
+				} else {
+					from := ""
+					if f, ok := msg["from"].(string); ok {
+						from = f
+					}
+					updateStatus(fmt.Sprintf("[green]Approved message from %s", from))
+					pages.RemovePage("inbox")
+					showInbox()
+				}
+			}
+			return nil
+		}
+		if event.Rune() == 'x' {
+			idx := list.GetCurrentItem()
+			if idx >= 0 && idx < len(messages) {
+				showRejectDialog(messages[idx])
+			}
 			return nil
 		}
 		return event
@@ -910,18 +1077,46 @@ func showMessage(msg map[string]interface{}) {
 	if s, ok := msg["subject"].(string); ok {
 		subject = s
 	}
+	msgType := ""
+	if t, ok := msg["type"].(string); ok {
+		msgType = t
+	}
 
-	text := fmt.Sprintf("[yellow]From:[-] %s\n[yellow]Subject:[-] %s\n\n%s", from, subject, body)
+	text := fmt.Sprintf("[yellow]From:[-] %s\n[yellow]Subject:[-] %s\n[yellow]Type:[-] %s\n\n%s", from, subject, msgType, body)
 
 	textView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetText(text).
 		SetScrollable(true)
 
-	textView.SetBorder(true).SetTitle(" Message ")
+	// Show approve/reject keybindings for actionable request types
+	needsApproval := msgType == "APPROVAL_REQUEST" || msgType == "REVIEW_REQUEST"
+	title := " Message | Q:close"
+	if needsApproval {
+		title = " Message | A:approve | X:reject | Q:close"
+	}
+
+	textView.SetBorder(true).SetTitle(title)
 	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Rune() == 'q' || event.Key() == tcell.KeyEscape {
 			pages.RemovePage("message")
+			return nil
+		}
+		if event.Rune() == 'a' && needsApproval {
+			if err := approveMessage(msg); err != nil {
+				updateStatus(fmt.Sprintf("[red]Error approving message: %v", err))
+			} else {
+				updateStatus(fmt.Sprintf("[green]Approved message from %s", from))
+				pages.RemovePage("message")
+				if pages.HasPage("inbox") {
+					pages.RemovePage("inbox")
+					showInbox()
+				}
+			}
+			return nil
+		}
+		if event.Rune() == 'x' && needsApproval {
+			showRejectDialog(msg)
 			return nil
 		}
 		return event
@@ -1438,6 +1633,12 @@ func showHelp() {
   a       View archive
   b       View/claim beads (tasks)
   r       Refresh session list
+
+[yellow]Inbox:[-]
+  a       Approve selected message (sends APPROVAL/REVIEW_RESPONSE)
+  x       Reject selected message (prompts for reason)
+  Enter   View message details
+  q/Esc   Close inbox
 
 [yellow]Navigation:[-]
   ↑/↓     Select session (arrow keys)

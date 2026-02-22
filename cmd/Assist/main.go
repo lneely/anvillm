@@ -957,8 +957,8 @@ func refreshMailboxWindow(w *acme.Win, folder, title string) {
 	var buf strings.Builder
 	buf.WriteString(fmt.Sprintf("%s %s\n", folder, title))
 	buf.WriteString(strings.Repeat("=", 120) + "\n\n")
-	buf.WriteString(fmt.Sprintf("%-10s %-20s %-12s %-18s %s\n", "ID", "Date", "From", "Type", "Subject"))
-	buf.WriteString(fmt.Sprintf("%-10s %-20s %-12s %-18s %s\n", "----------", "--------------------", "------------", "------------------", strings.Repeat("-", 40)))
+	buf.WriteString(fmt.Sprintf("%-10s %-20s %-12s %-1s %-18s %s\n", "ID", "Date", "From", "!", "Type", "Subject"))
+	buf.WriteString(fmt.Sprintf("%-10s %-20s %-12s %-1s %-18s %s\n", "----------", "--------------------", "------------", "-", "------------------", strings.Repeat("-", 40)))
 
 	for _, msg := range messages {
 		from := msg.From
@@ -967,7 +967,12 @@ func refreshMailboxWindow(w *acme.Win, folder, title string) {
 		}
 		shortID := shortUUID(msg.ID)
 		dateStr := formatTimestamp(msg.Timestamp)
-		buf.WriteString(fmt.Sprintf("%-10s %-20s %-12s %-18s %s\n", shortID, dateStr, from, msg.Type, msg.Subject))
+		// Mark messages that require user approval or review action
+		flag := " "
+		if msg.Type == "APPROVAL_REQUEST" || msg.Type == "REVIEW_REQUEST" {
+			flag = "!"
+		}
+		buf.WriteString(fmt.Sprintf("%-10s %-20s %-12s %-1s %-18s %s\n", shortID, dateStr, from, flag, msg.Type, msg.Subject))
 	}
 
 	w.Addr(",")
@@ -1175,7 +1180,13 @@ func openMessageWindowByID(msgID, folder string) error {
 		windowPath = "archive"
 	}
 	w.Name(fmt.Sprintf("/AnviLLM/%s/%s", windowPath, filename))
-	w.Write("tag", []byte("Reply Archive "))
+
+	// Add Approve/Reject buttons for messages requiring user action
+	tagStr := "Reply Archive "
+	if msg.Type == "APPROVAL_REQUEST" || msg.Type == "REVIEW_REQUEST" {
+		tagStr = "Approve Reject Reply Archive "
+	}
+	w.Write("tag", []byte(tagStr))
 
 	var buf strings.Builder
 	buf.WriteString(fmt.Sprintf("From: %s\n", msg.From))
@@ -1234,14 +1245,24 @@ func handleMessageWindow(w *acme.Win, msg *Message, filename string) {
 	defer w.CloseFiles()
 
 	for e := range w.EventChan() {
-		if (e.C2 == 'x' || e.C2 == 'X') && string(e.Text) == "Reply" {
-			openReplyWindow(msg)
-		} else if (e.C2 == 'x' || e.C2 == 'X') && string(e.Text) == "Archive" {
-			if err := archiveMessage(msg.ID); err != nil {
-				w.Fprintf("errors", "Archive failed: %v\n", err)
-			} else {
-				refreshInboxWindowByName()
-				w.Ctl("delete")
+		cmd := string(e.Text)
+		if e.C2 == 'x' || e.C2 == 'X' {
+			switch cmd {
+			case "Reply":
+				openReplyWindow(msg)
+			case "Approve":
+				openApproveWindow(msg)
+			case "Reject":
+				openRejectWindow(msg)
+			case "Archive":
+				if err := archiveMessage(msg.ID); err != nil {
+					w.Fprintf("errors", "Archive failed: %v\n", err)
+				} else {
+					refreshInboxWindowByName()
+					w.Ctl("delete")
+				}
+			default:
+				w.WriteEvent(e)
 			}
 		} else {
 			w.WriteEvent(e)
@@ -1260,6 +1281,45 @@ func openReplyWindow(originalMsg *Message) error {
 
 	w.Name(fmt.Sprintf("/AnviLLM/reply/%s", originalMsg.From))
 	w.Write("tag", []byte("Send "))
+	w.Ctl("clean")
+
+	go handleReplyWindow(w, originalMsg.From, replyType, replySubject)
+	return nil
+}
+
+// openApproveWindow opens a reply window pre-filled with "Approved." for one-click approval.
+func openApproveWindow(originalMsg *Message) error {
+	w, err := acme.New()
+	if err != nil {
+		return err
+	}
+
+	replyType := getReplyType(originalMsg.Type)
+	replySubject := fmt.Sprintf("Re: %s", originalMsg.Subject)
+
+	w.Name(fmt.Sprintf("/AnviLLM/reply/%s", originalMsg.From))
+	w.Write("tag", []byte("Send "))
+	w.Write("body", []byte("Approved."))
+	w.Ctl("clean")
+
+	go handleReplyWindow(w, originalMsg.From, replyType, replySubject)
+	return nil
+}
+
+// openRejectWindow opens a reply window pre-filled with a rejection template,
+// prompting the user to supply a reason before sending.
+func openRejectWindow(originalMsg *Message) error {
+	w, err := acme.New()
+	if err != nil {
+		return err
+	}
+
+	replyType := getReplyType(originalMsg.Type)
+	replySubject := fmt.Sprintf("Re: %s", originalMsg.Subject)
+
+	w.Name(fmt.Sprintf("/AnviLLM/reply/%s", originalMsg.From))
+	w.Write("tag", []byte("Send "))
+	w.Write("body", []byte("Rejected.\n\nReason: "))
 	w.Ctl("clean")
 
 	go handleReplyWindow(w, originalMsg.From, replyType, replySubject)
