@@ -4,7 +4,7 @@ The events system provides a real-time text stream of all AnviLLM activity using
 
 ## Architecture
 
-<img src="diagrams/events.svg?v=2" width="400">
+<p align="center"><img src="diagrams/events.svg?v=2" width="400"></p>
 
 Multiple clients can read from `agent/events` simultaneously, each consuming the same event stream for different purposes: notifications (desktop, SMS, WhatsApp), logging/auditing, custom integrations, etc.
 
