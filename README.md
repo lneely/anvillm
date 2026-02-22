@@ -298,7 +298,7 @@ Templates set up context, roles, and initial configuration. Interact via any cli
 
 Automate workflows with Taskmaster and Conductor bots. Input project plan → Taskmaster creates tasks with dependencies → Conductor orchestrates parallel execution.
 
-<p align="center"><img src="docs/diagrams/automation-workflow.svg?v=3" width="600"></p>
+![Autonomous Workflow](docs/diagrams/automation-workflow.svg?v=3)
 
 Conductor receives the top-level bead ID, analyzes dependencies, and spawns agents to work in parallel. Agents notify Conductor when blocked; Conductor signals them to resume when dependencies resolve.
 
