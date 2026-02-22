@@ -260,6 +260,41 @@ echo 'new "Task"' | 9p write agent/beads/ctl
 
 See `bot-templates/`, `kiro-cli/SKILLS_PROMPT.md`
 
+## Automating Development
+
+Automate development workflows with Taskmaster and Conductor bots. Input a project plan → Taskmaster creates tasks with dependencies → Conductor orchestrates parallel execution.
+
+### Usage
+
+Examples below use raw 9P calls. These actions can also be performed from any front-end (Assist, TUI, Emacs, Web).
+
+**1. Taskmaster: Create tasks from project plan**
+
+```sh
+./bot-templates/Taskmaster kiro /path/to/project
+TASKMASTER_ID=$(9p read agent/list | head -1 | awk '{print $1}')
+
+# Send project plan
+echo '{"to":"'$TASKMASTER_ID'","type":"PROMPT_REQUEST","subject":"Create tasks","body":"<your project plan>"}' | 9p write user/mail
+
+# Get top-level bead ID
+BEAD_ID=$(9p read agent/beads/list | jq -r '.[0].id')
+```
+
+**2. Conductor: Execute work**
+
+```sh
+./bot-templates/Conductor kiro /path/to/project
+CONDUCTOR_ID=$(9p read agent/list | head -1 | awk '{print $1}')
+
+# Send work request
+echo '{"to":"'$CONDUCTOR_ID'","type":"WORK_REQUEST","subject":"Execute","body":"Complete bead '$BEAD_ID'"}' | 9p write user/mail
+```
+
+Conductor analyzes dependencies, spawns specialized bots (DevReview, Research, Docs), and delegates work in parallel.
+
+**Monitoring:** Use any front-end (Assist, TUI, Emacs, Web). For custom integrations, see `EVENTS.md`.
+
 ## MCP Integration
 
 `anvilmcp` exposes AnviLLM via Model Context Protocol for Claude Desktop, Cline, etc
