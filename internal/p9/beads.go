@@ -317,13 +317,13 @@ func (b *BeadsFS) readBeadProperty(beadID, property string) ([]byte, error) {
 }
 
 func (b *BeadsFS) getBlockers(id string) ([]string, error) {
-	deps, err := b.store.GetDependencies(b.ctx, id)
+	deps, err := b.store.GetDependenciesWithMetadata(b.ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	var blockers []string
 	for _, dep := range deps {
-		if dep.Status != bd.StatusClosed {
+		if dep.DependencyType == bd.DepBlocks && dep.Status != bd.StatusClosed {
 			blockers = append(blockers, dep.ID)
 		}
 	}
@@ -503,22 +503,7 @@ func (b *BeadsFS) createSubtask(parentID, title, description, actor string) erro
 		Priority:    2,
 	}
 
-	if err := b.store.CreateIssue(b.ctx, issue, actor); err != nil {
-		return err
-	}
-
-	// Add parent-child dependency (parent is blocked by child)
-	dep := &bd.Dependency{
-		IssueID:     parentID,
-		DependsOnID: childID,
-		Type:        bd.DepParentChild,
-	}
-	if err := b.store.AddDependency(b.ctx, dep, actor); err != nil {
-		// Issue created but dep failed - not fatal
-		return nil
-	}
-
-	return nil
+	return b.store.CreateIssue(b.ctx, issue, actor)
 }
 
 func parseCtlCommand(cmd string) (string, []string, error) {

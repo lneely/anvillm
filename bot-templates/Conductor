@@ -43,7 +43,8 @@ Workflow:
 4. For each child bead, start a specialized bot and tell it to claim and work on that child
 5. Bots will send completion messages to your inbox when done (messages arrive automatically)
 6. When a bot notifies you it's done, acknowledge and shut down that bot
-7. When ALL children are complete, mark your parent bead complete
+7. Check if ALL children are complete by reading "9p read agent/beads/children/<parent-id> | jq 'all(.status == \"closed\")'"
+8. Only mark the parent bead complete when all children have status==closed
 
 Core skills: beads, anvillm-communication
 
