@@ -124,6 +124,48 @@ To determine if a parent bead has incomplete child tasks, query the children end
 4. Complete it: `echo "complete bd-xyz" | 9p write agent/beads/ctl`
 5. Completing a bead unblocks its dependents
 
+## Leaving Context for Future Agents
+
+Beads serve as dynamic/temporal memory for agent execution. Beyond status tracking, they capture decisions, dead ends, discoveries, and rationale — context that helps future agents working on related tasks avoid repeated mistakes and build on prior work.
+
+This is distinct from `agent-kb` (stable, reusable architectural knowledge). Beads hold *execution-time context*: what was tried, what failed, what was discovered, and why a particular approach was chosen.
+
+### When to Comment
+
+Comment on your bead as you work — not just at completion. Record:
+- **Decisions**: "Chose approach Z because X failed due to Y."
+- **Dead ends**: "Tried X, failed because Y. Avoided."
+- **Discoveries**: "Found that endpoint /foo also rotates the refresh token."
+- **Constraints**: "Avoided approach A because of constraint B (see bd-xyz)."
+
+Comments may come from agents or humans (e.g., a human reviewing work, recording a constraint, or explaining a decision). Treat both equally as authoritative context.
+
+```bash
+echo "comment bd-abc \"Tried X first but hit rate limits. Switched to Y which batches requests.\"" | 9p write agent/beads/ctl
+```
+
+### When to Search Past Beads
+
+Before starting any non-trivial task, search completed beads for related terms to surface prior decisions and gotchas:
+
+```bash
+9p read agent/beads/search/authentication | jq '.[].title'
+9p read agent/beads/search/refresh-token | jq '.[].description'
+```
+
+When a bead looks relevant, read its full event history to see comments — this is where the most valuable context lives, including human-authored notes:
+
+```bash
+9p read agent/beads/bd-abc/events | jq '.[] | select(.type == "comment") | .body'
+```
+
+### What NOT to Do
+
+- ❌ **NEVER create "knowledge beads"** solely to record information — this pollutes the task system with non-task entries
+- ❌ Don't leave your bead with only status updates — rationale and discoveries are more valuable to future agents than "completed X"
+
+Context belongs *in your task bead*, recorded as comments during execution.
+
 ## JSON Output for Programmatic Use
 
 All read endpoints return JSON for easy parsing.
