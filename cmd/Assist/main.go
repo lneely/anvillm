@@ -1089,7 +1089,7 @@ func openInboxWindow(owner string) error {
 	} else {
 		w.Name(fmt.Sprintf("/AnviLLM/%s/inbox", owner))
 	}
-	w.Write("tag", []byte("Get "))
+	w.Write("tag", []byte("Get Put "))
 
 	go handleInboxWindow(w, owner)
 	return nil
@@ -1104,9 +1104,32 @@ func handleInboxWindow(w *acme.Win, owner string) {
 	for e := range w.EventChan() {
 		switch e.C2 {
 		case 'x', 'X':
-			if string(e.Text) == "Get" {
+			switch string(e.Text) {
+			case "Get":
 				refreshMailboxWindow(w, folder, "Inbox")
-			} else {
+			case "Put":
+				messages, _, err := listMessages(folder)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error listing messages: %v\n", err)
+					continue
+				}
+				body, err := w.ReadAll("body")
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error reading body: %v\n", err)
+					continue
+				}
+				edits := parseMailEdits(string(body), messages)
+				var errs []string
+				for _, edit := range edits {
+					if err := archiveMessage(edit.msgID); err != nil {
+						errs = append(errs, fmt.Sprintf("archive %s: %v", edit.msgID, err))
+					}
+				}
+				if len(errs) > 0 {
+					fmt.Fprintf(os.Stderr, "Put errors: %s\n", strings.Join(errs, "; "))
+				}
+				refreshMailboxWindow(w, folder, "Inbox")
+			default:
 				w.WriteEvent(e)
 			}
 		case 'l', 'L':
@@ -1189,7 +1212,7 @@ func openArchiveWindow(owner string) error {
 	} else {
 		w.Name(fmt.Sprintf("/AnviLLM/%s/archive", owner))
 	}
-	w.Write("tag", []byte("Get "))
+	w.Write("tag", []byte("Get Put "))
 
 	go handleArchiveWindow(w, owner)
 	return nil
@@ -1204,9 +1227,32 @@ func handleArchiveWindow(w *acme.Win, owner string) {
 	for e := range w.EventChan() {
 		switch e.C2 {
 		case 'x', 'X':
-			if string(e.Text) == "Get" {
+			switch string(e.Text) {
+			case "Get":
 				refreshMailboxWindow(w, folder, "Archive")
-			} else {
+			case "Put":
+				messages, _, err := listMessages(folder)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error listing messages: %v\n", err)
+					continue
+				}
+				body, err := w.ReadAll("body")
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error reading body: %v\n", err)
+					continue
+				}
+				edits := parseMailEdits(string(body), messages)
+				var errs []string
+				for _, edit := range edits {
+					if err := deleteArchivedMessage(edit.msgID); err != nil {
+						errs = append(errs, fmt.Sprintf("delete %s: %v", edit.msgID, err))
+					}
+				}
+				if len(errs) > 0 {
+					fmt.Fprintf(os.Stderr, "Put errors: %s\n", strings.Join(errs, "; "))
+				}
+				refreshMailboxWindow(w, folder, "Archive")
+			default:
 				w.WriteEvent(e)
 			}
 		case 'l', 'L':
@@ -1543,6 +1589,46 @@ func archiveMessage(msgID string) error {
 	ctlMsg := fmt.Sprintf("complete %s", msgID)
 	_, err = fid.Write([]byte(ctlMsg))
 	return err
+}
+
+// deleteArchivedMessage permanently removes a message from the completed/archive folder.
+func deleteArchivedMessage(msgID string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
+
+	fid, err := fs.Open("user/ctl", plan9.OWRITE)
+	if err != nil {
+		return err
+	}
+	defer fid.Close()
+
+	ctlMsg := fmt.Sprintf("delete %s", msgID)
+	_, err = fid.Write([]byte(ctlMsg))
+	return err
+}
+
+// mailEdit represents a single inline archive/delete action from a mailbox window body.
+type mailEdit struct {
+	msgID string // full message ID (expanded from short-ID prefix)
+}
+
+// parseMailEdits parses inline action annotations from a mailbox window body.
+// Lines starting with "- <shortID>" mark messages for bulk action (archive or delete).
+func parseMailEdits(content string, messages []Message) []mailEdit {
+	var edits []mailEdit
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "- ") {
+			continue
+		}
+		parts := strings.Fields(line[2:])
+		if len(parts) >= 1 && isHexString(parts[0]) {
+			fullID := expandUUID(parts[0], messages)
+			edits = append(edits, mailEdit{msgID: fullID})
+		}
+	}
+	return edits
 }
 
 func getReplyType(msgType string) string {

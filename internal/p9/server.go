@@ -576,7 +576,7 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		if parts[0] == "user" {
 			args := strings.Fields(input)
 			if len(args) == 0 {
-				return errFcall(fc, "usage: complete <msg-id>")
+				return errFcall(fc, "usage: complete <msg-id> | delete <msg-id>")
 			}
 			switch args[0] {
 			case "complete":
@@ -586,6 +586,15 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 				msgID := args[1]
 				mailMgr := s.mgr.GetMailManager()
 				if err := mailMgr.CompleteMessage("user", msgID); err != nil {
+					return errFcall(fc, err.Error())
+				}
+			case "delete":
+				if len(args) < 2 {
+					return errFcall(fc, "usage: delete <msg-id>")
+				}
+				msgID := args[1]
+				mailMgr := s.mgr.GetMailManager()
+				if err := mailMgr.DeleteFromCompleted("user", msgID); err != nil {
 					return errFcall(fc, err.Error())
 				}
 			default:

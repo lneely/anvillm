@@ -293,8 +293,23 @@ func (m *Manager) GetMessage(sessionID, msgID string) (*Message, error) {
 func (m *Manager) MoveToCompleted(sessionID string, msg *Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.completed[sessionID] = append(m.completed[sessionID], msg)
+}
+
+// DeleteFromCompleted permanently removes a message from the completed folder
+func (m *Manager) DeleteFromCompleted(sessionID, msgID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	completed := m.completed[sessionID]
+	for i, msg := range completed {
+		if msg.ID == msgID {
+			m.completed[sessionID] = append(completed[:i], completed[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("message not found in completed")
 }
 
 
