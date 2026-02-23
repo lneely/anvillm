@@ -31,6 +31,7 @@ anvillm_set_state() {
 case "$event" in
     agentSpawn)
         cd "$cwd" 2>/dev/null || :
+        cat ~/.kiro/OUTPUT_PROTOCOL.md 2>/dev/null || :
         if command -v agent-prompt &>/dev/null; then
             agent-prompt --harness=kiro
         else

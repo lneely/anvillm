@@ -30,6 +30,18 @@ To use this agent configuration, copy it to your Kiro agents directory:
 cp ./kiro-cli/agent/anvillm-agent.json ~/.kiro/agents/
 ```
 
+### Prompt Files
+
+Copy the session-start prompt files so hooks can inject them:
+
+```bash
+mkdir -p ~/.kiro
+cp ./kiro-cli/SKILLS_PROMPT.md ~/.kiro/SKILLS_PROMPT.md
+cp ./OUTPUT_PROTOCOL.md ~/.kiro/OUTPUT_PROTOCOL.md
+```
+
+The `agentSpawn` hook injects both files at session start to set output discipline and skill discovery context.
+
 ## Requirements
 
 - `anvilmcp` binary must be in PATH (built from `cmd/anvilmcp`)
