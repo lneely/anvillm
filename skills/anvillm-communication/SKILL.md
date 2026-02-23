@@ -12,14 +12,37 @@ Use `list_sessions` to see all running agents. Output format: `{session_id} {ali
 
 The session_id (first field) is what you need for communication.
 
+## Message Body Schema
+
+Message bodies must be terse structured text, not prose. Receiving agents parse structured output.
+
+**PROMPT_RESPONSE body** — depends on what the PROMPT_REQUEST asked:
+
+- *Question*: just the answer, one line if possible.
+- *Task*: use the completion schema:
+```
+Status: completed | failed | blocked
+Beads: bd-abc, bd-xyz  (or none)
+Errors: none  (or list errors)
+Notes: [only if actionable for the recipient]
+```
+
+**QUERY_REQUEST / QUERY_RESPONSE body**: one-line question or answer.
+
+**REVIEW_REQUEST body**: `Bead: bd-abc\nDiff: <file or commit>\nQuestion: <specific question>`
+
+**APPROVAL_REQUEST body**: `Action: <what needs approval>\nRisk: <impact if approved>`
+
+No prose. No preamble. No summaries of completed work.
+
 ## Sending Messages
 
 Use the `send_message` tool with these parameters:
 - `from`: your AGENT_ID
 - `to`: recipient session_id or "user"
 - `type`: message type (see below)
-- `subject`: brief description
-- `body`: message content
+- `subject`: brief description (≤10 words)
+- `body`: structured message content (see schema above)
 
 ### Message Types
 
