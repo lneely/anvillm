@@ -130,17 +130,6 @@ func main() {
 						},
 					},
 					{
-						Name:        "load_skill",
-						Description: "Load a skill file into context from $ANVILLM_SKILLS_PATH/{skill_name}/SKILL.md",
-						InputSchema: InputSchema{
-							Type: "object",
-							Properties: map[string]Property{
-								"skill_name": {Type: "string", Description: "Name of the skill to load"},
-							},
-							Required: []string{"skill_name"},
-						},
-					},
-					{
 						Name:        "list_skills",
 						Description: "List all available skills from $ANVILLM_SKILLS_PATH",
 						InputSchema: InputSchema{
@@ -235,22 +224,6 @@ func handleToolCall(req MCPRequest) {
 		sendResponse(req.ID, map[string]interface{}{
 			"content": []map[string]string{
 				{"type": "text", "text": "State set"},
-			},
-		})
-	case "load_skill":
-		skillName, _ := params.Arguments["skill_name"].(string)
-		
-		fmt.Fprintf(os.Stderr, "[anvilmcp] Loading skill: %s\n", skillName)
-		result, err := loadSkill(skillName)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "[anvilmcp] Error: %v\n", err)
-			sendError(req.ID, -32000, err.Error())
-			return
-		}
-		fmt.Fprintf(os.Stderr, "[anvilmcp] Skill loaded: %d bytes\n", len(result))
-		sendResponse(req.ID, map[string]interface{}{
-			"content": []map[string]string{
-				{"type": "text", "text": result},
 			},
 		})
 	case "list_skills":
@@ -376,25 +349,6 @@ func setState(agentID, state string) error {
 	cmd := exec.Command("9p", "write", statePath)
 	cmd.Stdin = strings.NewReader(state)
 	return cmd.Run()
-}
-
-func loadSkill(skillName string) (string, error) {
-	skillsPath := os.Getenv("ANVILLM_SKILLS_PATH")
-	if skillsPath == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("failed to get home directory: %v", err)
-		}
-		skillsPath = fmt.Sprintf("%s/.config/anvillm/skills", home)
-	}
-	
-	skillPath := fmt.Sprintf("%s/%s/SKILL.md", skillsPath, skillName)
-	data, err := os.ReadFile(skillPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read skill file: %v", err)
-	}
-	
-	return string(data), nil
 }
 
 func listSkills() (string, error) {
