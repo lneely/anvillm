@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -384,8 +385,21 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		
 	case "new", "create":
 		if len(args) < 1 {
-			return fmt.Errorf("usage: new 'title' ['description'] [parent-id]")
+			return fmt.Errorf("usage: new 'title' ['description'] [parent-id] [--no-lint]")
 		}
+
+		// Strip --no-lint flag from args before positional parsing.
+		noLint := false
+		filtered := args[:0]
+		for _, a := range args {
+			if a == "--no-lint" {
+				noLint = true
+			} else {
+				filtered = append(filtered, a)
+			}
+		}
+		args = filtered
+
 		title := args[0]
 		description := ""
 		parentID := ""
@@ -395,11 +409,21 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		if len(args) > 2 {
 			parentID = args[2]
 		}
-		
+
+		// Emit lint warnings unless --no-lint or issue_type=idea.
+		// The new command always creates TypeTask; idea exemption applies
+		// when the title starts with "IDEA:" as a convention.
+		isIdea := strings.HasPrefix(strings.ToUpper(title), "IDEA:")
+		if !noLint && !isIdea && description != "" {
+			for _, w := range lintDescription(description) {
+				fmt.Fprintf(os.Stderr, "lint warning [%s]: %s\n", title, w)
+			}
+		}
+
 		if parentID != "" {
 			return b.createSubtask(parentID, title, description, actor)
 		}
-		
+
 		issue := &bd.Issue{
 			Title:       title,
 			Description: description,
@@ -582,6 +606,71 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 	default:
 		return fmt.Errorf("unknown command: %s (supported: init, new, update, delete, claim, unclaim, complete, fail, dep, undep, pending-approval, pending-review, resume)", command)
 	}
+}
+
+// lintDescription checks a bead description for quality signals and returns
+// a list of warning messages. An empty slice means the description passed.
+// Checks: file path present, function name or line number present,
+// minimum length, acceptance criterion keyword present.
+func lintDescription(description string) []string {
+	var warnings []string
+	lower := strings.ToLower(description)
+
+	// Check for file path signal: file extension or path component
+	hasFilePath := strings.Contains(description, ".go") ||
+		strings.Contains(description, ".py") ||
+		strings.Contains(description, ".ts") ||
+		strings.Contains(description, ".js") ||
+		strings.Contains(description, ".rs") ||
+		strings.Contains(description, "/cmd/") ||
+		strings.Contains(description, "/internal/") ||
+		strings.Contains(description, "/src/") ||
+		strings.Contains(description, "/pkg/")
+	if !hasFilePath {
+		warnings = append(warnings, "missing file path (add .go/.py/etc or /cmd//internal/ to help bots locate the code)")
+	}
+
+	// Check for function name or line number signal.
+	// Matches: func calls (foo()), "func " keyword, ":NNN" line refs, "L123" refs.
+	hasFuncOrLine := strings.Contains(description, "()") ||
+		strings.Contains(description, "func ") ||
+		strings.Contains(lower, "line ") ||
+		strings.Contains(lower, ":line") ||
+		containsLineRef(description)
+	if !hasFuncOrLine {
+		warnings = append(warnings, "missing function name or line number (add func name or L123 reference)")
+	}
+
+	// Check minimum length
+	if len(description) < 80 {
+		warnings = append(warnings, "description too short (aim for 80+ chars with What/Where/How/Accept)")
+	}
+
+	// Check for acceptance criterion keyword
+	acceptKeywords := []string{"should", "returns", "displays", "must", "assert", "verify", "accept", "expect"}
+	hasAccept := false
+	for _, kw := range acceptKeywords {
+		if strings.Contains(lower, kw) {
+			hasAccept = true
+			break
+		}
+	}
+	if !hasAccept {
+		warnings = append(warnings, "missing acceptance criterion (add: should/returns/must/accept)")
+	}
+
+	return warnings
+}
+
+// containsLineRef returns true if s contains a line number reference
+// in the form L<digits> (e.g. L385) or :<digits> (e.g. :385).
+func containsLineRef(s string) bool {
+	for i := 0; i < len(s)-1; i++ {
+		if (s[i] == 'L' || s[i] == ':') && s[i+1] >= '0' && s[i+1] <= '9' {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *BeadsFS) createSubtask(parentID, title, description, actor string) error {

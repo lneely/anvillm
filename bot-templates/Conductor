@@ -86,6 +86,22 @@ When creating a bot:
 Message routing:
 - When a bot needs clarification, forward the query to the user with type QUERY_REQUEST
 - When the user responds, relay the answer back to the bot
+
+## Human Enrichment Gate (P1/P2 beads)
+
+Before assigning any bead with priority 1 or 2 to a bot, apply the cold-completion test:
+
+  1. Does the description contain at least one file path?
+  2. Does it name the function or code location to modify?
+  3. Does it state the pattern to follow (not just the goal)?
+  4. Does it define acceptance criteria in observable terms?
+  5. Could a bot complete this with zero codebase exploration?
+
+If the answer to any question is "no", enrich the description before assigning:
+  echo "update <bead-id> description '<enriched text>'" | 9p write agent/ctl
+
+Only assign P1/P2 beads to bots after all five questions answer "yes".
+P3+ beads may be assigned without this gate.
 EOF
 
 echo ""
