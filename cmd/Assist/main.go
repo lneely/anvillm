@@ -1630,6 +1630,7 @@ type Bead struct {
 	Priority         int      `json:"priority"`
 	Blockers         []string `json:"blockers,omitempty"`
 	Labels           []string `json:"labels,omitempty"`
+	CloseReason      string   `json:"close_reason,omitempty"`
 }
 
 func (b *Bead) HasLabel(label string) bool {
@@ -1806,6 +1807,18 @@ func handleTasksWindow(w *acme.Win) {
 				statusFilter = "closed"
 				beads, _ = listBeadsWithFilter(statusFilter)
 				refreshTasksWindowWithBeads(w, beads)
+			case "Failed":
+				statusFilter = "failed"
+				beads, _ = listBeadsWithFilter(statusFilter)
+				refreshTasksWindowWithBeads(w, beads)
+			case "PendingReview":
+				statusFilter = "pending_review"
+				beads, _ = listBeadsWithFilter(statusFilter)
+				refreshTasksWindowWithBeads(w, beads)
+			case "PendingApproval":
+				statusFilter = "pending_approval"
+				beads, _ = listBeadsWithFilter(statusFilter)
+				refreshTasksWindowWithBeads(w, beads)
 			default:
 				w.WriteEvent(e)
 			}
@@ -1831,7 +1844,7 @@ func refreshTasksWindow(w *acme.Win) {
 
 func refreshTasksWindowWithBeads(w *acme.Win, beads []Bead) {
 	var buf strings.Builder
-	buf.WriteString("[Open] [InProgress] [Closed]\n\n")
+	buf.WriteString("[Open] [InProgress] [Closed] [Failed] [PendingReview] [PendingApproval]\n\n")
 	buf.WriteString(fmt.Sprintf("%-4s %-12s %-12s %-4s %-8s %s\n", "#", "ID", "Status", "Blk", "Assignee", "Title"))
 	buf.WriteString(fmt.Sprintf("%-4s %-12s %-12s %-4s %-8s %s\n", "----", "------------", "------------", "----", "--------", strings.Repeat("-", 50)))
 
@@ -1882,7 +1895,18 @@ func listBeadsWithFilter(statusFilter string) ([]Bead, error) {
 		return openBeads, nil
 	}
 
-	// Filter by specific status
+	// Special case: "failed" means closed beads whose close_reason is not "completed"
+	if statusFilter == "failed" {
+		var filtered []Bead
+		for _, b := range beads {
+			if b.Status == "closed" && b.CloseReason != "completed" {
+				filtered = append(filtered, b)
+			}
+		}
+		return filtered, nil
+	}
+
+	// Filter by specific status (covers open, in_progress, closed, pending_review, pending_approval)
 	var filtered []Bead
 	for _, b := range beads {
 		if b.Status == statusFilter {
