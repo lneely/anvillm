@@ -567,8 +567,20 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		}
 		return b.store.UpdateIssue(b.ctx, args[0], updates, actor)
 
+	case "unclaim":
+		// Atomically clear assignee and reset status to open.
+		// Usage: unclaim <bead-id>
+		if len(args) < 1 {
+			return fmt.Errorf("usage: unclaim <bead-id>")
+		}
+		updates := map[string]interface{}{
+			"assignee": "",
+			"status":   bd.StatusOpen,
+		}
+		return b.store.UpdateIssue(b.ctx, args[0], updates, actor)
+
 	default:
-		return fmt.Errorf("unknown command: %s (supported: init, new, update, delete, claim, complete, fail, dep, undep, pending-approval, pending-review, resume)", command)
+		return fmt.Errorf("unknown command: %s (supported: init, new, update, delete, claim, unclaim, complete, fail, dep, undep, pending-approval, pending-review, resume)", command)
 	}
 }
 

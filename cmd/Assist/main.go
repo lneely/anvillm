@@ -94,7 +94,7 @@ func main() {
 	defer w.CloseFiles()
 
 	w.Name(windowName)
-	w.Write("tag", []byte("Get Attach Stop Restart Kill Alias Context Daemon Inbox Archive Tasks "))
+	w.Write("tag", []byte("Get Put Attach Stop Restart Kill Alias Context Daemon Inbox Archive Tasks "))
 	refreshList(w)
 	w.Ctl("clean")
 
@@ -104,6 +104,18 @@ func main() {
 		case 'x', 'X':
 			cmd := string(e.Text)
 			arg := strings.TrimSpace(string(e.Arg))
+
+			// Handle Put: apply inline session edits from body
+			if cmd == "Put" {
+				body, err := w.ReadAll("body")
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error reading body: %v\n", err)
+					continue
+				}
+				edits := parseSessionEdits(string(body))
+				applySessionEdits(w, edits)
+				continue
+			}
 
 			// Handle session ID clicks
 			if sessionIDRegex.MatchString(cmd) {
@@ -593,6 +605,176 @@ func refreshList(w *acme.Win) {
 	w.Ctl("clean")
 }
 
+// sessionEdit represents a single inline action parsed from the sessions window body.
+type sessionEdit struct {
+	action  string // "kill", "stop", "alias", "start"
+	id      string // session ID (for kill/stop/alias)
+	backend string // backend name (for start)
+	path    string // working directory (for start)
+	alias   string // alias name (for alias/start)
+}
+
+// parseSessionEdits parses inline action annotations from the sessions window body.
+// Recognized prefixes (borrowed from the parseEdits pattern in permissions.go):
+//
+//	- <id>                    Kill the session with that ID
+//	~ <id>                    Stop the session (graceful)
+//	@ <id> <alias>            Set alias on the session
+//	+ <backend> <path> [alias]  Start a new session (backends: claude, kiro-cli, ollama)
+func parseSessionEdits(content string) []sessionEdit {
+	var edits []sessionEdit
+	validBackends := map[string]bool{
+		"claude":   true,
+		"kiro-cli": true,
+		"ollama":   true,
+	}
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if len(line) == 0 || strings.HasPrefix(line, "#") {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "- "):
+			parts := strings.Fields(line[2:])
+			if len(parts) >= 1 && sessionIDRegex.MatchString(parts[0]) {
+				edits = append(edits, sessionEdit{action: "kill", id: parts[0]})
+			}
+		case strings.HasPrefix(line, "~ "):
+			parts := strings.Fields(line[2:])
+			if len(parts) >= 1 && sessionIDRegex.MatchString(parts[0]) {
+				edits = append(edits, sessionEdit{action: "stop", id: parts[0]})
+			}
+		case strings.HasPrefix(line, "@ "):
+			parts := strings.Fields(line[2:])
+			if len(parts) >= 2 {
+				id := parts[0]
+				alias := parts[1]
+				if sessionIDRegex.MatchString(id) && aliasRegex.MatchString(alias) {
+					edits = append(edits, sessionEdit{action: "alias", id: id, alias: alias})
+				}
+			}
+		case strings.HasPrefix(line, "+ "):
+			parts := strings.Fields(line[2:])
+			if len(parts) >= 2 {
+				backend := parts[0]
+				path := parts[1]
+				if validBackends[backend] {
+					alias := ""
+					if len(parts) >= 3 && aliasRegex.MatchString(parts[2]) {
+						alias = parts[2]
+					}
+					edits = append(edits, sessionEdit{action: "start", backend: backend, path: path, alias: alias})
+				}
+			}
+		}
+	}
+	return edits
+}
+
+// applySessionEdits applies a batch of session edits atomically, then refreshes the list.
+// For newly started sessions that need an alias, it retries asynchronously until the
+// session appears, then sets the alias.
+func applySessionEdits(w *acme.Win, edits []sessionEdit) {
+	if len(edits) == 0 {
+		refreshList(w)
+		return
+	}
+
+	// Snapshot existing session IDs before any starts so we can identify new ones.
+	existingSessions, _ := listSessions()
+	existingIDs := make(map[string]bool)
+	for _, s := range existingSessions {
+		existingIDs[s.ID] = true
+	}
+
+	// pendingAliases holds an alias string per start-action that requested one.
+	// "" means no alias wanted for that slot.
+	var pendingAliases []string
+	var errs []string
+
+	for _, edit := range edits {
+		switch edit.action {
+		case "kill":
+			if err := controlSession(edit.id, "kill"); err != nil {
+				errs = append(errs, fmt.Sprintf("kill %s: %v", edit.id, err))
+			}
+		case "stop":
+			if err := controlSession(edit.id, "stop"); err != nil {
+				errs = append(errs, fmt.Sprintf("stop %s: %v", edit.id, err))
+			}
+		case "alias":
+			if err := setAlias(edit.id, edit.alias); err != nil {
+				errs = append(errs, fmt.Sprintf("alias %s %s: %v", edit.id, edit.alias, err))
+			}
+		case "start":
+			if err := createSession(edit.backend, edit.path); err != nil {
+				errs = append(errs, fmt.Sprintf("start %s: %v", edit.backend, err))
+			} else {
+				pendingAliases = append(pendingAliases, edit.alias)
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		fmt.Fprintf(os.Stderr, "Session edit errors:\n%s\n", strings.Join(errs, "\n"))
+	}
+
+	// If any start-actions requested aliases, resolve them asynchronously: poll
+	// until the new sessions appear (up to ~10 s), assign aliases in FIFO order,
+	// then do a final list refresh.
+	if len(pendingAliases) > 0 {
+		go func() {
+			assigned := make([]bool, len(pendingAliases))
+			for attempt := 0; attempt < 20; attempt++ {
+				time.Sleep(500 * time.Millisecond)
+				sessions, err := listSessions()
+				if err != nil {
+					continue
+				}
+				// Collect new session IDs in appearance order.
+				var newSessions []*SessionInfo
+				for _, s := range sessions {
+					if !existingIDs[s.ID] {
+						newSessions = append(newSessions, s)
+					}
+				}
+				// Match pending aliases to new sessions in FIFO order.
+				newIdx := 0
+				for i, alias := range pendingAliases {
+					if assigned[i] {
+						newIdx++ // skip slots already resolved
+						continue
+					}
+					if alias == "" {
+						assigned[i] = true
+						continue
+					}
+					if newIdx < len(newSessions) {
+						if setAlias(newSessions[newIdx].ID, alias) == nil {
+							assigned[i] = true
+						}
+						newIdx++
+					}
+				}
+				// Check if all slots are resolved.
+				allDone := true
+				for _, done := range assigned {
+					if !done {
+						allDone = false
+						break
+					}
+				}
+				if allDone {
+					break
+				}
+			}
+			refreshList(w)
+		}()
+	}
+
+	refreshList(w)
+}
+
 func openPromptWindow(sess *SessionInfo) (*acme.Win, error) {
 	displayName := sess.Alias
 	if displayName == "" {
@@ -907,7 +1089,7 @@ func openInboxWindow(owner string) error {
 	} else {
 		w.Name(fmt.Sprintf("/AnviLLM/%s/inbox", owner))
 	}
-	w.Write("tag", []byte("Get "))
+	w.Write("tag", []byte("Get Put "))
 
 	go handleInboxWindow(w, owner)
 	return nil
@@ -922,9 +1104,32 @@ func handleInboxWindow(w *acme.Win, owner string) {
 	for e := range w.EventChan() {
 		switch e.C2 {
 		case 'x', 'X':
-			if string(e.Text) == "Get" {
+			switch string(e.Text) {
+			case "Get":
 				refreshMailboxWindow(w, folder, "Inbox")
-			} else {
+			case "Put":
+				messages, _, err := listMessages(folder)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error listing messages: %v\n", err)
+					continue
+				}
+				body, err := w.ReadAll("body")
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error reading body: %v\n", err)
+					continue
+				}
+				edits := parseMailEdits(string(body), messages)
+				var errs []string
+				for _, edit := range edits {
+					if err := archiveMessage(edit.msgID); err != nil {
+						errs = append(errs, fmt.Sprintf("archive %s: %v", edit.msgID, err))
+					}
+				}
+				if len(errs) > 0 {
+					fmt.Fprintf(os.Stderr, "Put errors: %s\n", strings.Join(errs, "; "))
+				}
+				refreshMailboxWindow(w, folder, "Inbox")
+			default:
 				w.WriteEvent(e)
 			}
 		case 'l', 'L':
@@ -1007,7 +1212,7 @@ func openArchiveWindow(owner string) error {
 	} else {
 		w.Name(fmt.Sprintf("/AnviLLM/%s/archive", owner))
 	}
-	w.Write("tag", []byte("Get "))
+	w.Write("tag", []byte("Get Put "))
 
 	go handleArchiveWindow(w, owner)
 	return nil
@@ -1022,9 +1227,32 @@ func handleArchiveWindow(w *acme.Win, owner string) {
 	for e := range w.EventChan() {
 		switch e.C2 {
 		case 'x', 'X':
-			if string(e.Text) == "Get" {
+			switch string(e.Text) {
+			case "Get":
 				refreshMailboxWindow(w, folder, "Archive")
-			} else {
+			case "Put":
+				messages, _, err := listMessages(folder)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error listing messages: %v\n", err)
+					continue
+				}
+				body, err := w.ReadAll("body")
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error reading body: %v\n", err)
+					continue
+				}
+				edits := parseMailEdits(string(body), messages)
+				var errs []string
+				for _, edit := range edits {
+					if err := deleteArchivedMessage(edit.msgID); err != nil {
+						errs = append(errs, fmt.Sprintf("delete %s: %v", edit.msgID, err))
+					}
+				}
+				if len(errs) > 0 {
+					fmt.Fprintf(os.Stderr, "Put errors: %s\n", strings.Join(errs, "; "))
+				}
+				refreshMailboxWindow(w, folder, "Archive")
+			default:
 				w.WriteEvent(e)
 			}
 		case 'l', 'L':
@@ -1363,6 +1591,46 @@ func archiveMessage(msgID string) error {
 	return err
 }
 
+// deleteArchivedMessage permanently removes a message from the completed/archive folder.
+func deleteArchivedMessage(msgID string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
+
+	fid, err := fs.Open("user/ctl", plan9.OWRITE)
+	if err != nil {
+		return err
+	}
+	defer fid.Close()
+
+	ctlMsg := fmt.Sprintf("delete %s", msgID)
+	_, err = fid.Write([]byte(ctlMsg))
+	return err
+}
+
+// mailEdit represents a single inline archive/delete action from a mailbox window body.
+type mailEdit struct {
+	msgID string // full message ID (expanded from short-ID prefix)
+}
+
+// parseMailEdits parses inline action annotations from a mailbox window body.
+// Lines starting with "- <shortID>" mark messages for bulk action (archive or delete).
+func parseMailEdits(content string, messages []Message) []mailEdit {
+	var edits []mailEdit
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "- ") {
+			continue
+		}
+		parts := strings.Fields(line[2:])
+		if len(parts) >= 1 && isHexString(parts[0]) {
+			fullID := expandUUID(parts[0], messages)
+			edits = append(edits, mailEdit{msgID: fullID})
+		}
+	}
+	return edits
+}
+
 func getReplyType(msgType string) string {
 	switch msgType {
 	case "QUERY_REQUEST":
@@ -1448,6 +1716,7 @@ type Bead struct {
 	Priority         int      `json:"priority"`
 	Blockers         []string `json:"blockers,omitempty"`
 	Labels           []string `json:"labels,omitempty"`
+	CloseReason      string   `json:"close_reason,omitempty"`
 }
 
 func (b *Bead) HasLabel(label string) bool {
@@ -1459,6 +1728,108 @@ func (b *Bead) HasLabel(label string) bool {
 	return false
 }
 
+// beadEdit represents a single inline action parsed from the tasks window body.
+type beadEdit struct {
+	action string // "delete", "claim", "unclaim", "complete", "fail", "create"
+	beadID string // bead ID (for existing bead actions)
+	title  string // title (for create action)
+}
+
+// parseBeadEdits parses inline action annotations from the tasks window body.
+// Recognized prefixes (by 1-based index shown in the list):
+//
+//	- [idx]   Delete bead at that index
+//	~ [idx]   Claim bead at that index (assign to user)
+//	^ [idx]   Unclaim bead: clear assignee, reset status to open
+//	x [idx]   Close/complete bead at that index
+//	f [idx]   Fail bead at that index with reason 'user-closed'
+//	+ [title] Create new bead with that title
+func parseBeadEdits(content string, beads []Bead) []beadEdit {
+	var edits []beadEdit
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "- "):
+			rest := strings.TrimSpace(line[2:])
+			if idx := parseIndex(rest); idx > 0 && idx <= len(beads) {
+				edits = append(edits, beadEdit{action: "delete", beadID: beads[idx-1].ID})
+			}
+		case strings.HasPrefix(line, "~ "):
+			rest := strings.TrimSpace(line[2:])
+			if idx := parseIndex(rest); idx > 0 && idx <= len(beads) {
+				edits = append(edits, beadEdit{action: "claim", beadID: beads[idx-1].ID})
+			}
+		case strings.HasPrefix(line, "^ "):
+			rest := strings.TrimSpace(line[2:])
+			if idx := parseIndex(rest); idx > 0 && idx <= len(beads) {
+				edits = append(edits, beadEdit{action: "unclaim", beadID: beads[idx-1].ID})
+			}
+		case strings.HasPrefix(line, "x "):
+			rest := strings.TrimSpace(line[2:])
+			if idx := parseIndex(rest); idx > 0 && idx <= len(beads) {
+				edits = append(edits, beadEdit{action: "complete", beadID: beads[idx-1].ID})
+			}
+		case strings.HasPrefix(line, "f "):
+			rest := strings.TrimSpace(line[2:])
+			if idx := parseIndex(rest); idx > 0 && idx <= len(beads) {
+				edits = append(edits, beadEdit{action: "fail", beadID: beads[idx-1].ID})
+			}
+		case strings.HasPrefix(line, "+ "):
+			title := strings.TrimSpace(line[2:])
+			if title != "" {
+				edits = append(edits, beadEdit{action: "create", title: title})
+			}
+		}
+	}
+	return edits
+}
+
+// applyBeadEdits applies a batch of bead edits, then refreshes the tasks window.
+func applyBeadEdits(w *acme.Win, edits []beadEdit, beads *[]Bead, statusFilter string) {
+	if len(edits) == 0 {
+		refreshTasksWindowWithBeads(w, *beads)
+		return
+	}
+	var errs []string
+	for _, edit := range edits {
+		switch edit.action {
+		case "delete":
+			if err := deleteBead(edit.beadID); err != nil {
+				errs = append(errs, fmt.Sprintf("delete %s: %v", edit.beadID, err))
+			}
+		case "claim":
+			if err := claimBeadAsUser(edit.beadID); err != nil {
+				errs = append(errs, fmt.Sprintf("claim %s: %v", edit.beadID, err))
+			}
+		case "unclaim":
+			if err := unclaimBead(edit.beadID); err != nil {
+				errs = append(errs, fmt.Sprintf("unclaim %s: %v", edit.beadID, err))
+			}
+		case "complete":
+			if err := completeBead(edit.beadID); err != nil {
+				errs = append(errs, fmt.Sprintf("complete %s: %v", edit.beadID, err))
+			}
+		case "fail":
+			if err := failBead(edit.beadID, "user-closed"); err != nil {
+				errs = append(errs, fmt.Sprintf("fail %s: %v", edit.beadID, err))
+			}
+		case "create":
+			if err := openNewBeadWindowWithTitle(edit.title); err != nil {
+				errs = append(errs, fmt.Sprintf("create %q: %v", edit.title, err))
+			}
+		}
+	}
+	for _, e := range errs {
+		fmt.Fprintf(os.Stderr, "beadEdit error: %s\n", e)
+	}
+	refreshed, _ := listBeadsWithFilter(statusFilter)
+	*beads = refreshed
+	refreshTasksWindowWithBeads(w, *beads)
+}
+
 func openTasksWindow() error {
 	w, err := acme.New()
 	if err != nil {
@@ -1466,7 +1837,7 @@ func openTasksWindow() error {
 	}
 
 	w.Name("/AnviLLM/Tasks")
-	w.Write("tag", []byte("Get New Remove "))
+	w.Write("tag", []byte("Get Put New Remove "))
 
 	go handleTasksWindow(w)
 	return nil
@@ -1489,6 +1860,14 @@ func handleTasksWindow(w *acme.Win) {
 			case "Get":
 				beads, _ = listBeadsWithFilter(statusFilter)
 				refreshTasksWindowWithBeads(w, beads)
+			case "Put":
+				body, err := w.ReadAll("body")
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error reading tasks body: %v\n", err)
+					continue
+				}
+				edits := parseBeadEdits(string(body), beads)
+				applyBeadEdits(w, edits, &beads, statusFilter)
 			case "New":
 				if err := openNewBeadWindow(""); err != nil {
 					fmt.Fprintf(os.Stderr, "Error opening new bead window: %v\n", err)
@@ -1512,6 +1891,18 @@ func handleTasksWindow(w *acme.Win) {
 				refreshTasksWindowWithBeads(w, beads)
 			case "Closed":
 				statusFilter = "closed"
+				beads, _ = listBeadsWithFilter(statusFilter)
+				refreshTasksWindowWithBeads(w, beads)
+			case "Failed":
+				statusFilter = "failed"
+				beads, _ = listBeadsWithFilter(statusFilter)
+				refreshTasksWindowWithBeads(w, beads)
+			case "PendingReview":
+				statusFilter = "pending_review"
+				beads, _ = listBeadsWithFilter(statusFilter)
+				refreshTasksWindowWithBeads(w, beads)
+			case "PendingApproval":
+				statusFilter = "pending_approval"
 				beads, _ = listBeadsWithFilter(statusFilter)
 				refreshTasksWindowWithBeads(w, beads)
 			default:
@@ -1539,7 +1930,7 @@ func refreshTasksWindow(w *acme.Win) {
 
 func refreshTasksWindowWithBeads(w *acme.Win, beads []Bead) {
 	var buf strings.Builder
-	buf.WriteString("[Open] [InProgress] [Closed]\n\n")
+	buf.WriteString("[Open] [InProgress] [Closed] [Failed] [PendingReview] [PendingApproval]\n\n")
 	buf.WriteString(fmt.Sprintf("%-4s %-12s %-12s %-4s %-8s %s\n", "#", "ID", "Status", "Blk", "Assignee", "Title"))
 	buf.WriteString(fmt.Sprintf("%-4s %-12s %-12s %-4s %-8s %s\n", "----", "------------", "------------", "----", "--------", strings.Repeat("-", 50)))
 
@@ -1590,7 +1981,18 @@ func listBeadsWithFilter(statusFilter string) ([]Bead, error) {
 		return openBeads, nil
 	}
 
-	// Filter by specific status
+	// Special case: "failed" means closed beads whose close_reason is not "completed"
+	if statusFilter == "failed" {
+		var filtered []Bead
+		for _, b := range beads {
+			if b.Status == "closed" && b.CloseReason != "completed" {
+				filtered = append(filtered, b)
+			}
+		}
+		return filtered, nil
+	}
+
+	// Filter by specific status (covers open, in_progress, closed, pending_review, pending_approval)
 	var filtered []Bead
 	for _, b := range beads {
 		if b.Status == statusFilter {
@@ -1622,6 +2024,24 @@ blockers:
 	w.Ctl("clean")
 
 	go handleNewBeadWindow(w, parentID)
+	return nil
+}
+
+// openNewBeadWindowWithTitle opens a new bead creation window pre-filled with the given title.
+func openNewBeadWindowWithTitle(title string) error {
+	w, err := acme.New()
+	if err != nil {
+		return err
+	}
+
+	w.Name("/AnviLLM/Tasks/+new")
+	w.Write("tag", []byte("Put "))
+
+	body := fmt.Sprintf("---\ntitle: %s\nblockers:\n---\n", title)
+	w.Write("body", []byte(body))
+	w.Ctl("clean")
+
+	go handleNewBeadWindow(w, "")
 	return nil
 }
 
@@ -1880,6 +2300,34 @@ func deleteBead(beadID string) error {
 	}
 	cmd := fmt.Sprintf("delete %s", beadID)
 	return writeFile("beads/ctl", []byte(cmd))
+}
+
+func claimBeadAsUser(beadID string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
+	return writeFile("beads/ctl", []byte(fmt.Sprintf("claim %s user", beadID)))
+}
+
+func unclaimBead(beadID string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
+	return writeFile("beads/ctl", []byte(fmt.Sprintf("unclaim %s", beadID)))
+}
+
+func completeBead(beadID string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
+	return writeFile("beads/ctl", []byte(fmt.Sprintf("complete %s", beadID)))
+}
+
+func failBead(beadID, reason string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
+	return writeFile("beads/ctl", []byte(fmt.Sprintf("fail %s %s", beadID, reason)))
 }
 
 func updateBead(beadID, content string, origBlockers []string) error {
