@@ -33,6 +33,8 @@ build:V:
 	bash claude/install-hooks.sh
 	bash kiro-cli/install-mcp.sh
 	cp ./ollama/mcp.json $HOME/.config/anvillm/ollama-mcp.json
+	cp OUTPUT_PROTOCOL.md $HOME/.kiro
+	cp OUTPUT_PROTOCOL.md $HOME/.claude
 
 install:V: build
 
