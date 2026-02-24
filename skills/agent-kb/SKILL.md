@@ -3,6 +3,11 @@ name: agent-kb
 description: Query and maintain a local knowledge base of code insights and architecture notes. Use when encountering unfamiliar code, needing context beyond training, or when asked to save/update learned knowledge.
 ---
 
+## Required Skills
+
+This skill requires the **denote** skill for file naming and frontmatter conventions.
+Load and follow: `/home/lkn/.claude/skills/denote/SKILL.md`
+
 # Agent Knowledge Base
 
 ## Purpose
@@ -66,58 +71,30 @@ After significant code exploration, consider what was learned:
 
 4. Read relevant entries before researching code.
 
-## File Naming Convention
-
-```
-YYYYMMDDThhmmss--title-in-lowercase-alphanumeric__tag1_tag2_tagN.md
-```
-
-- Timestamp: `date +%Y%m%dT%H%M%S`
-- Title: lowercase, alphanumeric, hyphens only
-- Tags: lowercase alphanumeric, underscore-separated, after double-underscore, no hyphens
-  ```
-
-Examples:
-- `20260128T133522--example-flow__ref.md`
-- `20260126T144226---architecture-notes__component1_component2_tag3.md`
-
 ## Creating KB Entries
 
-1. Generate timestamp:
-   ```bash
-   date +%Y%m%dT%H%M%S
-   ```
+See the **denote** skill for file naming convention and frontmatter format.
 
-2. Create file with frontmatter matching filename:
-   ```markdown
-   ---
-   title:      Title In Title Case
-   date:       YYYY-MM-DD Day HH:MM
-   tags:       [tag1, tag2]
-   identifier: YYYYMMDDThhmmss
-   verified:   YYYY-MM-DD
-   source:     code-inspection | documentation | online | verbal | inferred
-   ---
+1. Generate timestamp: `date +%Y%m%dT%H%M%S`
+2. Create file using Denote naming convention with `.md` extension
+3. Add frontmatter (see denote skill for fields: `title`, `date`, `tags`, `identifier`, `verified`, `source`)
+4. Keep entries focused—one topic per file.
+5. **Link to other KB entries using `denote:{identifier}`** - e.g., "See denote:20260130T171856 for query details"
+6. **Don't automatically follow cross-references** - Only load referenced documents if directly relevant to the current question.
 
-   # Title
+## Staleness Handling
 
-   Content here.
-   ```
+KB entries carry a `verified` date in frontmatter. Apply these thresholds when reading entries:
 
-   **Provenance fields:**
-   - `verified`: Date last confirmed against code (update on confirmation)
-   - `source`: How the knowledge was obtained
-     - `code-inspection` - directly verified in source code
-     - `documentation` - from internal docs (Confluence, etc.)
-     - `online` - from external online documentation
-     - `verbal` - expert opinion, discussion, tacit knowledge
-     - `inferred` - derived from training data (lowest priority)
+| Age | Action |
+|-----|--------|
+| Within 30 days | Trust entry, use directly |
+| 31–90 days | Use with caution; flag as potentially stale |
+| 90+ days | Verify against source code before acting; do not use blindly |
 
-   If a source has a URL (online or documentation), add a `## Sources` section at the bottom of the document with the citation(s).
+**When you confirm an entry is still accurate**: update the `verified` date in frontmatter.
 
-3. Keep entries focused—one topic per file.
-4. **Link to other KB entries using `denote:{identifier}`** - e.g., "See denote:20260130T171856 for query details"
-5. **Don't automatically follow cross-references** - Only load referenced documents if directly relevant to the current question.
+**When you find an entry is wrong**: correct the content, update `verified`, and add a note on the last line: `Updated YYYY-MM-DD: <what changed>`.
 
 ## Updating KB Entries
 

@@ -120,9 +120,10 @@ To determine if a parent bead has incomplete child tasks, query the children end
 ### Recommended Workflow
 1. Check ready work: `9p read agent/beads/ready`
 2. Claim an unblocked bead: `echo "claim bd-xyz $AGENT_ID" | 9p write agent/beads/ctl`
-3. Do the work
-4. Complete it: `echo "complete bd-xyz" | 9p write agent/beads/ctl`
-5. Completing a bead unblocks its dependents
+3. Search KB for relevant context: `grep -ril "<keyword>" ~/doc/agent-kb/`
+4. Do the work (using KB-sourced file paths and patterns where available)
+5. Complete it: `echo "complete bd-xyz" | 9p write agent/beads/ctl`
+6. Completing a bead unblocks its dependents
 
 ## Leaving Context for Future Agents
 
@@ -250,7 +251,16 @@ All operations immediately persist to the database. Agents can resume work after
    echo "claim bd-abc $AGENT_ID" | 9p write agent/beads/ctl
    ```
 
-3. **Work**: Perform the task
+3. **Before You Start**: Search the knowledge base for relevant context before doing anything else
+   ```bash
+   # Extract keywords from the bead title and description (technical terms, file names, feature names)
+   grep -ril "<keyword>" ~/doc/agent-kb/
+   ```
+   Read all matching entries in full. If KB has a file path or function name relevant to the task, use it directly — do not perform speculative file reads when KB provides the answer.
+
+   Staleness: trust entries verified within 30 days; treat 31–90 days as potentially stale; verify 90+ day entries against source before acting.
+
+4. **Work**: Perform the task
 
 4. **Complete**: Atomically complete the bead
    ```bash
