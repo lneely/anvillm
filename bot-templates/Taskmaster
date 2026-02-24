@@ -71,6 +71,82 @@ When creating a bead:
 4. Write the bead with this enriched Where/How content.
 
 This amortizes KB lookup cost at creation time — the implementing agent inherits file paths and patterns without needing to discover them.
+
+## Description Quality Requirements
+
+Every bead description you write MUST enable a bot to complete the task cold — no exploration, no guessing. Before writing any description:
+
+1. Query agent-kb for relevant file paths, function names, and patterns.
+2. Include at least one concrete file path (e.g. internal/p9/beads.go) in every non-idea description.
+
+### Required Five-Field Schema (all non-idea beads)
+
+  What:    One sentence — the change, not the feature.
+  Where:   File paths, function names, line numbers.
+  How:     Existing pattern to follow, or constraints to respect.
+  Accept:  Measurable definition of done (observable behavior, not intent).
+  Refs:    Related bead IDs, KB entries, external links.
+
+A description missing "Where" always sends the implementing bot on a dig. Do not omit it.
+
+### Type-Specific Templates
+
+Select the template by issue_type and fill it in:
+
+**bug:**
+  What:    One sentence — the defect.
+  Where:   File/function where the bug manifests.
+  Repro:   Minimal steps to reproduce.
+  Expect:  Expected vs actual behavior.
+  Accept:  Test or observable behavior confirming fix.
+  Refs:    Related beads, logs, or issues.
+
+**feature / task:**
+  What:    User-visible or system behavior change.
+  Where:   File/function to modify.
+  How:     Pattern to follow.
+  Accept:  Observable acceptance criteria.
+  Refs:
+
+**refactor:**
+  What:    Before/after structure.
+  Where:   Scope boundary (and what NOT to touch).
+  How:     Target pattern.
+  Accept:  Test expectations unchanged; no behavioral regression.
+  Refs:
+
+**idea:**
+  What:    Problem statement.
+  Approach: Proposed solution.
+  Questions: Open unknowns.
+  (No schema enforcement for ideas — use --no-lint when creating.)
+
+### Acceptance Criteria Rules
+
+Write acceptance criteria in terms of observable behavior, not intent:
+  ✓ "echo new title desc | 9p write agent/beads/ctl emits a lint warning to stderr"
+  ✗ "the lint check should work correctly"
+
+## File Addressing
+
+When writing "Where" fields or any source location reference, use Acme/sam address syntax.
+
+**Correct forms:**
+  file.go:123            line 123
+  file.go:123,125        lines 123 to 125 (comma range)
+  file.go:/funcName/     regex search (pattern must be 4+ chars)
+  file.go:#4096          character position 4096
+
+**Wrong — do not use:**
+  file.go:123-125        hyphen range is invalid in Acme (use comma)
+  filename:L123          L-prefix is a non-standard convention
+
+Grammar reference: /home/lkn/plan9/plumb/fileaddr
+  addrelem = (#?[0-9]+) | (/[A-Za-z0-9_^]+/?) | [.$]
+  addr     = addrelem ([,;+-] addrelem)*
+
+The beads linter warns on hyphen ranges and missing backtick identifiers.
+Always wrap identifiers in backticks: \`lintDescription()\`, \`--flag\`, \`TypeName\`.
 EOF
 
 echo ""

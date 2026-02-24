@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -384,8 +385,21 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		
 	case "new", "create":
 		if len(args) < 1 {
-			return fmt.Errorf("usage: new 'title' ['description'] [parent-id]")
+			return fmt.Errorf("usage: new 'title' ['description'] [parent-id] [--no-lint]")
 		}
+
+		// Strip --no-lint flag from args before positional parsing.
+		noLint := false
+		filtered := args[:0]
+		for _, a := range args {
+			if a == "--no-lint" {
+				noLint = true
+			} else {
+				filtered = append(filtered, a)
+			}
+		}
+		args = filtered
+
 		title := args[0]
 		description := ""
 		parentID := ""
@@ -395,11 +409,21 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		if len(args) > 2 {
 			parentID = args[2]
 		}
-		
+
+		// Emit lint warnings unless --no-lint or issue_type=idea.
+		// The new command always creates TypeTask; idea exemption applies
+		// when the title starts with "IDEA:" as a convention.
+		isIdea := strings.HasPrefix(strings.ToUpper(title), "IDEA:")
+		if !noLint && !isIdea && description != "" {
+			for _, w := range lintDescription(description) {
+				fmt.Fprintf(os.Stderr, "lint warning [%s]: %s\n", title, w)
+			}
+		}
+
 		if parentID != "" {
 			return b.createSubtask(parentID, title, description, actor)
 		}
-		
+
 		issue := &bd.Issue{
 			Title:       title,
 			Description: description,
@@ -582,6 +606,247 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 	default:
 		return fmt.Errorf("unknown command: %s (supported: init, new, update, delete, claim, unclaim, complete, fail, dep, undep, pending-approval, pending-review, resume)", command)
 	}
+}
+
+// lintDescription checks a bead description for quality signals and returns
+// a list of warning messages. An empty slice means the description passed.
+//
+// Rules enforced:
+//   - File path present (.go/.py/etc or /internal/ etc.)
+//   - Function name or precise location (foo(), func keyword, Acme address, L123)
+//   - Minimum length (80 chars)
+//   - Acceptance criterion keyword (should/must/returns/etc.)
+//   - Acme address format (file:N,N not file:N-N)
+//   - Imperative verb start (Fix/Add/Update/... not "Need to"/"Should")
+//   - No vague language (somehow/maybe/etc.)
+//   - "How" signal (following/same as/pattern from/...)
+//   - No first-person voice (I need/we want/...)
+//   - No forbidden vague phrases (fix this/update this/...)
+//   - Inline code (backtick identifier required when file path present)
+//   - Cross-reference on long descriptions (bd-XXX or URL for >150 chars)
+func lintDescription(description string) []string {
+	var warnings []string
+	lower := strings.ToLower(description)
+
+	// --- Rule 1: File path signal ---
+	hasFilePath := strings.Contains(description, ".go") ||
+		strings.Contains(description, ".py") ||
+		strings.Contains(description, ".ts") ||
+		strings.Contains(description, ".js") ||
+		strings.Contains(description, ".rs") ||
+		strings.Contains(description, "/cmd/") ||
+		strings.Contains(description, "/internal/") ||
+		strings.Contains(description, "/src/") ||
+		strings.Contains(description, "/pkg/")
+	if !hasFilePath {
+		warnings = append(warnings, "missing file path (add .go/.py/etc or /cmd//internal/ to help bots locate the code)")
+	}
+
+	// --- Rule 2: Function name or precise location ---
+	// Matches: func calls (foo()), "func " keyword, Acme addresses (file:NNN or file:/re/),
+	// explicit "line " text, or L123 / :123 style refs.
+	hasFuncOrLine := strings.Contains(description, "()") ||
+		strings.Contains(description, "func ") ||
+		strings.Contains(lower, "line ") ||
+		strings.Contains(lower, ":line") ||
+		containsLineRef(description) ||
+		containsAcmeRegexAddr(description)
+	if !hasFuncOrLine {
+		warnings = append(warnings, "missing function name or location (add func name, Acme address file.go:123, or L123)")
+	}
+
+	// --- Rule 3: Minimum length ---
+	if len(description) < 80 {
+		warnings = append(warnings, "description too short (aim for 80+ chars with What/Where/How/Accept)")
+	}
+
+	// --- Rule 4: Acceptance criterion keyword ---
+	acceptKeywords := []string{"should", "returns", "displays", "must", "assert", "verify", "accept", "expect"}
+	hasAccept := false
+	for _, kw := range acceptKeywords {
+		if strings.Contains(lower, kw) {
+			hasAccept = true
+			break
+		}
+	}
+	if !hasAccept {
+		warnings = append(warnings, "missing acceptance criterion (add: should/returns/must/accept)")
+	}
+
+	// --- Rule 5: Acme address format ---
+	// file:NNN-NNN uses a hyphen range which is invalid in Acme/sam; use comma: file:NNN,NNN.
+	if containsHyphenRange(description) {
+		warnings = append(warnings, "invalid Acme address: use comma range file.go:123,125 not file.go:123-125")
+	}
+
+	// --- Rule 6: Imperative verb start ---
+	// Warn if description begins with a known non-imperative pattern.
+	nonImperativeStarters := []string{
+		"need to ", "needs to ", "should ", "we need", "we want", "we should",
+		"the ", "this ", "looking at", "looking into",
+	}
+	firstWordLower := strings.ToLower(strings.TrimSpace(description))
+	for _, starter := range nonImperativeStarters {
+		if strings.HasPrefix(firstWordLower, starter) {
+			warnings = append(warnings, "start with imperative verb (Fix/Add/Update/Refactor) not '"+starter+"...'")
+			break
+		}
+	}
+
+	// --- Rule 7: No vague language ---
+	vaguePhrases := []string{
+		"somehow", " maybe ", "probably ", "try to ", " a bit ", " etc.", " etc,",
+		"and so on", " stuff", "some kind of", "whatever", "sort of ", "kind of ",
+	}
+	for _, phrase := range vaguePhrases {
+		if strings.Contains(lower, phrase) {
+			warnings = append(warnings, "vague language '"+strings.TrimSpace(phrase)+"': replace with specific behavior")
+			break
+		}
+	}
+
+	// --- Rule 8: "How" signal (existing pattern reference) ---
+	howSignals := []string{
+		"following ", "pattern from", "same as ", "similar to ", "like in ",
+		"mirrors ", "as in ", "modeled on", "following the ", "see ", "cf.",
+	}
+	hasHow := false
+	for _, sig := range howSignals {
+		if strings.Contains(lower, sig) {
+			hasHow = true
+			break
+		}
+	}
+	if !hasHow {
+		warnings = append(warnings, "missing 'how' signal (add: 'following pattern in X' or 'same as Y')")
+	}
+
+	// --- Rule 9: No first-person voice ---
+	firstPersonPhrases := []string{
+		"i need", "i want", "i think", "i'll ", "i will ", "i should",
+		"we need", "we want", "we should", "we'll ", "we will ",
+	}
+	for _, fp := range firstPersonPhrases {
+		if strings.Contains(lower, fp) {
+			warnings = append(warnings, "avoid first-person ('"+strings.TrimSpace(fp)+"'): use imperative voice")
+			break
+		}
+	}
+
+	// --- Rule 10: Forbidden vague phrases ---
+	forbiddenPhrases := []string{
+		"fix this", "fix it", "update this", "make it work", "clean this up",
+		"refactor this", "look at this", "deal with this", "handle this",
+	}
+	for _, fp := range forbiddenPhrases {
+		if strings.Contains(lower, fp) {
+			warnings = append(warnings, "forbidden vague phrase '"+fp+"': specify What/Where/How/Accept")
+			break
+		}
+	}
+
+	// --- Rule 11: Inline code (backtick identifier) ---
+	// When a file path is present, at least one backtick-enclosed identifier is expected.
+	if hasFilePath && !strings.Contains(description, "`") {
+		warnings = append(warnings, "no inline code found: wrap identifiers in backticks (`funcName()`, `--flag`)")
+	}
+
+	// --- Rule 12: Cross-reference on long descriptions ---
+	// Descriptions over 150 chars should reference a related bead or URL.
+	if len(description) > 150 {
+		hasBdRef := containsBdRef(description)
+		hasURL := strings.Contains(lower, "http://") || strings.Contains(lower, "https://")
+		if !hasBdRef && !hasURL {
+			warnings = append(warnings, "long description missing cross-reference (add bd-XXX or URL in Refs)")
+		}
+	}
+
+	return warnings
+}
+
+// containsLineRef returns true if s contains a line number reference
+// in the form L<digits> (e.g. L385) or :<digits> (e.g. :385).
+// Also recognises Acme character-position addresses: #<digits>.
+func containsLineRef(s string) bool {
+	for i := 0; i < len(s)-1; i++ {
+		c := s[i]
+		next := s[i+1]
+		if (c == 'L' || c == ':' || c == '#') && next >= '0' && next <= '9' {
+			return true
+		}
+	}
+	return false
+}
+
+// containsAcmeRegexAddr returns true if s contains an Acme regex-style address
+// of the form /word/ where word is at least 4 characters long
+// (e.g. /lintDescription/ or /funcName/). Short slash-delimited tokens
+// such as path components (/p9/, /cmd/, /src/) are intentionally excluded.
+func containsAcmeRegexAddr(s string) bool {
+	const minPatternLen = 4
+	for i := 0; i < len(s)-2; i++ {
+		if s[i] != '/' {
+			continue
+		}
+		// Scan for closing slash; stop at whitespace or newline.
+		j := i + 1
+		for j < len(s) && s[j] != '/' && s[j] != ' ' && s[j] != '\n' {
+			j++
+		}
+		if j < len(s) && s[j] == '/' && (j-i-1) >= minPatternLen {
+			return true
+		}
+	}
+	return false
+}
+
+// containsHyphenRange returns true if s contains an Acme-invalid hyphen range
+// of the form file.ext:NNN-NNN (e.g. beads.go:123-125).
+// The correct Acme syntax uses a comma: beads.go:123,125.
+func containsHyphenRange(s string) bool {
+	// Look for patterns like ":NNN-NNN" (colon, digits, hyphen, digits).
+	for i := 0; i < len(s); i++ {
+		if s[i] != ':' {
+			continue
+		}
+		i++
+		// Consume leading digits.
+		if i >= len(s) || s[i] < '0' || s[i] > '9' {
+			continue
+		}
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i++
+		}
+		// Expect hyphen followed by digits.
+		if i < len(s)-1 && s[i] == '-' && s[i+1] >= '0' && s[i+1] <= '9' {
+			return true
+		}
+	}
+	return false
+}
+
+// containsBdRef returns true if s contains a bead cross-reference of the
+// form "bd-" followed by one or more lowercase alphanumeric characters.
+func containsBdRef(s string) bool {
+	lower := strings.ToLower(s)
+	idx := strings.Index(lower, "bd-")
+	for idx != -1 {
+		rest := lower[idx+3:]
+		if len(rest) > 0 && isAlphanumeric(rest[0]) {
+			return true
+		}
+		next := strings.Index(lower[idx+1:], "bd-")
+		if next == -1 {
+			break
+		}
+		idx = idx + 1 + next
+	}
+	return false
+}
+
+// isAlphanumeric returns true if b is a lowercase letter or digit.
+func isAlphanumeric(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
 }
 
 func (b *BeadsFS) createSubtask(parentID, title, description, actor string) error {
