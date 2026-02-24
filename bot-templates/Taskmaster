@@ -72,6 +72,31 @@ When creating a bead:
 
 This amortizes KB lookup cost at creation time — the implementing agent inherits file paths and patterns without needing to discover them.
 
+## Capability Level Classification
+
+Every bead you create MUST receive a capability label immediately after creation. This feeds model routing in the Conductor — use the minimum capable level.
+
+**Label format:** `capability:low`, `capability:standard`, or `capability:high`
+
+**Assign immediately after creating each bead:**
+
+  echo "label <id> capability:<level>" | 9p write agent/beads/ctl
+
+**Rubric — default to standard; override only when unambiguous:**
+
+| Level | When to assign |
+|-------|---------------|
+| `capability:low` | Structurally mechanical: update a single field, send a message, create a bead from a fully-written spec, rename a symbol, change a config value, add a label. If a junior could do it by following a template, it is low. |
+| `capability:standard` | Default. Moderate reasoning: multi-file edits, implementing a defined feature with a clear pattern to follow, typical dev tasks, writing tests, reviewing PRs. When in doubt, assign standard. |
+| `capability:high` | Technically difficult only: concurrent processing, cache invalidation, novel algorithms, complex state machines, ambiguous requirements requiring novel design, long-horizon planning. Reserve for tasks where a standard-tier model would likely fail. |
+
+**Model mapping (for reference, consumed by Conductor):**
+  capability:low      → haiku
+  capability:standard → sonnet
+  capability:high     → opus
+
+Do NOT assign `capability:high` to ordinary implementation tasks — the 10-20x cost difference makes over-provisioning expensive.
+
 ## Description Quality Requirements
 
 Every bead description you write MUST enable a bot to complete the task cold — no exploration, no guessing. Before writing any description:

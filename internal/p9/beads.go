@@ -22,6 +22,39 @@ const (
 	StatusPendingReview   = bd.Status("pending_review")   // Awaiting REVIEW_RESPONSE from human
 )
 
+// Capability level labels — portable model-tier hints carried on beads.
+// These are label values of the form "capability:<level>".  The Conductor
+// maps them to backend-specific model names at session-spawn time.
+//
+// Convention: use the minimum capable level.  When in doubt, prefer lower.
+//   low      — haiku-tier: simple mechanical ops (create bead, update field,
+//              send message, rename function, edit config)
+//   standard — sonnet-tier: multi-file edits, moderate reasoning (default)
+//   high     — opus-tier: novel design, ambiguous requirements, long-horizon
+//              planning, concurrent algorithms, complex state machines
+//
+// Usage (add to a bead):
+//
+//	echo "label bd-abc capability:low" | 9p write agent/beads/ctl
+//
+// Usage (set at creation time):
+//
+//	echo "new 'title' 'desc' '' capability=low" | 9p write agent/beads/ctl
+//
+// Usage (read via JSON):
+//
+//	9p read agent/beads/bd-abc/json | jq -r .capability_level
+//
+// Refs: bd-frk.7, bd-frk.14.
+const (
+	CapabilityLow      = "capability:low"
+	CapabilityStandard = "capability:standard"
+	CapabilityHigh     = "capability:high"
+
+	// capabilityPrefix is the label prefix used to identify capability labels.
+	capabilityPrefix = "capability:"
+)
+
 // requiresApprovalLabel and requiresReviewLabel are label conventions for
 // marking beads that must pass through a human gate before they can be closed.
 // Agents should send an APPROVAL_REQUEST (or REVIEW_REQUEST) to the user and
@@ -118,10 +151,11 @@ func (b *BeadsFS) readList() ([]byte, error) {
 		return issues[i].ID < issues[j].ID
 	})
 
-	// Enrich with blockers
+	// Enrich with blockers and capability level.
 	type BeadWithBlockers struct {
 		*bd.Issue
-		Blockers []string `json:"blockers,omitempty"`
+		Blockers        []string `json:"blockers,omitempty"`
+		CapabilityLevel string   `json:"capability_level,omitempty"`
 	}
 	result := make([]BeadWithBlockers, len(issues))
 	for i, issue := range issues {
@@ -129,6 +163,7 @@ func (b *BeadsFS) readList() ([]byte, error) {
 		if blockers, err := b.getBlockers(issue.ID); err == nil && len(blockers) > 0 {
 			result[i].Blockers = blockers
 		}
+		result[i].CapabilityLevel = extractCapabilityLevel(issue.Labels)
 	}
 
 	return json.MarshalIndent(result, "", "  ")
@@ -311,12 +346,14 @@ func (b *BeadsFS) readBeadProperty(beadID, property string) ([]byte, error) {
 	case "json":
 		type BeadWithBlockers struct {
 			*bd.Issue
-			Blockers []string `json:"blockers,omitempty"`
+			Blockers        []string `json:"blockers,omitempty"`
+			CapabilityLevel string   `json:"capability_level,omitempty"`
 		}
 		result := BeadWithBlockers{Issue: issue}
 		if blockers, err := b.getBlockers(beadID); err == nil {
 			result.Blockers = blockers
 		}
+		result.CapabilityLevel = extractCapabilityLevel(issue.Labels)
 		return json.MarshalIndent(result, "", "  ")
 	case "comments":
 		comments, err := b.store.GetIssueComments(b.ctx, beadID)
@@ -385,15 +422,18 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		
 	case "new", "create":
 		if len(args) < 1 {
-			return fmt.Errorf("usage: new 'title' ['description'] [parent-id] [--no-lint]")
+			return fmt.Errorf("usage: new 'title' ['description'] [parent-id] [--no-lint] [capability=low|standard|high]")
 		}
 
-		// Strip --no-lint flag from args before positional parsing.
+		// Strip --no-lint flag and capability= option from args before positional parsing.
 		noLint := false
+		capLevel := ""
 		filtered := args[:0]
 		for _, a := range args {
 			if a == "--no-lint" {
 				noLint = true
+			} else if strings.HasPrefix(a, "capability=") {
+				capLevel = strings.TrimPrefix(a, "capability=")
 			} else {
 				filtered = append(filtered, a)
 			}
@@ -421,7 +461,17 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		}
 
 		if parentID != "" {
-			return b.createSubtask(parentID, title, description, actor)
+			if err := b.createSubtask(parentID, title, description, actor); err != nil {
+				return err
+			}
+			// Apply capability label if provided.  Determine child ID.
+			if capLevel != "" {
+				childID, err := b.lastChildID(parentID)
+				if err == nil && childID != "" {
+					_ = b.store.AddLabel(b.ctx, childID, capabilityPrefix+capLevel, actor)
+				}
+			}
+			return nil
 		}
 
 		issue := &bd.Issue{
@@ -430,6 +480,9 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 			Status:      bd.StatusOpen,
 			IssueType:   bd.TypeTask,
 			Priority:    2,
+		}
+		if capLevel != "" {
+			issue.Labels = []string{capabilityPrefix + capLevel}
 		}
 		return b.store.CreateIssue(b.ctx, issue, actor)
 		
@@ -515,6 +568,29 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 			return fmt.Errorf("usage: unlabel <bead-id> 'label'")
 		}
 		return b.store.RemoveLabel(b.ctx, args[0], args[1], actor)
+
+	case "set-capability":
+		// Convenience command that replaces any existing capability label with
+		// the given level (low, standard, or high).
+		// Usage: set-capability <bead-id> low|standard|high
+		if len(args) < 2 {
+			return fmt.Errorf("usage: set-capability <bead-id> low|standard|high")
+		}
+		level := args[1]
+		if level != "low" && level != "standard" && level != "high" {
+			return fmt.Errorf("invalid capability level %q: must be low, standard, or high", level)
+		}
+		// Remove any existing capability labels first.
+		existing, err := b.store.GetLabels(b.ctx, args[0])
+		if err != nil {
+			return err
+		}
+		for _, lbl := range existing {
+			if strings.HasPrefix(lbl, capabilityPrefix) {
+				_ = b.store.RemoveLabel(b.ctx, args[0], lbl, actor)
+			}
+		}
+		return b.store.AddLabel(b.ctx, args[0], capabilityPrefix+level, actor)
 
 	case "batch-create":
 		if len(args) < 1 {
@@ -604,7 +680,7 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		return b.store.UpdateIssue(b.ctx, args[0], updates, actor)
 
 	default:
-		return fmt.Errorf("unknown command: %s (supported: init, new, update, delete, claim, unclaim, complete, fail, dep, undep, pending-approval, pending-review, resume)", command)
+		return fmt.Errorf("unknown command: %s (supported: init, new, update, delete, claim, unclaim, complete, fail, dep, undep, pending-approval, pending-review, resume, label, unlabel, set-capability)", command)
 	}
 }
 
@@ -888,6 +964,44 @@ func (b *BeadsFS) createSubtask(parentID, title, description, actor string) erro
 	}
 
 	return b.store.CreateIssue(b.ctx, issue, actor)
+}
+
+// extractCapabilityLevel scans a label slice and returns the level portion
+// (low, standard, or high) of the first "capability:<level>" label found.
+// Returns "" if no capability label is present.
+func extractCapabilityLevel(labels []string) string {
+	for _, lbl := range labels {
+		if strings.HasPrefix(lbl, capabilityPrefix) {
+			return strings.TrimPrefix(lbl, capabilityPrefix)
+		}
+	}
+	return ""
+}
+
+// lastChildID returns the ID of the most recently created direct child of
+// parentID by finding the child with the highest numeric suffix.  Used to
+// retrieve the ID of the child bead just created by createSubtask so that
+// a capability label can be attached immediately.
+func (b *BeadsFS) lastChildID(parentID string) (string, error) {
+	issues, err := b.store.SearchIssues(b.ctx, "", bd.IssueFilter{})
+	if err != nil {
+		return "", err
+	}
+	prefix := parentID + "."
+	best := 0
+	bestID := ""
+	for _, issue := range issues {
+		if strings.HasPrefix(issue.ID, prefix) {
+			suffix := strings.TrimPrefix(issue.ID, prefix)
+			if !strings.Contains(suffix, ".") {
+				if n, err := strconv.Atoi(suffix); err == nil && n > best {
+					best = n
+					bestID = issue.ID
+				}
+			}
+		}
+	}
+	return bestID, nil
 }
 
 func parseCtlCommand(cmd string) (string, []string, error) {

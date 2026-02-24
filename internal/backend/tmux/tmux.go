@@ -37,6 +37,12 @@ type StateInspector interface {
 	IsBusy(panePID int) bool
 }
 
+// ModelResolver modifies a base command to include a model selection flag or argument.
+// It receives the base command slice and the model name, and returns the modified command.
+// For flag-based CLIs: append(cmd, "--model", model)
+// For positional CLIs: replace the relevant positional argument
+type ModelResolver func(cmd []string, model string) []string
+
 // Config holds tmux backend configuration
 type Config struct {
 	Name           string
@@ -48,6 +54,7 @@ type Config struct {
 	StartupHandler StartupHandler // Optional: handles startup dialogs
 	StateInspector StateInspector // Optional: for process tree inspection
 	NsSuffix       string         // Optional: namespace suffix (e.g., "0" for :0)
+	ModelResolver  ModelResolver  // Optional: modifies command to include model selection
 }
 
 // Backend implements backend.Backend for tmux-based CLI tools
@@ -235,6 +242,10 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 
 	// 7. Wrap command with landrun (ALWAYS - sandboxing cannot be disabled)
 	command := b.cfg.Command
+	// Apply model resolver if a model is specified
+	if opts.Model != "" && b.cfg.ModelResolver != nil {
+		command = b.cfg.ModelResolver(command, opts.Model)
+	}
 	if !sandbox.IsAvailable() {
 		if sandboxCfg.General.BestEffort {
 			fmt.Fprintf(os.Stderr, "WARNING: landrun not available, running UNSANDBOXED (best-effort mode)\n")
@@ -347,6 +358,8 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 		cwd:            opts.CWD,
 		role:           role,
 		tasks:          opts.Tasks,
+		model:          opts.Model,
+		modelResolver:  b.cfg.ModelResolver,
 		pid:            pid,
 		state:          "starting",
 		createdAt:      time.Now(),

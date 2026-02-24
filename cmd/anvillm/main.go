@@ -37,6 +37,7 @@ type SessionInfo struct {
 	State   string
 	Pid     int
 	Cwd     string
+	Model   string // Active model override (empty = backend default)
 }
 
 func main() {
@@ -213,15 +214,19 @@ func refreshSessions() {
 		SetStyle(headerStyle).
 		SetSelectable(false).
 		SetExpansion(1))
-	sessionList.SetCell(0, 3, tview.NewTableCell(" State ").
+	sessionList.SetCell(0, 3, tview.NewTableCell(" Model ").
 		SetStyle(headerStyle).
 		SetSelectable(false).
 		SetExpansion(1))
-	sessionList.SetCell(0, 4, tview.NewTableCell(" PID ").
+	sessionList.SetCell(0, 4, tview.NewTableCell(" State ").
 		SetStyle(headerStyle).
 		SetSelectable(false).
 		SetExpansion(1))
-	sessionList.SetCell(0, 5, tview.NewTableCell(" Cwd ").
+	sessionList.SetCell(0, 5, tview.NewTableCell(" PID ").
+		SetStyle(headerStyle).
+		SetSelectable(false).
+		SetExpansion(1))
+	sessionList.SetCell(0, 6, tview.NewTableCell(" Cwd ").
 		SetStyle(headerStyle).
 		SetSelectable(false).
 		SetExpansion(3))
@@ -246,12 +251,18 @@ func refreshSessions() {
 			stateColor = tcell.ColorRed
 		}
 
+		model := sess.Model
+		if model == "" {
+			model = "-"
+		}
+
 		sessionList.SetCell(row, 0, tview.NewTableCell(" "+sess.ID[:8]+" ").SetExpansion(1))
 		sessionList.SetCell(row, 1, tview.NewTableCell(" "+alias+" ").SetExpansion(1))
 		sessionList.SetCell(row, 2, tview.NewTableCell(" "+sess.Backend+" ").SetExpansion(1))
-		sessionList.SetCell(row, 3, tview.NewTableCell(" "+sess.State+" ").SetTextColor(stateColor).SetExpansion(1))
-		sessionList.SetCell(row, 4, tview.NewTableCell(fmt.Sprintf(" %d ", sess.Pid)).SetExpansion(1))
-		sessionList.SetCell(row, 5, tview.NewTableCell(" "+sess.Cwd+" ").SetExpansion(3))
+		sessionList.SetCell(row, 3, tview.NewTableCell(" "+model+" ").SetExpansion(1))
+		sessionList.SetCell(row, 4, tview.NewTableCell(" "+sess.State+" ").SetTextColor(stateColor).SetExpansion(1))
+		sessionList.SetCell(row, 5, tview.NewTableCell(fmt.Sprintf(" %d ", sess.Pid)).SetExpansion(1))
+		sessionList.SetCell(row, 6, tview.NewTableCell(" "+sess.Cwd+" ").SetExpansion(3))
 	}
 
 	updateStatus(fmt.Sprintf("Sessions: %d | [yellow]s[white]:start [yellow]space[white]:prompt [yellow]c[white]:context [yellow]i[white]:inbox [yellow]a[white]:archive [yellow]b[white]:beads [yellow]t[white]:attach [yellow]T[white]:stop [yellow]R[white]:restart [yellow]K[white]:kill [yellow]A[white]:alias [yellow]r[white]:refresh [yellow]?[white]:help [yellow]q[white]:quit", len(sessions)))
@@ -287,6 +298,11 @@ func listSessions() ([]*SessionInfo, error) {
 		}
 		if sess.Alias == "-" {
 			sess.Alias = ""
+		}
+
+		// Read active model from agent/{id}/model
+		if modelData, err := readFile(filepath.Join(sess.ID, "model")); err == nil {
+			sess.Model = strings.TrimSpace(string(modelData))
 		}
 
 		sessions = append(sessions, sess)
@@ -582,7 +598,7 @@ func showBackendSelectionMenu() {
 		b := backend // capture for closure
 		list.AddItem(b, "", 0, func() {
 			pages.RemovePage("backend-menu")
-			showCreateSession(b)
+			showModelSelectionMenu(b)
 		})
 	}
 
@@ -602,7 +618,57 @@ func showBackendSelectionMenu() {
 	pages.AddPage("backend-menu", createModal(list, 30, 5), true, true)
 }
 
-func showCreateSession(backend string) {
+// showModelSelectionMenu shows model tier options for the selected backend.
+// For claude: haiku / sonnet / opus / default.
+// For other backends: proceeds directly to directory input with no model override.
+func showModelSelectionMenu(backend string) {
+	// Only claude supports model tier selection
+	if backend != "claude" {
+		showCreateSession(backend, "")
+		return
+	}
+
+	type modelOption struct {
+		label string
+		model string // empty = backend default
+	}
+	options := []modelOption{
+		{"default (sonnet)", ""},
+		{"haiku   — fast, cheap, simple tasks", "haiku"},
+		{"sonnet  — multi-file edits, reasoning", "sonnet"},
+		{"opus    — novel design, long-horizon planning", "opus"},
+	}
+
+	list := tview.NewList().
+		ShowSecondaryText(false)
+	list.SetSelectedBackgroundColor(tcell.ColorWhite)
+	list.SetSelectedTextColor(tcell.ColorBlack)
+
+	for _, opt := range options {
+		o := opt // capture for closure
+		list.AddItem(o.label, "", 0, func() {
+			pages.RemovePage("model-menu")
+			showCreateSession(backend, o.model)
+		})
+	}
+
+	list.SetBorder(true).
+		SetTitle(" Select Model ").
+		SetTitleAlign(tview.AlignLeft).
+		SetBorderColor(tcell.ColorBlue)
+
+	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape || event.Rune() == 'q' {
+			pages.RemovePage("model-menu")
+			return nil
+		}
+		return event
+	})
+
+	pages.AddPage("model-menu", createModal(list, 50, 8), true, true)
+}
+
+func showCreateSession(backend, model string) {
 	input := tview.NewInputField().
 		SetLabel("Directory: ").
 		SetFieldWidth(0).
@@ -614,10 +680,17 @@ func showCreateSession(backend string) {
 			dir := input.GetText()
 			if dir != "" {
 				cmd := fmt.Sprintf("new %s %s", backend, dir)
+				if model != "" {
+					cmd += fmt.Sprintf(" model=%s", model)
+				}
 				if err := writeFile("ctl", []byte(cmd)); err != nil {
 					updateStatus(fmt.Sprintf("[red]Error: %v", err))
 				} else {
-					updateStatus(fmt.Sprintf("[green]Created %s session in %s", backend, dir))
+					modelDesc := model
+					if modelDesc == "" {
+						modelDesc = "default"
+					}
+					updateStatus(fmt.Sprintf("[green]Created %s (%s) session in %s", backend, modelDesc, dir))
 					refreshSessions()
 				}
 			}
@@ -625,13 +698,18 @@ func showCreateSession(backend string) {
 		pages.RemovePage("input")
 	})
 
+	title := fmt.Sprintf(" Create %s Session ", backend)
+	if model != "" {
+		title = fmt.Sprintf(" Create %s (%s) Session ", backend, model)
+	}
+
 	// Wrap input in a flex container with border
 	container := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(input, 1, 0, true)
 
 	container.SetBorder(true).
-		SetTitle(fmt.Sprintf(" Create %s Session ", backend)).
+		SetTitle(title).
 		SetTitleAlign(tview.AlignLeft).
 		SetBorderColor(tcell.ColorBlue)
 
@@ -1730,10 +1808,14 @@ func showHelp() {
 [yellow]9P Filesystem:[-]
 All operations read/write the 9P filesystem at $NAMESPACE/agent
 
-[yellow]Backends:[-]
+[yellow]Backends & Models:[-]
 Press 's' to start a new session and choose from:
-  - claude     (Claude Code CLI)
-  - kiro-cli   (Kiro CLI)
+  - claude     (Claude Code CLI) — then select model tier:
+      default  use backend default (sonnet)
+      haiku    fast, cheap, simple tasks
+      sonnet   multi-file edits, moderate reasoning
+      opus     novel design, long-horizon planning
+  - kiro-cli   (Kiro CLI) — uses backend default model
 `
 
 	textView := tview.NewTextView().

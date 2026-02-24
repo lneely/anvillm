@@ -16,7 +16,7 @@
 ;;   M-x anvillm
 ;;
 ;; Keybindings in session list:
-;;   s - Start new session (select backend)
+;;   s - Start new session (select backend and capability level)
 ;;   SPC - Compose prompt in buffer
 ;;   M-SPC - Send prompt to selected session (minibuffer)
 ;;   p/n - Move up/down
@@ -122,8 +122,16 @@ The process is killed after the first read to prevent blocking on streaming file
   "Expand PATH, replacing ~ with home directory."
   (expand-file-name path))
 
-(defun anvillm--parse-session-line (line)
-  "Parse a session LINE from the 'list' file.
+(defun anvillm--capability-to-model (capability)
+  "Resolve CAPABILITY level (low/standard/high) to model name.
+Applies to claude and kiro-cli backends: low→haiku, standard→sonnet, high→opus."
+  (cond
+   ((string= capability "low") "haiku")
+   ((string= capability "high") "opus")
+   (t "sonnet")))
+
+(defun anvillm--parse-session-line (line model)
+  "Parse a session LINE from the 'list' file, with MODEL string.
 Format: id backend state alias cwd (whitespace-separated; often tabs)."
   (when (string-match
          "^\\([^[:space:]]+\\)\\s-+\\([^[:space:]]+\\)\\s-+\\([^[:space:]]+\\)\\s-+\\([^[:space:]]+\\)\\s-+\\(.+\\)$"
@@ -139,7 +147,7 @@ Format: id backend state alias cwd (whitespace-separated; often tabs)."
                 alias
                 backend
                 (propertize state 'face (anvillm--state-face state))
-                ""  ; PID no longer available in list output
+                (or model "-")
                 (anvillm--abbreviate-path cwd))))))
 
 (defun anvillm--state-face (state)
@@ -151,12 +159,23 @@ Format: id backend state alias cwd (whitespace-separated; often tabs)."
    ((or (string= state "error") (string= state "exited")) 'error)
    (t 'default)))
 
+(defun anvillm--session-model (session-id)
+  "Read the active model for SESSION-ID from the 9P filesystem.
+Returns the model string, or nil on error."
+  (condition-case nil
+      (string-trim (anvillm--9p-read (concat anvillm-agent-path "/" session-id "/model")))
+    (error nil)))
+
 (defun anvillm--list-sessions ()
   "Get list of sessions from the 9P filesystem."
   (condition-case err
       (let ((list-data (anvillm--9p-read (concat anvillm-agent-path "/list"))))
         (delq nil
-              (mapcar #'anvillm--parse-session-line
+              (mapcar (lambda (line)
+                        (when (string-match "^\\([^[:space:]]+\\)" line)
+                          (let* ((session-id (match-string 1 line))
+                                 (model (anvillm--session-model session-id)))
+                            (anvillm--parse-session-line line model))))
                       (split-string list-data "\n" t))))
     (error
      (message "Failed to list sessions: %s" (error-message-string err))
@@ -180,17 +199,21 @@ Format: id backend state alias cwd (whitespace-separated; often tabs)."
   (anvillm--refresh-sessions))
 
 (defun anvillm-start-session ()
-  "Start a new session after selecting backend."
+  "Start a new session after selecting backend and capability level."
   (interactive)
   (let ((backend (completing-read "Select backend: " '("claude" "kiro-cli") nil t)))
     (when backend
       (let* ((directory (read-directory-name "Working directory: " default-directory))
-             (expanded-dir (anvillm--expand-path directory)))
+             (expanded-dir (anvillm--expand-path directory))
+             (capability (completing-read "Capability level: "
+                                         '("standard" "low" "high")
+                                         nil t nil nil "standard"))
+             (model (anvillm--capability-to-model capability)))
         (condition-case err
             (progn
               (anvillm--9p-write (concat anvillm-agent-path "/ctl")
-                                 (format "new %s %s" backend expanded-dir))
-              (message "Created %s session in %s" backend (anvillm--abbreviate-path expanded-dir))
+                                 (format "new %s %s model=%s" backend expanded-dir model))
+              (message "Created %s session (%s) in %s" backend model (anvillm--abbreviate-path expanded-dir))
               (anvillm--refresh-sessions))
           (error
            (message "Failed to create session: %s" (error-message-string err))))))))
@@ -296,7 +319,7 @@ Format: id backend state alias cwd (whitespace-separated; often tabs)."
     (princ "AnviLLM - Emacs Interface
 
 Keybindings:
-s - Start new session (select backend)
+s - Start new session (select backend and capability level)
 SPC - Compose prompt in buffer (C-c C-c to send, C-c C-k to abort)
 M-SPC - Send prompt (minibuffer)
 l - View session log (press 'r' to refresh, 'q' to close)
@@ -1267,7 +1290,7 @@ closed - Completed
                                 ("Alias" 15 t)
                                 ("Backend" 12 t)
                                 ("State" 10 t)
-                                ("PID" 8 t)
+                                ("Model" 10 t)
                                 ("Cwd" 0 t)])
   (setq tabulated-list-padding 2)
   (setq tabulated-list-sort-key (cons "ID" nil))

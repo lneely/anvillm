@@ -101,10 +101,11 @@ const (
 	fileTasks
 	fileTmux
 	fileMail
+	fileModel
 	fileCount
 )
 
-var fileNames = []string{"ctl", "state", "pid", "cwd", "alias", "backend", "context", "role", "tasks", "tmux", "mail"}
+var fileNames = []string{"ctl", "state", "pid", "cwd", "alias", "backend", "context", "role", "tasks", "tmux", "mail", "model"}
 
 // Directory names in session
 var dirNames = []string{"inbox", "outbox", "completed"}
@@ -517,6 +518,7 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		cwd, _ := os.Getwd()
 		var role string
 		var tasks []string
+		var model string
 
 		// Parse remaining arguments: first non-key=value is cwd, rest are options
 		cwdSet := false
@@ -529,6 +531,8 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 				if taskStr != "" {
 					tasks = strings.Split(taskStr, ",")
 				}
+			} else if strings.HasPrefix(arg, "model=") {
+				model = strings.TrimPrefix(arg, "model=")
 			} else if !cwdSet {
 				// First positional argument is cwd
 				cwd = strings.Trim(arg, `"`)
@@ -561,6 +565,7 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			CWD:   cleanPath,
 			Role:  role,
 			Tasks: tasks,
+			Model: model,
 		}
 		_, err := s.mgr.New(opts, backendName)
 		if err != nil {
@@ -1227,6 +1232,8 @@ func (s *Server) getSessionFile(sess backend.Session, idx int) string {
 			return fmt.Sprintf("%s:%s", tmuxSession, tmuxWindow)
 		}
 		return ""
+	case fileModel:
+		return sess.Model()
 	}
 	return ""
 }

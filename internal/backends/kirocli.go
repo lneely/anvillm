@@ -4,7 +4,6 @@ package backends
 import (
 	"anvillm/internal/backend"
 	"anvillm/internal/backend/tmux"
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -33,7 +32,6 @@ func NewKiroCLI(nsSuffix string) backend.Backend {
 			Cols: 120,
 		},
 		StartupTime:    30 * time.Second,
-		Commands:       &kiroCommands{},
 		StateInspector: &kiroStateInspector{},
 		NsSuffix:       nsSuffix,
 	})
@@ -79,30 +77,6 @@ func isProcessActive(pid int) bool {
 	// R = running, D = disk sleep (I/O), both indicate active work
 	// S = interruptible sleep (waiting for input) = idle
 	return state == "R" || state == "D"
-}
-
-// kiroCommands implements command handling for kiro-cli
-type kiroCommands struct{}
-
-func (h *kiroCommands) IsSupported(command string) bool {
-	supported := []string{"/chat load", "/chat save", "/help", "/agent list"}
-
-	for _, cmd := range supported {
-		if strings.HasPrefix(command, cmd) {
-			return true
-		}
-	}
-	return false
-}
-
-func (h *kiroCommands) Execute(ctx context.Context, command string) (string, error) {
-	// For kiro-cli, commands are executed by sending them to the PTY
-	// This is handled by the Session.Send() method
-	// We just validate the command here
-	if !h.IsSupported(command) {
-		return "", fmt.Errorf("unsupported command")
-	}
-	return "", fmt.Errorf("execute called directly - use Send() instead")
 }
 
 // Helper functions

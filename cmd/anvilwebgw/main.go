@@ -274,6 +274,7 @@ type Session struct {
 	PID     string `json:"pid"`
 	CWD     string `json:"cwd"`
 	Backend string `json:"backend"`
+	Model   string `json:"model,omitempty"`
 }
 
 // --- Session handlers ---
@@ -341,6 +342,13 @@ func listSessions(w http.ResponseWriter, r *http.Request) {
 			backendFid.Close()
 		}
 
+		if modelFid, err := fs.Open(filepath.Join(sess.ID, "model"), plan9.OREAD); err == nil {
+			if modelData, err := io.ReadAll(modelFid); err == nil {
+				sess.Model = strings.TrimSpace(string(modelData))
+			}
+			modelFid.Close()
+		}
+
 		sessions = append(sessions, sess)
 	}
 
@@ -351,6 +359,7 @@ func createSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Backend string `json:"backend"`
 		CWD     string `json:"cwd"`
+		Model   string `json:"model"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -386,7 +395,11 @@ func createSession(w http.ResponseWriter, r *http.Request) {
 	}
 	defer fid.Close()
 
-	if _, err := fid.Write([]byte(fmt.Sprintf("new %s %s", req.Backend, req.CWD))); err != nil {
+	cmd := fmt.Sprintf("new %s %s", req.Backend, req.CWD)
+	if req.Model != "" {
+		cmd += fmt.Sprintf(" model=%s", req.Model)
+	}
+	if _, err := fid.Write([]byte(cmd)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -461,6 +474,7 @@ func getSession(w http.ResponseWriter, r *http.Request, id string) {
 	sess.State = readField("state")
 	sess.Alias = readField("alias")
 	sess.Backend = readField("backend")
+	sess.Model = readField("model")
 	sess.PID = readField("pid")
 	sess.CWD = readField("cwd")
 

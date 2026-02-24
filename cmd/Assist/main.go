@@ -36,11 +36,24 @@ func getTerminalCommand() string {
 type SessionInfo struct {
 	ID      string
 	Backend string
+	Model   string
 	State   string
 	Alias   string
 	Cwd     string
 	Pid     int
 	WinID   int
+}
+
+// modelTier extracts the abbreviated tier name (haiku/sonnet/opus) from a model string.
+// If none of the known tiers are found, the raw value is returned.
+func modelTier(model string) string {
+	lower := strings.ToLower(model)
+	for _, tier := range []string{"haiku", "sonnet", "opus"} {
+		if strings.Contains(lower, tier) {
+			return tier
+		}
+	}
+	return model
 }
 
 var (
@@ -522,6 +535,9 @@ func listSessions() ([]*SessionInfo, error) {
 		if sess.Alias == "-" {
 			sess.Alias = ""
 		}
+		if data, err := readFile(filepath.Join(sess.ID, "model")); err == nil {
+			sess.Model = strings.TrimSpace(string(data))
+		}
 		sessions = append(sessions, sess)
 	}
 
@@ -589,15 +605,15 @@ func refreshList(w *acme.Win) {
 		return
 	}
 
-	buf.WriteString(fmt.Sprintf("%-8s %-10s %-9s %-16s %s\n", "ID", "Backend", "State", "Alias", "Cwd"))
-	buf.WriteString(fmt.Sprintf("%-8s %-10s %-9s %-16s %s\n", "--------", "----------", "---------", "----------------", strings.Repeat("-", 40)))
+	buf.WriteString(fmt.Sprintf("%-8s %-10s %-7s %-9s %-16s %s\n", "ID", "Backend", "Model", "State", "Alias", "Cwd"))
+	buf.WriteString(fmt.Sprintf("%-8s %-10s %-7s %-9s %-16s %s\n", "--------", "----------", "-------", "---------", "----------------", strings.Repeat("-", 40)))
 
 	for _, sess := range sessions {
 		alias := sess.Alias
 		if alias == "" {
 			alias = "-"
 		}
-		buf.WriteString(fmt.Sprintf("%-8s %-10s %-9s %-16s %s\n", sess.ID, sess.Backend, sess.State, alias, sess.Cwd))
+		buf.WriteString(fmt.Sprintf("%-8s %-10s %-7s %-9s %-16s %s\n", sess.ID, sess.Backend, modelTier(sess.Model), sess.State, alias, sess.Cwd))
 	}
 
 	w.Addr(",")

@@ -18,6 +18,7 @@ type SessionOptions struct {
 	CWD   string
 	Role  string
 	Tasks []string
+	Model string // Optional model override (empty = backend default)
 }
 
 // Backend represents any chat backend (CLI tool via PTY, or direct API)
@@ -75,10 +76,13 @@ type Session interface {
 	
 	// Role returns the session role (empty if not specified)
 	Role() string
-	
+
 	// Tasks returns the session tasks (empty if not specified)
 	Tasks() []string
-	
+
+	// Model returns the active model override (empty = backend default)
+	Model() string
+
 	// CreatedAt returns when the session was created
 	CreatedAt() time.Time
 }

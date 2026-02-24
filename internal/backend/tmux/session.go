@@ -37,6 +37,9 @@ type Session struct {
 	stopCh   chan struct{}
 	output   bytes.Buffer
 
+	model          string        // Active model override (empty = backend default)
+	modelResolver  ModelResolver // Optional: modifies command to include model selection
+
 	commands       backend.CommandHandler
 	startupHandler StartupHandler
 	stateInspector StateInspector
@@ -192,6 +195,13 @@ func (s *Session) Tasks() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.tasks
+}
+
+// Model returns the active model override (empty = backend default)
+func (s *Session) Model() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.model
 }
 
 // CreatedAt returns when the session was created
@@ -650,8 +660,15 @@ func (s *Session) Restart(ctx context.Context) error {
 	role := s.role
 	tasks := s.tasks
 	hadCrash := s.hadCrash
+	model := s.model
+	modelResolver := s.modelResolver
 	s.mu.Unlock()
-	
+
+	// Apply model resolver if a model is specified
+	if model != "" && modelResolver != nil {
+		backendCommand = modelResolver(backendCommand, model)
+	}
+
 	// Add resume flag if this is a crash restart
 	if hadCrash {
 		switch backendName {
