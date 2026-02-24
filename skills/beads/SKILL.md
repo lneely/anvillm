@@ -122,8 +122,11 @@ To determine if a parent bead has incomplete child tasks, query the children end
 2. Claim an unblocked bead: `echo "claim bd-xyz $AGENT_ID" | 9p write agent/beads/ctl`
 3. Search KB for relevant context: `grep -ril "<keyword>" ~/doc/agent-kb/`
 4. Do the work (using KB-sourced file paths and patterns where available)
-5. Complete it: `echo "complete bd-xyz" | 9p write agent/beads/ctl`
-6. Completing a bead unblocks its dependents
+5. Before completing, check for child beads: `9p read agent/beads/children/bd-xyz | jq .`
+6. If children exist: claim, work on, and complete each child before proceeding (see [Hierarchical Completion Protocol](#hierarchical-completion-protocol))
+7. Verify all children closed: `9p read agent/beads/children/bd-xyz | jq 'all(.status == "closed")'`
+8. Only then complete the bead: `echo "complete bd-xyz" | 9p write agent/beads/ctl`
+9. Completing a bead unblocks its dependents
 
 ## Leaving Context for Future Agents
 
@@ -262,7 +265,13 @@ All operations immediately persist to the database. Agents can resume work after
 
 4. **Work**: Perform the task
 
-4. **Complete**: Atomically complete the bead
+4. **Check children**: Before completing, verify no open children remain
+   ```bash
+   9p read agent/beads/children/bd-abc | jq 'any(.status != "closed")'
+   # Must return false before proceeding
+   ```
+
+5. **Complete**: Atomically complete the bead (only after all children are closed)
    ```bash
    echo "complete bd-abc" | 9p write agent/beads/ctl
    ```
@@ -276,6 +285,33 @@ View the event history for a bead:
 
 ### Critical Rule
 **NEVER manually access `.beads/` directory.** Always use the 9P interface. Direct database modification breaks consistency.
+
+## Hierarchical Completion Protocol
+
+**Every agent must follow this protocol when completing any bead.** This applies universally — whether you are a worker bot, an orchestrator, or a standalone agent.
+
+Before marking a bead complete, always verify its children are resolved:
+
+```bash
+# 1. Check for children
+9p read agent/beads/children/bd-abc | jq .
+
+# 2. If children exist, work through each one:
+#    a. Claim it
+echo "claim bd-abc.1 $AGENT_ID" | 9p write agent/beads/ctl
+#    b. Do the work (recurse: check bd-abc.1's children too)
+#    c. Complete it
+echo "complete bd-abc.1" | 9p write agent/beads/ctl
+
+# 3. Verify ALL children closed before proceeding
+9p read agent/beads/children/bd-abc | jq 'all(.status == "closed")'
+# Must output: true
+
+# 4. Only then complete the parent
+echo "complete bd-abc" | 9p write agent/beads/ctl
+```
+
+This protocol applies recursively. If a child has grandchildren, resolve them before completing the child.
 
 ## Anti-Patterns and Warnings
 
@@ -302,6 +338,10 @@ View the event history for a bead:
 ### ❌ NEVER leave tasks unclaimed while working
 **Why**: Other agents may claim the same work, causing conflicts.
 **Instead**: Always `echo "claim bd-xxx $AGENT_ID" | 9p write agent/beads/ctl` before starting.
+
+### ❌ NEVER complete a bead that has open children
+**Why**: Completing a parent before its children are done orphans in-progress work and misrepresents task completion.
+**Instead**: Check `9p read agent/beads/children/bd-abc | jq 'all(.status == "closed")'` and wait until it returns `true`.
 
 ## Quick Command Reference
 
