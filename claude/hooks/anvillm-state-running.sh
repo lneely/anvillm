@@ -1,6 +1,5 @@
 #!/bin/sh
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Hook fired: UserPromptSubmit" >> /tmp/claude-hooks.log
-cat > /dev/null
 
 if [ -z "$AGENT_ID" ]; then
 	echo "$(date '+%Y-%m-%d %H:%M:%S') - ERROR: AGENT_ID not set" >> /tmp/claude-hooks.log

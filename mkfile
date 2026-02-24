@@ -23,18 +23,19 @@ build:V:
 	mkdir -p $HOME/.config/anvillm
 	cp -rf cfg/* $HOME/.config/anvillm/
 	mkdir -p $HOME/.kiro/agents/kiro-cli
-	mkdir -p $HOME/.claude/agents
-	mkdir -p $HOME/.claude/hooks
+	mkdir -p $HOME/.config/anvillm/claude/agents
+	mkdir -p $HOME/.config/anvillm/claude/hooks
 	cp kiro-cli/agent/* $HOME/.kiro/agents/
 	cp kiro-cli/SKILLS_PROMPT.md $HOME/.kiro/
-	cp claude/agent/* $HOME/.claude/agents/
-	cp claude/hooks/* $HOME/.claude/hooks/
-	chmod +x $HOME/.claude/hooks/*.sh
+	cp claude/agent/* $HOME/.config/anvillm/claude/agents/
+	cp claude/hooks/* $HOME/.config/anvillm/claude/hooks/
+	chmod +x $HOME/.config/anvillm/claude/hooks/*.sh
 	bash claude/install-hooks.sh
+	bash claude/install-mcp.sh
 	bash kiro-cli/install-mcp.sh
 	cp ./ollama/mcp.json $HOME/.config/anvillm/ollama-mcp.json
 	cp OUTPUT_PROTOCOL.md $HOME/.kiro
-	cp OUTPUT_PROTOCOL.md $HOME/.claude
+	cp OUTPUT_PROTOCOL.md $HOME/.config/anvillm/claude
 
 install:V: build
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SETTINGS_FILE="$HOME/.claude/settings.json"
+SETTINGS_FILE="$HOME/.config/anvillm/claude/settings.json"
 HOOKS_CONFIG='{
   "hooks": {
     "UserPromptSubmit": [
@@ -8,7 +8,7 @@ HOOKS_CONFIG='{
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/anvillm-state-running.sh"
+            "command": "$HOME/.config/anvillm/claude/hooks/anvillm-state-running.sh"
           }
         ]
       }
@@ -18,7 +18,7 @@ HOOKS_CONFIG='{
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/anvillm-state-idle.sh"
+            "command": "$HOME/.config/anvillm/claude/hooks/anvillm-state-idle.sh"
           }
         ]
       }
@@ -31,7 +31,7 @@ if ! command -v jq &> /dev/null; then
     exit 1
 fi
 
-mkdir -p "$HOME/.claude"
+mkdir -p "$HOME/.config/anvillm/claude"
 
 if [ -f "$SETTINGS_FILE" ]; then
     # Merge with existing settings
@@ -46,6 +46,6 @@ echo "Claude hooks installed to $SETTINGS_FILE"
 
 # Install agent configuration (includes Output Protocol + mailbox instructions)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-mkdir -p "$HOME/.claude/agents"
-cp "$SCRIPT_DIR/agent/anvillm-agent.md" "$HOME/.claude/agents/anvillm-agent.md"
-echo "Claude agent config installed to $HOME/.claude/agents/anvillm-agent.md"
+mkdir -p "$HOME/.config/anvillm/claude/agents"
+cp "$SCRIPT_DIR/agent/anvillm-agent.md" "$HOME/.config/anvillm/claude/agents/anvillm-agent.md"
+echo "Claude agent config installed to $HOME/.config/anvillm/claude/agents/anvillm-agent.md"
