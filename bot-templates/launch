@@ -1,0 +1,54 @@
+#!/bin/bash
+# launch - Generic role launcher
+# Usage: ./bot-templates/launch <role> <backend> <workdir>
+#
+# Reads roles/<role>, creates a session, writes context, and sets alias.
+# Variable interpolation: $AGENT_ID is expanded in the role file at launch time.
+
+set -e
+
+if [ $# -ne 3 ]; then
+    echo "Usage: $0 <role> <backend> <workdir>"
+    echo "  role:    name of a file in roles/ (e.g., Conductor, Taskmaster)"
+    echo "  backend: claude, kiro-cli"
+    echo "  workdir: working directory for the session"
+    exit 1
+fi
+
+ROLE="$1"
+BACKEND="$2"
+WORKDIR="$3"
+
+ALIAS_NAME=$(echo "$ROLE" | tr '[:upper:]' '[:lower:]')
+
+NAMESPACE=$(namespace)
+if [ -z "$NAMESPACE" ]; then
+    echo "Error: No namespace found. Is anvillm running?"
+    exit 1
+fi
+
+AGENT_MOUNT="agent"
+
+ROLES_DIR="$(dirname "$0")/../roles"
+ROLE_FILE="$ROLES_DIR/$ROLE"
+
+if [ ! -f "$ROLE_FILE" ]; then
+    echo "Error: Role file not found: $ROLE_FILE"
+    echo "Available roles:"
+    ls "$ROLES_DIR"
+    exit 1
+fi
+
+echo "Creating $ROLE session..."
+echo "new $BACKEND $WORKDIR" | 9p write $AGENT_MOUNT/ctl
+AGENT_ID=$(9p read $AGENT_MOUNT/list | head -1 | awk '{print $1}')
+
+echo "$ALIAS_NAME" | 9p write $AGENT_MOUNT/$AGENT_ID/alias
+
+# Expand $AGENT_ID (and any other exported vars) in the role file
+AGENT_ID="$AGENT_ID" envsubst '$AGENT_ID' < "$ROLE_FILE" | 9p write $AGENT_MOUNT/$AGENT_ID/context
+
+echo ""
+echo "✓ $ROLE workflow ready"
+echo ""
+echo "Session: $AGENT_ID (alias: $ALIAS_NAME)"
