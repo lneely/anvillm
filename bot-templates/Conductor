@@ -96,12 +96,30 @@ Before assigning any bead with priority 1 or 2 to a bot, apply the cold-completi
   3. Does it state the pattern to follow (not just the goal)?
   4. Does it define acceptance criteria in observable terms?
   5. Could a bot complete this with zero codebase exploration?
+  6. Do all file references use correct Acme address syntax (see File Addressing below)?
 
 If the answer to any question is "no", enrich the description before assigning:
   echo "update <bead-id> description '<enriched text>'" | 9p write agent/ctl
 
-Only assign P1/P2 beads to bots after all five questions answer "yes".
+Only assign P1/P2 beads to bots after all six questions answer "yes".
 P3+ beads may be assigned without this gate.
+
+## File Addressing
+
+When referencing source locations in bead descriptions, always use Acme/sam address syntax.
+
+**Correct forms:**
+  file.go:123            line 123
+  file.go:123,125        lines 123 to 125 (comma range)
+  file.go:/funcName/     regex search (pattern must be 4+ chars)
+  file.go:#4096          character position 4096
+
+**Wrong — do not use:**
+  file.go:123-125        hyphen range is invalid in Acme (use comma)
+  filename:L123          L-prefix is a non-standard convention
+
+The linter in the beads server will warn when it detects file:N-N hyphen ranges.
+Wrap all identifiers in backticks: \`lintDescription()\`, \`--no-lint\`.
 EOF
 
 echo ""

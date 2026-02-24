@@ -170,6 +170,62 @@ When a bead looks relevant, read its full event history to see comments — this
 
 Context belongs *in your task bead*, recorded as comments during execution.
 
+## Description Quality and File Addressing
+
+### What Makes a Good Description
+
+Every bead description must enable a bot to complete the task cold — no codebase exploration, no guessing. The beads server enforces this with lint warnings emitted to stderr on `new`. A high-quality description:
+
+- Starts with an **imperative verb**: Fix, Add, Update, Refactor, Implement, ...
+- Names at least one **file path** with a recognized extension (.go, .py, .ts, .js, .rs) or path component (/internal/, /cmd/, /src/, /pkg/)
+- Identifies a **precise location**: function name in backticks, or an Acme file address (see below)
+- Wraps all identifiers in **backticks**: `` `lintDescription()` ``, `` `--no-lint` ``, `` `TypeName` ``
+- Includes a **"how" signal**: "following the pattern in X", "same as Y", "mirrors Z"
+- States an **observable acceptance criterion**: "must return ...", "should emit ...", "returns ..."
+- Avoids **vague language**: somehow, maybe, etc., stuff, try to, a bit
+- Avoids **first-person voice**: I need, we want, I'll
+- For descriptions > 150 chars, includes a **cross-reference**: `bd-XXX` or a URL
+
+### File Addressing
+
+When referencing source locations, use **Acme/sam address syntax** — not the common but incorrect hyphen form.
+
+**Correct forms (from `/home/lkn/plan9/plumb/fileaddr`):**
+
+```
+beads.go:123          line 123
+beads.go:123,125      lines 123 to 125  (comma range)
+beads.go:/funcName/   regex search      (pattern ≥ 4 chars)
+beads.go:#4096        character offset  4096
+```
+
+**Never use:**
+
+```
+beads.go:123-125      ✗ hyphen range is invalid in Acme — use comma
+```
+
+The linter warns when it detects the hyphen form. The Conductor cold-completion gate also checks for correct Acme syntax before assigning P1/P2 beads.
+
+### Lint Rules Summary
+
+The server checks descriptions against these rules (warnings go to stderr; bypass with `--no-lint`):
+
+| Rule | Signal checked |
+|------|---------------|
+| File path | `.go`/`.py`/etc. or `/internal/`/`/cmd/`/... |
+| Location | `func()`, Acme address, `L123`, `:123`, `#123` |
+| Minimum length | ≥ 80 characters |
+| Acceptance criterion | should / must / returns / displays / assert / verify / accept / expect |
+| Acme address format | No `file:N-N` hyphen ranges |
+| Imperative start | Not "Need to" / "Should" / "We need" / "The X" |
+| Vague language | No somehow / maybe / etc. / stuff / try to |
+| How signal | following / same as / pattern from / similar to / mirrors |
+| First-person | No I need / I want / we should / we'll |
+| Forbidden phrases | No "fix this" / "update this" / "make it work" |
+| Inline code | Backtick identifier required when file path present |
+| Cross-reference | `bd-XXX` or URL required for descriptions > 150 chars |
+
 ## JSON Output for Programmatic Use
 
 All read endpoints return JSON for easy parsing.
@@ -353,6 +409,13 @@ This protocol applies recursively. If a child has grandchildren, resolve them be
 ### Create bead
 ```bash
 echo "new \"Implement feature\" \"Add new capability\"" | 9p write agent/beads/ctl
+```
+
+The server emits lint warnings to stderr if the description is missing quality signals (file path, function name/line, acceptance criterion, minimum length). Suppress with `--no-lint` or prefix the title with `IDEA:`:
+
+```bash
+# Bypass lint for idea-type or trivial beads
+echo "new \"IDEA: Explore caching\" \"Some rough thoughts\" --no-lint" | 9p write agent/beads/ctl
 ```
 
 ### Create child bead

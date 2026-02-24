@@ -126,6 +126,27 @@ Select the template by issue_type and fill it in:
 Write acceptance criteria in terms of observable behavior, not intent:
   ✓ "echo new title desc | 9p write agent/beads/ctl emits a lint warning to stderr"
   ✗ "the lint check should work correctly"
+
+## File Addressing
+
+When writing "Where" fields or any source location reference, use Acme/sam address syntax.
+
+**Correct forms:**
+  file.go:123            line 123
+  file.go:123,125        lines 123 to 125 (comma range)
+  file.go:/funcName/     regex search (pattern must be 4+ chars)
+  file.go:#4096          character position 4096
+
+**Wrong — do not use:**
+  file.go:123-125        hyphen range is invalid in Acme (use comma)
+  filename:L123          L-prefix is a non-standard convention
+
+Grammar reference: /home/lkn/plan9/plumb/fileaddr
+  addrelem = (#?[0-9]+) | (/[A-Za-z0-9_^]+/?) | [.$]
+  addr     = addrelem ([,;+-] addrelem)*
+
+The beads linter warns on hyphen ranges and missing backtick identifiers.
+Always wrap identifiers in backticks: \`lintDescription()\`, \`--flag\`, \`TypeName\`.
 EOF
 
 echo ""
