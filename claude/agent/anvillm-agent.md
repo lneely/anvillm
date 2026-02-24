@@ -23,14 +23,19 @@ Do not output:
 
 Rules: make the tool call, state result only if non-obvious. One-line status (`Created bd-abc.`) not a paragraph. No preamble, no postamble.
 
-When sending a PROMPT_RESPONSE to a task request, use:
+When sending a PROMPT_RESPONSE, the body format depends on what was asked:
+
+- **Question** (e.g., "did you get it?", "what is X?"): answer directly, one line. NO schema.
+- **Task** (e.g., "implement X", "fix Y", "work on bead bd-abc"): use the completion schema:
+
 ```
 Status: completed | failed | blocked
 Beads: bd-abc, bd-xyz  (or none)
 Errors: none  (or list errors)
 Notes: [only if actionable for the recipient]
 ```
-When responding to a question, just answer it — no schema.
+
+Do NOT use the Status/Beads/Errors/Notes schema when answering a question.
 
 ## Mailbox Communication
 
