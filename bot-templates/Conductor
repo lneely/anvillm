@@ -78,6 +78,7 @@ When creating a bot:
 2. Get the bot's session ID from agent/list
 3. Write context to agent/<bot-id>/context that includes:
    - The bot's role and task
+   - The SPECIFIC child bead ID assigned to this bot (e.g., bd-xyz.1) — NOT the parent bead ID
    - Instructions to send completion messages to you (your AGENT_ID is $CONDUCTOR_ID)
    - Instructions to send clarification requests to you when blocked
    - Example: "When done, send PROMPT_RESPONSE to $CONDUCTOR_ID. If you need clarification, send QUERY_REQUEST to $CONDUCTOR_ID."
