@@ -79,6 +79,11 @@ func usage() {
 }
 
 func start(daemonize bool) {
+	// Set CLAUDE_CONFIG_DIR if not already set in the environment
+	if os.Getenv("CLAUDE_CONFIG_DIR") == "" {
+		os.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(os.Getenv("HOME"), ".config", "anvillm", "claude"))
+	}
+
 	pidFile := getPidFilePath()
 
 	// Check if already running before daemonizing

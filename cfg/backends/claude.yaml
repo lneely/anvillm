@@ -12,3 +12,4 @@ network:
 env:
   - ANTHROPIC_API_KEY
   - CLAUDE_AGENT_NAME=anvillm-agent
+  - CLAUDE_CONFIG_DIR

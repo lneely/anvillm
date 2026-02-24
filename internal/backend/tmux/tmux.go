@@ -198,6 +198,10 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 			killWindow(b.tmuxSession, windowName)
 			return nil, fmt.Errorf("failed to set environment: %w", err)
 		}
+		if err := sendKeys(target, fmt.Sprintf("export %s=%s", k, v), "C-m"); err != nil {
+			killWindow(b.tmuxSession, windowName)
+			return nil, fmt.Errorf("failed to export environment: %w", err)
+		}
 	}
 
 	// 4. Create FIFO for output

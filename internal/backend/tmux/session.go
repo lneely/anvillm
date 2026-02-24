@@ -772,6 +772,9 @@ func (s *Session) Restart(ctx context.Context) error {
 		if err := setEnvironment(target, k, v); err != nil {
 			return fmt.Errorf("failed to set environment: %w", err)
 		}
+		if err := sendKeys(target, fmt.Sprintf("export %s=%s", k, v), "C-m"); err != nil {
+			return fmt.Errorf("failed to export environment: %w", err)
+		}
 	}
 
 	// 10. Send the original command to tmux

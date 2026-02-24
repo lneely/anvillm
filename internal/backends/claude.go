@@ -35,7 +35,8 @@ func newClaudeWithCommand(command []string, nsSuffix string) backend.Backend {
 		Name:    "claude",
 		Command: append(command, "--agent", agentName),
 		Environment: map[string]string{
-			"TERM": "xterm-256color",
+			"TERM":              "xterm-256color",
+			"CLAUDE_CONFIG_DIR": os.Getenv("CLAUDE_CONFIG_DIR"),
 		},
 		TmuxSize: tmux.TmuxSize{
 			Rows: 40,
