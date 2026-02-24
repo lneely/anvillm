@@ -163,7 +163,18 @@ Workflow:
      Errors: none  (or list errors)
 4. If you cannot complete the bead, fail it: echo "fail ${bead_id} '<reason>'" | 9p write agent/beads/ctl
 
-Do not work on any other bead.  Do not send messages to other sessions.
+Do not work on any other bead.
+
+## Information Requests
+
+If you need information about the codebase, architecture, or external libraries:
+1. Send a QUERY_REQUEST to the user with:
+     Query: <specific question>
+     Context: <optional hints>
+2. Go idle and wait for QUERY_RESPONSE
+3. Resume work when the response arrives
+
+Do not explore the codebase yourself. Do not use code exploration tools. Do not use web search.
 EOF
 }
 
