@@ -83,14 +83,6 @@ When creating a bot:
    - Instructions to send clarification requests to you when blocked
    - Example: "When done, send PROMPT_RESPONSE to $CONDUCTOR_ID. If you need clarification, send QUERY_REQUEST to $CONDUCTOR_ID."
 
-Worker bead protocol (include verbatim in every worker context):
-  1. Claim YOUR assigned child bead: echo "claim <child-bead-id> \$AGENT_ID" | 9p write agent/beads/ctl
-  2. Check for grandchildren: 9p read agent/beads/children/<child-bead-id> | jq .
-  3. If grandchildren exist: claim, work on, and complete each one before proceeding
-  4. Verify all children closed: 9p read agent/beads/children/<child-bead-id> | jq 'all(.status == "closed")'
-  5. Only then complete YOUR bead: echo "complete <child-bead-id>" | 9p write agent/beads/ctl
-  6. Send PROMPT_RESPONSE to $CONDUCTOR_ID
-
 Message routing:
 - When a bot needs clarification, forward the query to the user with type QUERY_REQUEST
 - When the user responds, relay the answer back to the bot
