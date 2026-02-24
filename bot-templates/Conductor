@@ -23,6 +23,19 @@ fi
 
 AGENT_MOUNT="agent"
 
+# Ensure researcher exists for this worktree
+WORKDIR_HASH=$(echo -n "$WORKDIR" | md5sum | cut -c1-8)
+RESEARCHER_ALIAS="researcher-$WORKDIR_HASH"
+
+RESEARCHER_ID=$(9p read $AGENT_MOUNT/list 2>/dev/null | grep "alias=$RESEARCHER_ALIAS" | awk '{print $1}' || true)
+if [ -z "$RESEARCHER_ID" ]; then
+    echo "Spawning researcher for worktree..."
+    ./bot-templates/Research "$BACKEND" "$WORKDIR"
+    RESEARCHER_ID=$(9p read $AGENT_MOUNT/list 2>/dev/null | grep "alias=$RESEARCHER_ALIAS" | awk '{print $1}')
+fi
+
+echo "Using researcher: $RESEARCHER_ID (alias: $RESEARCHER_ALIAS)"
+
 echo "Creating conductor session..."
 echo "new $BACKEND $WORKDIR" | 9p write $AGENT_MOUNT/ctl
 CONDUCTOR_ID=$(9p read $AGENT_MOUNT/list | head -1 | awk '{print $1}')
@@ -56,6 +69,11 @@ Workflow:
 6. When a bot notifies you it's done, acknowledge and shut down that bot
 7. Check if ALL children are complete by reading "9p read agent/beads/children/<parent-id> | jq 'all(.status == \"closed\")'"
 8. Only mark the parent bead complete when all children have status==closed
+9. Create review bead: echo "new 'Review: <parent-title>' '<review-template>' <parent-id>" | 9p write agent/beads/ctl; echo "label <review-id> review" | 9p write agent/beads/ctl; echo "dep <review-id> <parent-id>" | 9p write agent/beads/ctl
+10. Start review bot: echo "new $BACKEND $WORKDIR" | 9p write agent/ctl; write roles/Reviewer context to bot; tell bot to claim <review-id> and send REVIEW_RESPONSE to $CONDUCTOR_ID when done
+11. Wait for REVIEW_RESPONSE in inbox
+12a. If approved: echo "complete <parent-id>" | 9p write agent/beads/ctl
+12b. If rejected: forward findings body to Taskmaster via PROMPT_REQUEST asking it to create follow-up beads; do NOT complete parent until follow-ups are assigned
 
 Core skills: beads, anvillm-communication, agent-kb
 
@@ -98,13 +116,30 @@ When creating a bot:
    - The bot's role and task
    - The SPECIFIC child bead ID assigned to this bot (e.g., bd-xyz.1) — NOT the parent bead ID
    - Instructions to send completion messages to you (your AGENT_ID is $CONDUCTOR_ID)
-   - Instructions to send clarification requests to you when blocked
-   - Example: "When done, send PROMPT_RESPONSE to $CONDUCTOR_ID. If you need clarification, send QUERY_REQUEST to $CONDUCTOR_ID."
+   - Instructions to send QUERY_REQUEST to the researcher ($RESEARCHER_ID) when needing information
+   - Example: "When done, send PROMPT_RESPONSE to $CONDUCTOR_ID. For research queries, send QUERY_REQUEST to $RESEARCHER_ID."
    - Do NOT instruct worker bots to select their own backend or model — backend and model are fixed at spawn time.
 
 Message routing:
-- When a bot needs clarification, forward the query to the user with type QUERY_REQUEST
+- When a worker bot sends QUERY_REQUEST to you, forward it to the researcher ($RESEARCHER_ID)
+- When the researcher sends QUERY_RESPONSE, forward it back to the original worker
+- When a bot needs clarification beyond research queries, forward to the user with type QUERY_REQUEST
 - When the user responds, relay the answer back to the bot
+
+Researcher availability:
+- Before forwarding QUERY_REQUEST, verify researcher session exists: 9p read agent/list | grep $RESEARCHER_ID
+- If researcher is missing, respawn using: ./bot-templates/Research $BACKEND $WORKDIR
+- If researcher is restarting, queue the message and retry after 5 seconds
+
+## Review Gate
+
+After all child beads are closed (step 8), spawn a review bead before completing the parent:
+
+Review bead template:
+  Title: "Review: <parent-title>"
+  Description: "What: <what-from-parent>\nWhere: <where-from-parent>\nAccept: <accept-from-parent>\nRefs: <parent-id>"
+
+Skip human review gate for parents labeled trivial, docs, or config — Conductor auto-approves on clean automated pass.
 
 ## Human Enrichment Gate (P1/P2 beads)
 

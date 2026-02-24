@@ -82,13 +82,11 @@ func (i *claudeStateInspector) IsBusy(panePID int) bool {
 type claudeCommands struct{}
 
 func (h *claudeCommands) IsSupported(command string) bool {
-	// Block all slash commands - many open interactive dialogs
-	// Users can attach to tmux session if needed: tmux attach -t <session-name>
-	return false
+	return strings.HasPrefix(command, "/")
 }
 
 func (h *claudeCommands) Execute(ctx context.Context, command string) (string, error) {
-	return "", fmt.Errorf("slash commands not supported (many open interactive dialogs). To run slash commands, attach to tmux session.")
+	return command, nil
 }
 
 // Session Management Helpers

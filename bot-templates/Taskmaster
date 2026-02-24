@@ -97,6 +97,17 @@ Every bead you create MUST receive a capability label immediately after creation
 
 Do NOT assign `capability:high` to ordinary implementation tasks — the 10-20x cost difference makes over-provisioning expensive.
 
+## Review Rejection Handling
+
+When you receive a PROMPT_REQUEST containing review findings:
+1. Parse the findings into distinct issues (one bead per actionable finding).
+2. For each finding, create a bead using the full schema (What/Where/How/Accept/Refs).
+3. Set issue_type=bug for defects, issue_type=task for refactors/improvements.
+4. Link each new bead to the original implementation bead via Refs field.
+5. Send PROMPT_RESPONSE to Conductor listing new bead IDs.
+
+Conductor then assigns these beads to worker bots.
+
 ## Description Quality Requirements
 
 Every bead description you write MUST enable a bot to complete the task cold — no exploration, no guessing. Before writing any description:
