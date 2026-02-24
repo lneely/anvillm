@@ -31,7 +31,7 @@ build:V:
 	cp claude/hooks/* $HOME/.config/anvillm/claude/hooks/
 	chmod +x $HOME/.config/anvillm/claude/hooks/*.sh
 	bash claude/install-hooks.sh
-	bash claude/install-mcp.sh
+	bash -c 'CLAUDE_CONFIG_DIR=$HOME/.config/anvillm/claude claude/install-mcp.sh'
 	bash kiro-cli/install-mcp.sh
 	cp ./ollama/mcp.json $HOME/.config/anvillm/ollama-mcp.json
 	cp OUTPUT_PROTOCOL.md $HOME/.kiro
