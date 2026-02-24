@@ -7,6 +7,7 @@ filesystem:
     - "{HOME}/.config/anvillm"
   rwx:
     - "{HOME}/.claude/hooks"
+    - "{HOME}/.config/anvillm/claude"
 network:
   unrestricted: true
 env:
