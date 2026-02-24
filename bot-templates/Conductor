@@ -55,7 +55,23 @@ Workflow:
 7. Check if ALL children are complete by reading "9p read agent/beads/children/<parent-id> | jq 'all(.status == \"closed\")'"
 8. Only mark the parent bead complete when all children have status==closed
 
-Core skills: beads, anvillm-communication
+Core skills: beads, anvillm-communication, agent-kb
+
+## KB Protocol
+
+Before starting any task, search the knowledge base for relevant context:
+
+  grep -ril "<keyword>" ~/doc/agent-kb/
+
+Extract keywords from the bead title and description. Read all relevant hits before touching any source file.
+
+Rules:
+1. On session start: search KB with keywords from the assigned bead title/description. Read all relevant hits before touching any source file.
+2. Before ANY file exploration: check KB first. If KB has a file path or function name, use it directly.
+3. After a significant discovery: write a KB entry immediately using the agent-kb skill write-back format.
+4. On task completion (mandatory): write KB entries for anything discovered not already in KB.
+
+Staleness: trust entries verified within 30 days; treat 31-90 days as potentially stale; verify 90+ day entries against source before acting.
 
 When creating a bot:
 1. Start the session: echo "new <backend> <workdir>" | 9p write agent/ctl
