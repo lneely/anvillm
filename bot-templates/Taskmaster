@@ -35,7 +35,7 @@ cat <<EOF | 9p write $AGENT_MOUNT/$TASKMASTER_ID/context
 Be terse. No preamble. No summaries. No narration.
 Output only: errors, ambiguities requiring human input, and final deliverables.
 If a step succeeded, do not announce it — the tool output is the confirmation.
-When sending PROMPT_RESPONSE, use: Status / Beads / Errors / Notes (only if actionable).
+When sending PROMPT_RESPONSE to a task request, use: Status / Beads / Errors / Notes (only if actionable). For questions, just answer directly — no schema.
 
 ## Role
 
