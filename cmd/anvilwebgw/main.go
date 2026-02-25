@@ -682,18 +682,18 @@ func updateSessionFile(w http.ResponseWriter, r *http.Request, id, file string) 
 // --- Message types ---
 
 type Message struct {
-	ID      string `json:"id"`
-	From    string `json:"from"`
-	To      string `json:"to"`
-	Type    string `json:"type"`
-	Subject string `json:"subject"`
-	Body    string `json:"body"`
+	ID        string `json:"id"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Type      string `json:"type"`
+	Subject   string `json:"subject"`
+	Body      string `json:"body"`
+	Timestamp int64  `json:"timestamp"`
 }
 
 type InboxMessage struct {
 	Message
-	Filename  string `json:"filename"`
-	Timestamp int64  `json:"timestamp"`
+	Filename string `json:"filename"`
 }
 
 // --- Inbox handlers ---
@@ -896,18 +896,9 @@ func readMailbox(fs *client.Fsys, path string) []InboxMessage {
 				continue
 			}
 
-			var ts int64
-			// Filename format: id-timestamp.json (id may contain dashes)
-			// Extract timestamp from the last dash-separated segment
-			base := strings.TrimSuffix(d.Name, ".json")
-			if idx := strings.LastIndex(base, "-"); idx != -1 {
-				fmt.Sscanf(base[idx+1:], "%d", &ts)
-			}
-
 			messages = append(messages, InboxMessage{
-				Message:   msg,
-				Filename:  d.Name,
-				Timestamp: ts,
+				Message:  msg,
+				Filename: d.Name,
 			})
 		}
 	}
