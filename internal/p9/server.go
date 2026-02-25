@@ -79,6 +79,7 @@ const (
 	qidBeadsCtl                  // beads/ctl
 	qidBeadsList                 // beads/list
 	qidBeadsReady                // beads/ready
+	qidTools                     // tools directory
 	qidSessionBase   = 1000
 	qidPeersBase     = 0x10000000 // peers/{id}/file
 	qidInboxBase     = 0x20000000 // session/{id}/inbox
@@ -86,6 +87,7 @@ const (
 	qidCompletedBase = 0x40000000 // session/{id}/completed
 	qidMessageBase   = 0x50000000 // message files
 	qidBeadsBase     = 0x60000000 // beads/{id}/file
+	qidToolsBase     = 0x70000000 // tools/{provider}/{tool}
 )
 
 // File indices within a session directory
@@ -116,6 +118,7 @@ type Server struct {
 	socketPath    string
 	events        *eventbus.Bus
 	beads         *BeadsFS
+	tools         *ToolsFS
 	OnAliasChange func(backend.Session) // Called when session alias changes
 	mu            sync.RWMutex
 }
@@ -166,15 +169,92 @@ func NewServer(mgr *session.Manager, beadsStore bd.Storage) (*Server, error) {
 		beadsFS = NewBeadsFS(beadsStore, context.Background())
 	}
 
+	// Load tools from anvilmcp
+	tools := loadMCPTools()
+	toolsFS := NewToolsFS(tools)
+
 	s := &Server{
 		mgr:        mgr,
 		listener:   listener,
 		socketPath: sockPath,
 		events:     eventbus.New(),
 		beads:      beadsFS,
+		tools:      toolsFS,
 	}
 	go s.acceptLoop()
 	return s, nil
+}
+
+func loadMCPTools() []Tool {
+	return []Tool{
+		{
+			Name:        "read_inbox",
+			Description: "Read messages from agent's inbox",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"agent_id": {Type: "string", Description: "Agent session ID (or 'user')"},
+				},
+				Required: []string{"agent_id"},
+			},
+		},
+		{
+			Name:        "send_message",
+			Description: "Send message to another agent or user",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"from":    {Type: "string", Description: "Sender agent ID (or 'user')"},
+					"to":      {Type: "string", Description: "Recipient agent ID (or 'user')"},
+					"type":    {Type: "string", Description: "Message type"},
+					"subject": {Type: "string", Description: "Message subject"},
+					"body":    {Type: "string", Description: "Message body"},
+				},
+				Required: []string{"from", "to", "type", "subject", "body"},
+			},
+		},
+		{
+			Name:        "list_sessions",
+			Description: "List all active sessions",
+			InputSchema: InputSchema{
+				Type:       "object",
+				Properties: map[string]Property{},
+			},
+		},
+		{
+			Name:        "set_state",
+			Description: "Set agent state (idle, running, stopped, etc.)",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"agent_id": {Type: "string", Description: "Agent session ID"},
+					"state":    {Type: "string", Description: "State value", Enum: []string{"idle", "running", "stopped", "starting", "error", "exited"}},
+				},
+				Required: []string{"agent_id", "state"},
+			},
+		},
+		{
+			Name:        "list_skills",
+			Description: "List all available skills from $ANVILLM_SKILLS_PATH",
+			InputSchema: InputSchema{
+				Type:       "object",
+				Properties: map[string]Property{},
+			},
+		},
+		{
+			Name:        "execute_code",
+			Description: "Execute bash code as a subprocess with timeout",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"code":     {Type: "string", Description: "Bash code to execute"},
+					"language": {Type: "string", Description: "Programming language (bash)", Enum: []string{"bash"}},
+					"timeout":  {Type: "integer", Description: "Timeout in seconds (default: 30)"},
+				},
+				Required: []string{"code", "language"},
+			},
+		},
+	}
 }
 
 // SocketPath returns the path to the Unix socket
@@ -316,6 +396,9 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			case "beads":
 				qid = plan9.Qid{Type: QTDir, Path: qidBeads}
 				newPath = "/beads"
+			case "tools":
+				qid = plan9.Qid{Type: QTDir, Path: qidTools}
+				newPath = "/tools"
 			default:
 				// Check if it's a session ID
 				if sess := s.mgr.Get(name); sess != nil {
@@ -363,6 +446,18 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 				qid = plan9.Qid{Type: QTDir, Path: qidBeadsBase + hashID(name)}
 				newPath = "/beads/" + name
 			}
+		} else if path == "/tools" {
+			// Inside tools directory
+			if name == "anvilmcp" {
+				qid = plan9.Qid{Type: QTDir, Path: qidToolsBase + 1}
+				newPath = "/tools/anvilmcp"
+			} else {
+				return errFcall(fc, "not found")
+			}
+		} else if path == "/tools/anvilmcp" {
+			// Inside tools/anvilmcp - tool files
+			qid = plan9.Qid{Type: QTFile, Path: qidToolsBase + hashID(name)}
+			newPath = "/tools/anvilmcp/" + name
 		} else if strings.HasPrefix(path, "/beads/") && strings.Count(path, "/") == 2 {
 			// Inside a bead directory - property files
 			beadID := strings.TrimPrefix(path, "/beads/")
@@ -915,11 +1010,30 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 			Qid:  plan9.Qid{Type: QTDir, Path: qidBeads},
 			Mode: plan9.DMDIR | 0555, Name: "beads", Uid: "q", Gid: "q", Muid: "q",
 		})
+		dirs = append(dirs, plan9.Dir{
+			Qid:  plan9.Qid{Type: QTDir, Path: qidTools},
+			Mode: plan9.DMDIR | 0555, Name: "tools", Uid: "q", Gid: "q", Muid: "q",
+		})
 		for _, id := range s.mgr.List() {
 			dirs = append(dirs, plan9.Dir{
 				Qid:  plan9.Qid{Type: QTDir, Path: qidSessionBase + hashID(id)},
 				Mode: plan9.DMDIR | 0555, Name: id, Uid: "q", Gid: "q", Muid: "q",
 			})
+		}
+	} else if path == "/tools" {
+		dirs = append(dirs, plan9.Dir{
+			Qid:  plan9.Qid{Type: QTDir, Path: qidToolsBase},
+			Mode: plan9.DMDIR | 0555, Name: "anvilmcp", Uid: "q", Gid: "q", Muid: "q",
+		})
+	} else if path == "/tools/anvilmcp" {
+		if s.tools != nil {
+			toolDirs, _ := s.tools.List("agent/tools/anvilmcp")
+			for _, td := range toolDirs {
+				dirs = append(dirs, plan9.Dir{
+					Qid:  plan9.Qid{Type: QTFile, Path: qidToolsBase + hashID(td.Name)},
+					Mode: 0444, Name: td.Name, Uid: "q", Gid: "q", Muid: "q",
+				})
+			}
 		}
 	} else if path == "/beads" {
 		// Beads directory
@@ -1082,6 +1196,18 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 }
 
 func (s *Server) readFile(path string) string {
+	// Handle tools paths
+	if strings.HasPrefix(path, "/tools/") {
+		if s.tools != nil {
+			data, err := s.tools.Read(strings.TrimPrefix(path, "/"))
+			if err != nil {
+				return ""
+			}
+			return string(data)
+		}
+		return ""
+	}
+
 	// Handle beads paths
 	if strings.HasPrefix(path, "/beads/") {
 		if s.beads != nil {

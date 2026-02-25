@@ -22,6 +22,9 @@ build:V:
 	chmod 0755 $INSTALL_PATH/Workflows/*
 	mkdir -p $HOME/.config/anvillm
 	cp -rf cfg/* $HOME/.config/anvillm/
+	mkdir -p $HOME/.config/anvillm/mcptools
+	cp cmd/anvilmcp/*.sh $HOME/.config/anvillm/mcptools/
+	chmod 0755 $HOME/.config/anvillm/mcptools/*.sh
 	mkdir -p $HOME/.kiro/agents/kiro-cli
 	mkdir -p $HOME/.config/anvillm/claude/agents
 	mkdir -p $HOME/.config/anvillm/claude/hooks

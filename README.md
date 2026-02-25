@@ -342,9 +342,16 @@ Conductor analyzes dependencies, spawns specialized bots, and delegates work in 
 ./kiro-cli/install-mcp.sh  # Adds to ~/.kiro/settings/cli.json
 ```
 
-**Tools:** `read_inbox`, `send_message`, `list_sessions`, `set_state`
+**Tool:** `execute_code` - Execute bash scripts in isolated subprocess
 
-Enables LLM clients to discover agents and communicate via the mailbox system.
+Enables code execution pattern for 80-99% token reduction:
+- Progressive tool discovery via 9P filesystem
+- Data processing in subprocess (not in context)
+- Loops, conditionals, and complex workflows
+
+See [Code Execution User Guide](docs/code-execution-user-guide.md) for details.
+
+**Legacy tools removed**: Direct tool calls (read_inbox, send_message, etc.) replaced by bash scripts accessible via `9p read agent/tools/anvilmcp/*.sh`
 
 ## Troubleshooting
 
