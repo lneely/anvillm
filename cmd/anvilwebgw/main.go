@@ -321,12 +321,17 @@ func listSessions(w http.ResponseWriter, r *http.Request) {
 		if len(fields) < 5 {
 			continue
 		}
+		// list format: id backend state alias cwd
+		alias := fields[3]
+		if alias == "-" {
+			alias = ""
+		}
 		sess := Session{
-			ID:    fields[0],
-			Alias: fields[1],
-			State: fields[2],
-			PID:   fields[3],
-			CWD:   fields[4],
+			ID:      fields[0],
+			Backend: fields[1],
+			State:   fields[2],
+			Alias:   alias,
+			CWD:     fields[4],
 		}
 
 		if backendFid, err := fs.Open(filepath.Join(sess.ID, "backend"), plan9.OREAD); err == nil {
@@ -892,9 +897,11 @@ func readMailbox(fs *client.Fsys, path string) []InboxMessage {
 			}
 
 			var ts int64
-			parts := strings.Split(strings.TrimSuffix(d.Name, ".json"), "-")
-			if len(parts) == 2 {
-				fmt.Sscanf(parts[1], "%d", &ts)
+			// Filename format: id-timestamp.json (id may contain dashes)
+			// Extract timestamp from the last dash-separated segment
+			base := strings.TrimSuffix(d.Name, ".json")
+			if idx := strings.LastIndex(base, "-"); idx != -1 {
+				fmt.Sscanf(base[idx+1:], "%d", &ts)
 			}
 
 			messages = append(messages, InboxMessage{
