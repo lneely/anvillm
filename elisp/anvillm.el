@@ -114,6 +114,14 @@ The process is killed after the first read to prevent blocking on streaming file
 
 ;;; Session Management
 
+(defun anvillm--abbreviate-path (path)
+  "Abbreviate PATH, replacing home directory with ~."
+  (abbreviate-file-name path))
+
+(defun anvillm--expand-path (path)
+  "Expand PATH, replacing ~ with home directory."
+  (expand-file-name path))
+
 (defun anvillm--parse-session-line (line)
   "Parse a session LINE from the 'list' file.
 Format: id backend state alias cwd (whitespace-separated; often tabs)."
@@ -132,7 +140,7 @@ Format: id backend state alias cwd (whitespace-separated; often tabs)."
                 backend
                 (propertize state 'face (anvillm--state-face state))
                 ""  ; PID no longer available in list output
-                cwd)))))
+                (anvillm--abbreviate-path cwd))))))
 
 (defun anvillm--state-face (state)
   "Return face for session STATE."
@@ -176,12 +184,13 @@ Format: id backend state alias cwd (whitespace-separated; often tabs)."
   (interactive)
   (let ((backend (completing-read "Select backend: " '("claude" "kiro-cli") nil t)))
     (when backend
-      (let ((directory (read-directory-name "Working directory: " default-directory)))
+      (let* ((directory (read-directory-name "Working directory: " default-directory))
+             (expanded-dir (anvillm--expand-path directory)))
         (condition-case err
             (progn
               (anvillm--9p-write (concat anvillm-agent-path "/ctl")
-                                 (format "new %s %s" backend directory))
-              (message "Created %s session in %s" backend directory)
+                                 (format "new %s %s" backend expanded-dir))
+              (message "Created %s session in %s" backend (anvillm--abbreviate-path expanded-dir))
               (anvillm--refresh-sessions))
           (error
            (message "Failed to create session: %s" (error-message-string err))))))))
