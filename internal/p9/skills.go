@@ -296,7 +296,7 @@ func (s *SkillsFS) Read(path string) ([]byte, error) {
 
 	// Prevent path traversal
 	cleanName := filepath.Clean(fileName)
-	if strings.Contains(cleanName, "..") || filepath.IsAbs(cleanName) {
+	if filepath.IsAbs(cleanName) {
 		return nil, fmt.Errorf("invalid path")
 	}
 

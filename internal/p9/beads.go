@@ -86,6 +86,10 @@ func (b *BeadsFS) Close() error {
 func (b *BeadsFS) Read(path string) ([]byte, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("invalid path: %s", path)
+	}
+	
 	switch {
 	case len(parts) == 1 && parts[0] == "list":
 		return b.readList()
@@ -130,6 +134,10 @@ func (b *BeadsFS) Read(path string) ([]byte, error) {
 func (b *BeadsFS) Write(path string, data []byte, sessionID string) error {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	
+	if len(parts) == 0 {
+		return fmt.Errorf("invalid path: %s", path)
+	}
+	
 	if len(parts) == 1 && parts[0] == "query" {
 		return b.executeQuery(data)
 	}
@@ -160,7 +168,10 @@ func (b *BeadsFS) readList() ([]byte, error) {
 	result := make([]BeadWithBlockers, len(issues))
 	for i, issue := range issues {
 		result[i].Issue = issue
-		if blockers, err := b.getBlockers(issue.ID); err == nil && len(blockers) > 0 {
+		blockers, err := b.getBlockers(issue.ID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to get blockers for %s: %v\n", issue.ID, err)
+		} else if len(blockers) > 0 {
 			result[i].Blockers = blockers
 		}
 		result[i].CapabilityLevel = extractCapabilityLevel(issue.Labels)
@@ -588,7 +599,7 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 			return err
 		}
 		for _, lbl := range existing {
-			if strings.HasPrefix(lbl, capabilityPrefix) {
+			if _, ok := strings.CutPrefix(lbl, capabilityPrefix); ok {
 				_ = b.store.RemoveLabel(b.ctx, beadID, lbl, actor)
 			}
 		}
@@ -937,18 +948,21 @@ func (b *BeadsFS) createSubtask(parentID, title, description, actor string) (str
 		return "", fmt.Errorf("parent %s not found", parentID)
 	}
 
-	// Find next child number by scanning existing IDs
+	// Find next child number by scanning existing IDs with parent filter
+	filter := bd.IssueFilter{ParentID: &parentID}
+	children, err := b.store.SearchIssues(b.ctx, "", filter)
+	if err != nil {
+		return "", fmt.Errorf("failed to search children: %w", err)
+	}
+
 	nextChild := 1
-	issues, err := b.store.SearchIssues(b.ctx, "", bd.IssueFilter{})
-	if err == nil {
-		prefix := parentID + "."
-		for _, issue := range issues {
-			if strings.HasPrefix(issue.ID, prefix) {
-				suffix := strings.TrimPrefix(issue.ID, prefix)
-				if !strings.Contains(suffix, ".") {
-					if n, err := strconv.Atoi(suffix); err == nil && n >= nextChild {
-						nextChild = n + 1
-					}
+	prefix := parentID + "."
+	for _, issue := range children {
+		if strings.HasPrefix(issue.ID, prefix) {
+			suffix := strings.TrimPrefix(issue.ID, prefix)
+			if !strings.Contains(suffix, ".") {
+				if n, err := strconv.Atoi(suffix); err == nil && n >= nextChild {
+					nextChild = n + 1
 				}
 			}
 		}
@@ -973,11 +987,13 @@ func (b *BeadsFS) createSubtask(parentID, title, description, actor string) (str
 
 // extractCapabilityLevel scans a label slice and returns the level portion
 // (low, standard, or high) of the first "capability:<level>" label found.
-// Returns "" if no capability label is present.
+// Returns "" if no capability label is present or level is invalid.
 func extractCapabilityLevel(labels []string) string {
 	for _, lbl := range labels {
-		if strings.HasPrefix(lbl, capabilityPrefix) {
-			return strings.TrimPrefix(lbl, capabilityPrefix)
+		if level, ok := strings.CutPrefix(lbl, capabilityPrefix); ok && level != "" {
+			if level == "low" || level == "standard" || level == "high" {
+				return level
+			}
 		}
 	}
 	return ""
@@ -1001,16 +1017,14 @@ func parseQuotedArgs(s string) []string {
 	var wasQuoted bool
 	
 	s = strings.TrimSpace(s)
-	for i := 0; i < len(s); i++ {
-		c := rune(s[i])
-		
+	for _, c := range s {
 		if quoteChar != 0 {
 			// Inside quotes
 			if c == quoteChar {
 				quoteChar = 0 // End quote
 				wasQuoted = true
 			} else {
-				current.WriteByte(s[i])
+				current.WriteRune(c)
 			}
 		} else {
 			// Outside quotes
@@ -1024,7 +1038,7 @@ func parseQuotedArgs(s string) []string {
 					wasQuoted = false
 				}
 			default:
-				current.WriteByte(s[i])
+				current.WriteRune(c)
 			}
 		}
 	}

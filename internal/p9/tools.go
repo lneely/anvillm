@@ -247,7 +247,7 @@ func (t *ToolsFS) Read(path string) ([]byte, error) {
 
 	// Prevent path traversal
 	cleanName := filepath.Clean(filename)
-	if strings.Contains(cleanName, string(filepath.Separator)) || strings.Contains(cleanName, "..") || filepath.IsAbs(cleanName) {
+	if filepath.IsAbs(cleanName) {
 		return nil, fmt.Errorf("invalid filename")
 	}
 
@@ -259,6 +259,11 @@ func (t *ToolsFS) Read(path string) ([]byte, error) {
 
 	for _, tool := range tools {
 		if tool.Name == filename {
+			// Verify path stays within toolsDir
+			relPath, err := filepath.Rel(t.toolsDir, tool.Path)
+			if err != nil || strings.HasPrefix(relPath, "..") {
+				return nil, fmt.Errorf("invalid tool path")
+			}
 			return os.ReadFile(tool.Path)
 		}
 	}

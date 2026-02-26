@@ -886,7 +886,7 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
-	// /{id}/mail - write message to outbox (generates UUID filename)
+	// /{id}/mail or /user/mail - write message to outbox
 	if len(parts) == 2 && parts[1] == "mail" {
 		sessID := parts[0]
 
@@ -906,6 +906,9 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			return errFcall(fc, err.Error())
 		}
 
+		// Set from field
+		msg.From = sessID
+
 		// Generate UUID for message
 		msg.ID = uuid.New().String()
 
@@ -919,80 +922,13 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			return errFcall(fc, fmt.Sprintf("failed to add message: %v", err))
 		}
 
-		// Transition sender to idle after sending any outbox message
-		if sess := s.mgr.Get(sessID); sess != nil {
-			if tmuxSess, ok := sess.(*tmux.Session); ok {
-				tmuxSess.TransitionTo("idle")
+		// Transition sender to idle after sending (only for non-user sessions)
+		if sessID != "user" {
+			if sess := s.mgr.Get(sessID); sess != nil {
+				if tmuxSess, ok := sess.(*tmux.Session); ok {
+					tmuxSess.TransitionTo("idle")
+				}
 			}
-		}
-
-		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
-	}
-
-	// /user/mail - write message from user to bot (generates UUID filename)
-	if len(parts) == 2 && parts[0] == "user" && parts[1] == "mail" {
-		// Parse JSON message
-		msg, err := mailbox.FromJSON(fc.Data)
-		if err != nil {
-			return errFcall(fc, fmt.Sprintf("invalid message JSON: %v", err))
-		}
-
-		// Validate message type
-		if err := mailbox.ValidateMessageType(msg.Type); err != nil {
-			return errFcall(fc, err.Error())
-		}
-
-		// Set from field to "user"
-		msg.From = "user"
-
-		// Generate UUID for message
-		msg.ID = uuid.New().String()
-
-		// Add to user's outbox
-		mailMgr := s.mgr.GetMailManager()
-		if mailMgr == nil {
-			return errFcall(fc, "mailbox not available")
-		}
-
-		if err := mailMgr.AddToOutbox("user", msg); err != nil {
-			return errFcall(fc, fmt.Sprintf("failed to add message: %v", err))
-		}
-
-		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
-	}
-
-	// /agent/{id}/mail - write message from agent (generates UUID filename)
-	if len(parts) == 2 && parts[1] == "mail" {
-		sessID := parts[0]
-		if s.mgr.Get(sessID) == nil {
-			return errFcall(fc, "session not found")
-		}
-
-		// Parse JSON message
-		msg, err := mailbox.FromJSON(fc.Data)
-		if err != nil {
-			return errFcall(fc, fmt.Sprintf("invalid message JSON: %v", err))
-		}
-
-		// Validate message type
-		if err := mailbox.ValidateMessageType(msg.Type); err != nil {
-			return errFcall(fc, err.Error())
-		}
-
-		// Set from field to session ID
-		msg.From = sessID
-
-		// Generate UUID for message
-		msg.ID = uuid.New().String()
-
-		// Add to agent's outbox
-		mailMgr := s.mgr.GetMailManager()
-		if mailMgr == nil {
-			return errFcall(fc, "mailbox not available")
-		}
-
-		if err := mailMgr.AddToOutbox(sessID, msg); err != nil {
-			return errFcall(fc, fmt.Sprintf("failed to add message: %v", err))
 		}
 
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
@@ -1022,8 +958,11 @@ func (s *Server) remove(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return errFcall(fc, "bad fid")
 	}
 	path := f.path
-	sessionID := cs.sessionID
 	cs.mu.Unlock()
+
+	cs.mu.RLock()
+	sessionID := cs.sessionID
+	cs.mu.RUnlock()
 
 	// Only support removing inbox messages (marks them as completed)
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
