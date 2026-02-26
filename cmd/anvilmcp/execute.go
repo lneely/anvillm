@@ -182,6 +182,8 @@ func executeCode(code, language string, timeout int) (string, error) {
 			{"--rox", "/bin"},
 			{"--ro", "/etc/alternatives"},
 			{"--ro", "/etc/ld.so.cache"},
+			{"--rw", "/dev/null"},
+			{"--ro", "/dev/urandom"},
 		}
 		
 		for _, sp := range systemPaths {

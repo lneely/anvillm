@@ -3,6 +3,12 @@
 # description: Send message to agent or user: FROM TO TYPE SUBJECT BODY
 set -euo pipefail
 
+# Verify running under landrun (test filesystem restriction)
+if cat /etc/passwd >/dev/null 2>&1; then
+  echo "Error: This script must be run via execute_code tool" >&2
+  exit 1
+fi
+
 from="${1:?Usage: send_message <from> <to> <type> <subject> <body>}"
 to="${2:?Usage: send_message <from> <to> <type> <subject> <body>}"
 type="${3:?Usage: send_message <from> <to> <type> <subject> <body>}"

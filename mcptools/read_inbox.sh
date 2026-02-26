@@ -3,6 +3,12 @@
 # description: Read messages from agent inbox: AGENT_ID
 set -euo pipefail
 
+# Verify running under landrun (test filesystem restriction)
+if cat /etc/passwd >/dev/null 2>&1; then
+  echo "Error: This script must be run via execute_code tool" >&2
+  exit 1
+fi
+
 agent_id="${1:?Usage: read_inbox <agent_id>}"
 inbox_path="agent/${agent_id}/inbox"
 
