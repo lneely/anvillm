@@ -126,8 +126,12 @@ func (s *SkillsFS) listIntents() ([]string, error) {
 
 	intentSet := make(map[string]bool)
 	for _, skill := range skills {
-		for _, intent := range skill.Intents {
-			intentSet[intent] = true
+		if len(skill.Intents) == 0 {
+			intentSet["uncategorized"] = true
+		} else {
+			for _, intent := range skill.Intents {
+				intentSet[intent] = true
+			}
 		}
 	}
 
@@ -147,6 +151,10 @@ func (s *SkillsFS) listSkillsInIntent(intent string) ([]*SkillMeta, error) {
 
 	var result []*SkillMeta
 	for _, skill := range skills {
+		if intent == "uncategorized" && len(skill.Intents) == 0 {
+			result = append(result, skill)
+			continue
+		}
 		for _, i := range skill.Intents {
 			if i == intent {
 				result = append(result, skill)
