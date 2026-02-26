@@ -10,12 +10,18 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
 var dangerousPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`rm\s+-[a-z]*r[a-z]*f[a-z]*\s*/(home|var|usr|etc|boot|root|bin|sbin|lib|opt|srv)?`), // rm -rf on sensitive paths
-	regexp.MustCompile(`rm\s+-[a-z]*f[a-z]*r[a-z]*\s*/(home|var|usr|etc|boot|root|bin|sbin|lib|opt|srv)?`), // rm -fr on sensitive paths
+	regexp.MustCompile(`rm\s+(-[a-z]*r[a-z]*\s+)*-[a-z]*f[a-z]*\s*/(home|var|usr|etc|boot|root|bin|sbin|lib|opt|srv)?`), // rm -rf, rm -r -f on sensitive paths
+	regexp.MustCompile(`rm\s+(-[a-z]*f[a-z]*\s+)*-[a-z]*r[a-z]*\s*/(home|var|usr|etc|boot|root|bin|sbin|lib|opt|srv)?`), // rm -fr, rm -f -r on sensitive paths
+	regexp.MustCompile(`rm\s+.*--recursive.*--force`),                                                                    // rm --recursive --force
+	regexp.MustCompile(`rm\s+.*--force.*--recursive`),                                                                    // rm --force --recursive
+	regexp.MustCompile(`rm\s+(-[a-z]*r[a-z]*\s+)*-[a-z]*f[a-z]*\s+\.\.?(/|$)`),                                           // rm -rf ./ or rm -rf ../
+	regexp.MustCompile(`rm\s+(-[a-z]*r[a-z]*\s+)*-[a-z]*f[a-z]*\s+~`),                                                    // rm -rf ~ (home dir)
+	regexp.MustCompile(`rm\s+(-[a-z]*r[a-z]*\s+)*-[a-z]*f[a-z]*\s+\*`),                                                   // rm -rf * (glob expansion)
 	regexp.MustCompile(`:\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&`), // fork bomb
 	regexp.MustCompile(`\bmkfs\b`),                         // filesystem format
 	regexp.MustCompile(`\bdd\b.*\bif=/dev/`),               // dd from device
@@ -30,13 +36,68 @@ var dangerousPatterns = []*regexp.Regexp{
 
 var whitespacePattern = regexp.MustCompile(`\s+`)
 
+// Rate limiting for validation failures
+var (
+	rateLimitMu       sync.Mutex
+	validationFailures int
+	lastFailure       time.Time
+	blockedUntil      time.Time
+)
+
+const (
+	maxFailures     = 5
+	blockDuration   = 30 * time.Second
+	failureWindow   = 60 * time.Second
+)
+
+func checkRateLimit() error {
+	rateLimitMu.Lock()
+	defer rateLimitMu.Unlock()
+
+	now := time.Now()
+	if now.Before(blockedUntil) {
+		remaining := blockedUntil.Sub(now).Round(time.Second)
+		return fmt.Errorf("rate limited: too many validation failures, blocked for %v", remaining)
+	}
+	return nil
+}
+
+func recordValidationFailure() {
+	rateLimitMu.Lock()
+	defer rateLimitMu.Unlock()
+
+	now := time.Now()
+	// Reset counter if outside failure window
+	if now.Sub(lastFailure) > failureWindow {
+		validationFailures = 0
+	}
+	
+	validationFailures++
+	lastFailure = now
+	
+	if validationFailures >= maxFailures {
+		blockedUntil = now.Add(blockDuration)
+		validationFailures = 0
+		logSecurityEvent(SecurityEvent{
+			Timestamp: now,
+			EventType: "rate_limit_triggered",
+			Details:   fmt.Sprintf("blocked for %v after %d failures", blockDuration, maxFailures),
+		})
+	}
+}
+
 func validateCode(code string) error {
+	if err := checkRateLimit(); err != nil {
+		return err
+	}
+
 	// Normalize: collapse whitespace, lowercase for pattern matching
 	normalized := strings.ToLower(code)
 	normalized = whitespacePattern.ReplaceAllString(normalized, " ")
 
 	for _, pattern := range dangerousPatterns {
 		if pattern.MatchString(normalized) {
+			recordValidationFailure()
 			logSecurityEvent(SecurityEvent{
 				Timestamp: time.Now(),
 				EventType: "validation_failure",
@@ -131,12 +192,18 @@ func executeCode(code, language string, timeout int) (string, error) {
 
 	// Limit output size (10MB)
 	var outputBuf bytes.Buffer
-	limitedWriter := &limitedWriter{w: &outputBuf, limit: 10 * 1024 * 1024}
-	cmd.Stdout = limitedWriter
-	cmd.Stderr = limitedWriter
+	lw := &limitedWriter{w: &outputBuf, limit: 10 * 1024 * 1024}
+	cmd.Stdout = lw
+	cmd.Stderr = lw
 
 	err = cmd.Run()
 	output := outputBuf.Bytes()
+	
+	// Append truncation notice if output was truncated
+	if lw.truncated {
+		output = append(output, []byte("\n[output truncated at 10MB]")...)
+	}
+	
 	duration := time.Since(start)
 	
 	execLog := ExecutionLog{
@@ -170,20 +237,23 @@ func executeCode(code, language string, timeout int) (string, error) {
 }
 
 type limitedWriter struct {
-	w       io.Writer
-	written int
-	limit   int
+	w         io.Writer
+	written   int
+	limit     int
+	truncated bool
 }
 
 func (lw *limitedWriter) Write(p []byte) (n int, err error) {
 	if lw.written >= lw.limit {
-		return len(p), nil // Discard silently, report all bytes consumed
+		lw.truncated = true
+		return len(p), nil // Discard, report all bytes consumed
 	}
 
 	remaining := lw.limit - lw.written
 	toWrite := p
 	if len(p) > remaining {
 		toWrite = p[:remaining]
+		lw.truncated = true
 	}
 
 	written, err := lw.w.Write(toWrite)

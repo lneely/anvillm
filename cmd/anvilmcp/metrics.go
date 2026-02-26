@@ -52,6 +52,7 @@ func logExecution(log ExecutionLog) error {
 	}
 	
 	logFile := filepath.Join(logDir, "executions.jsonl")
+	// 0644: world-readable, contains only hashes and metadata (no sensitive data)
 	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
@@ -79,6 +80,7 @@ func logTokens(log TokenLog) error {
 	}
 	
 	logFile := filepath.Join(logDir, "tokens.jsonl")
+	// 0644: world-readable, contains only aggregate metrics (no sensitive data)
 	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
@@ -106,6 +108,7 @@ func logSecurityEvent(event SecurityEvent) error {
 	}
 	
 	logFile := filepath.Join(logDir, "security.jsonl")
+	// 0600: owner-only, contains security events (rate limits, validation failures, timeouts)
 	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return err

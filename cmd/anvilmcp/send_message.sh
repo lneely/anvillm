@@ -1,12 +1,13 @@
 #!/bin/bash
+set -euo pipefail
 # send_message - Send message to another agent or user
 # Usage: send_message <from> <to> <type> <subject> <body>
 
-from="$1"
-to="$2"
-type="$3"
-subject="$4"
-body="$5"
+from="${1:?Usage: send_message <from> <to> <type> <subject> <body>}"
+to="${2:?Usage: send_message <from> <to> <type> <subject> <body>}"
+type="${3:?Usage: send_message <from> <to> <type> <subject> <body>}"
+subject="${4:?Usage: send_message <from> <to> <type> <subject> <body>}"
+body="${5:?Usage: send_message <from> <to> <type> <subject> <body>}"
 
 json=$(jq -n \
   --arg from "$from" \

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # list_sessions - List all active agent sessions
 # Usage: list_sessions
 # Output: JSON array of sessions

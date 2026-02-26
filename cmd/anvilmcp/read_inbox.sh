@@ -1,11 +1,12 @@
 #!/bin/bash
+set -euo pipefail
 # read_inbox - Read messages from agent inbox
 # Usage: read_inbox <agent_id>
 
-agent_id="$1"
+agent_id="${1:?Usage: read_inbox <agent_id>}"
 inbox_path="agent/${agent_id}/inbox"
 
-files=$(9p ls "$inbox_path" | grep '\.json$')
+files=$(9p ls "$inbox_path" | grep '\.json$' || true)
 if [ -z "$files" ]; then
   echo "No messages"
   exit 0

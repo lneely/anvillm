@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestValidateCode(t *testing.T) {
@@ -44,6 +45,13 @@ func TestValidateCode(t *testing.T) {
 		{"safe 9p", "9p read agent/inbox/user", false},
 		{"safe jq", "echo '{}' | jq .field", false},
 		{"safe rm", "rm file.txt", false},
+		{"rm -rf ./", "rm -rf ./", true},
+		{"rm -rf ../", "rm -rf ../", true},
+		{"rm -rf .", "rm -rf .", true},
+		{"rm -r -f /", "rm -r -f /", true},
+		{"rm -f -r /", "rm -f -r /", true},
+		{"rm --recursive --force /", "rm --recursive --force /", true},
+		{"rm --force --recursive /", "rm --force --recursive /", true},
 	}
 
 	for _, tt := range tests {
@@ -70,32 +78,32 @@ func TestDangerousPatternsCompile(t *testing.T) {
 
 func TestLimitedWriter(t *testing.T) {
 	tests := []struct {
-		name      string
-		limit     int
-		writes    []string
-		wantTotal int
-		wantErr   bool
+		name          string
+		limit         int
+		writes        []string
+		wantTotal     int
+		wantTruncated bool
 	}{
 		{
-			name:      "under limit",
-			limit:     100,
-			writes:    []string{"hello", " ", "world"},
-			wantTotal: 11,
-			wantErr:   false,
+			name:          "under limit",
+			limit:         100,
+			writes:        []string{"hello", " ", "world"},
+			wantTotal:     11,
+			wantTruncated: false,
 		},
 		{
-			name:      "at limit",
-			limit:     5,
-			writes:    []string{"hello"},
-			wantTotal: 5,
-			wantErr:   false,
+			name:          "at limit",
+			limit:         5,
+			writes:        []string{"hello"},
+			wantTotal:     5,
+			wantTruncated: false,
 		},
 		{
-			name:      "over limit",
-			limit:     5,
-			writes:    []string{"hello", "world"},
-			wantTotal: 5,
-			wantErr:   true,
+			name:          "over limit",
+			limit:         5,
+			writes:        []string{"hello", "world"},
+			wantTotal:     5,
+			wantTruncated: true,
 		},
 	}
 
@@ -104,21 +112,77 @@ func TestLimitedWriter(t *testing.T) {
 			var buf strings.Builder
 			lw := &limitedWriter{w: &buf, limit: tt.limit}
 
-			var lastErr error
 			for _, write := range tt.writes {
-				_, err := lw.Write([]byte(write))
-				if err != nil {
-					lastErr = err
-					break
-				}
+				lw.Write([]byte(write))
 			}
 
-			if (lastErr != nil) != tt.wantErr {
-				t.Errorf("limitedWriter error = %v, wantErr %v", lastErr, tt.wantErr)
+			if lw.truncated != tt.wantTruncated {
+				t.Errorf("limitedWriter truncated = %v, want %v", lw.truncated, tt.wantTruncated)
 			}
 			if buf.Len() != tt.wantTotal {
 				t.Errorf("limitedWriter wrote %d bytes, want %d", buf.Len(), tt.wantTotal)
 			}
 		})
+	}
+}
+
+func resetRateLimitState() {
+	rateLimitMu.Lock()
+	defer rateLimitMu.Unlock()
+	validationFailures = 0
+	lastFailure = time.Time{}
+	blockedUntil = time.Time{}
+}
+
+func TestRateLimitCounterResetAfterWindow(t *testing.T) {
+	resetRateLimitState()
+	defer resetRateLimitState()
+
+	// Record failures but not enough to trigger block
+	for i := 0; i < maxFailures-1; i++ {
+		recordValidationFailure()
+	}
+
+	// Simulate time passing beyond failureWindow
+	rateLimitMu.Lock()
+	lastFailure = time.Now().Add(-failureWindow - time.Second)
+	rateLimitMu.Unlock()
+
+	// Next failure should reset counter, not trigger block
+	recordValidationFailure()
+
+	if err := checkRateLimit(); err != nil {
+		t.Errorf("expected no rate limit after window reset, got: %v", err)
+	}
+}
+
+func TestRateLimitBlocksAfterMaxFailures(t *testing.T) {
+	resetRateLimitState()
+	defer resetRateLimitState()
+
+	for i := 0; i < maxFailures; i++ {
+		recordValidationFailure()
+	}
+
+	if err := checkRateLimit(); err == nil {
+		t.Error("expected rate limit error after maxFailures")
+	}
+}
+
+func TestRateLimitUnblocksAfterDuration(t *testing.T) {
+	resetRateLimitState()
+	defer resetRateLimitState()
+
+	for i := 0; i < maxFailures; i++ {
+		recordValidationFailure()
+	}
+
+	// Simulate block duration passing
+	rateLimitMu.Lock()
+	blockedUntil = time.Now().Add(-time.Second)
+	rateLimitMu.Unlock()
+
+	if err := checkRateLimit(); err != nil {
+		t.Errorf("expected no rate limit after block duration, got: %v", err)
 	}
 }

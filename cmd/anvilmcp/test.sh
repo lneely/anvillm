@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # test.sh - Test all bash wrappers
 
 echo "Testing read_inbox..."
