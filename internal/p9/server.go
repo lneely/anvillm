@@ -1266,7 +1266,7 @@ func (s *Server) readFile(path string) string {
 	// Handle skills paths
 	if strings.HasPrefix(path, "/skills/") {
 		if s.skills != nil {
-			data, err := s.skills.Read(strings.TrimPrefix(path, "/"))
+			data, err := s.skills.Read("agent/" + strings.TrimPrefix(path, "/"))
 			if err != nil {
 				return ""
 			}
