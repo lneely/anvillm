@@ -450,17 +450,33 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 				newPath = "/beads/" + name
 			}
 		} else if path == "/tools" {
-			// Inside tools directory
-			if name == "anvilmcp" {
-				qid = plan9.Qid{Type: QTDir, Path: qidToolsBase + 1}
-				newPath = "/tools/anvilmcp"
+			// Inside tools directory - list capabilities + help
+			if s.tools != nil {
+				caps, _ := s.tools.listCapabilities()
+				// help file
+				qid = plan9.Qid{Type: QTFile, Path: qidToolsBase}
+				if name == "help" {
+					newPath = "/tools/help"
+				} else {
+					// Check if it's a capability
+					for _, cap := range caps {
+						if cap == name {
+							qid = plan9.Qid{Type: QTDir, Path: qidToolsBase + hashID(name)}
+							newPath = "/tools/" + name
+							break
+						}
+					}
+					if newPath == "" {
+						return errFcall(fc, "not found")
+					}
+				}
 			} else {
 				return errFcall(fc, "not found")
 			}
-		} else if path == "/tools/anvilmcp" {
-			// Inside tools/anvilmcp - tool files
-			qid = plan9.Qid{Type: QTFile, Path: qidToolsBase + hashID(name)}
-			newPath = "/tools/anvilmcp/" + name
+		} else if strings.HasPrefix(path, "/tools/") && strings.Count(path, "/") == 2 {
+			// Inside tools/<capability> - tool files
+			qid = plan9.Qid{Type: QTFile, Path: qidToolsBase + hashID(path+name)}
+			newPath = path + "/" + name
 		} else if strings.HasPrefix(path, "/beads/") && strings.Count(path, "/") == 2 {
 			// Inside a bead directory - property files
 			beadID := strings.TrimPrefix(path, "/beads/")
@@ -1024,17 +1040,30 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 			})
 		}
 	} else if path == "/tools" {
-		dirs = append(dirs, plan9.Dir{
-			Qid:  plan9.Qid{Type: QTDir, Path: qidToolsBase},
-			Mode: plan9.DMDIR | 0555, Name: "anvilmcp", Uid: "q", Gid: "q", Muid: "q",
-		})
-	} else if path == "/tools/anvilmcp" {
 		if s.tools != nil {
-			toolDirs, _ := s.tools.List("agent/tools/anvilmcp")
-			for _, td := range toolDirs {
+			// Add help file
+			dirs = append(dirs, plan9.Dir{
+				Qid:  plan9.Qid{Type: QTFile, Path: qidToolsBase},
+				Mode: 0444, Name: "help", Uid: "q", Gid: "q", Muid: "q",
+			})
+			// Add capability directories
+			caps, _ := s.tools.listCapabilities()
+			for _, cap := range caps {
 				dirs = append(dirs, plan9.Dir{
-					Qid:  plan9.Qid{Type: QTFile, Path: qidToolsBase + hashID(td.Name)},
-					Mode: 0444, Name: td.Name, Uid: "q", Gid: "q", Muid: "q",
+					Qid:  plan9.Qid{Type: QTDir, Path: qidToolsBase + hashID(cap)},
+					Mode: plan9.DMDIR | 0555, Name: cap, Uid: "q", Gid: "q", Muid: "q",
+				})
+			}
+		}
+	} else if strings.HasPrefix(path, "/tools/") && strings.Count(path, "/") == 2 {
+		// Inside tools/<capability> - list tools
+		capability := strings.TrimPrefix(path, "/tools/")
+		if s.tools != nil {
+			tools, _ := s.tools.listToolsInCapability(capability)
+			for _, tool := range tools {
+				dirs = append(dirs, plan9.Dir{
+					Qid:  plan9.Qid{Type: QTFile, Path: qidToolsBase + hashID(path+tool.Name)},
+					Mode: 0444, Name: tool.Name, Uid: "q", Gid: "q", Muid: "q",
 				})
 			}
 		}
