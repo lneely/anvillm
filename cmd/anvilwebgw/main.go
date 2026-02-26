@@ -319,34 +319,25 @@ func listSessions(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) < 5 {
+		if len(fields) < 6 {
 			continue
 		}
-		// list format: id backend state alias cwd
+		// list format: id backend state alias model cwd
 		alias := fields[3]
 		if alias == "-" {
 			alias = ""
+		}
+		model := fields[4]
+		if model == "-" {
+			model = ""
 		}
 		sess := Session{
 			ID:      fields[0],
 			Backend: fields[1],
 			State:   fields[2],
 			Alias:   alias,
-			CWD:     fields[4],
-		}
-
-		if backendFid, err := fs.Open(filepath.Join(sess.ID, "backend"), plan9.OREAD); err == nil {
-			if backendData, err := io.ReadAll(backendFid); err == nil {
-				sess.Backend = strings.TrimSpace(string(backendData))
-			}
-			backendFid.Close()
-		}
-
-		if modelFid, err := fs.Open(filepath.Join(sess.ID, "model"), plan9.OREAD); err == nil {
-			if modelData, err := io.ReadAll(modelFid); err == nil {
-				sess.Model = strings.TrimSpace(string(modelData))
-			}
-			modelFid.Close()
+			Model:   model,
+			CWD:     strings.Join(fields[5:], " "),
 		}
 
 		sessions = append(sessions, sess)

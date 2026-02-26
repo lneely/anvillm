@@ -519,9 +519,9 @@ func listSessions() ([]*SessionInfo, error) {
 			continue
 		}
 
-		// Parse: id backend state alias cwd
+		// Parse: id backend state alias model cwd
 		fields := strings.Fields(line)
-		if len(fields) < 5 {
+		if len(fields) < 6 {
 			continue
 		}
 
@@ -530,13 +530,14 @@ func listSessions() ([]*SessionInfo, error) {
 			Backend: fields[1],
 			State:   fields[2],
 			Alias:   fields[3],
-			Cwd:     strings.Join(fields[4:], " "),
+			Model:   fields[4],
+			Cwd:     strings.Join(fields[5:], " "),
 		}
 		if sess.Alias == "-" {
 			sess.Alias = ""
 		}
-		if data, err := readFile(filepath.Join(sess.ID, "model")); err == nil {
-			sess.Model = strings.TrimSpace(string(data))
+		if sess.Model == "-" {
+			sess.Model = ""
 		}
 		sessions = append(sessions, sess)
 	}

@@ -78,7 +78,7 @@ func (i *claudeStateInspector) IsBusy(panePID int) bool {
 	return cmd.Run() == nil
 }
 
-// claudeCommands blocks all slash commands with a helpful error
+// claudeCommands allows slash commands to pass through to the PTY
 type claudeCommands struct{}
 
 func (h *claudeCommands) IsSupported(command string) bool {
@@ -86,7 +86,8 @@ func (h *claudeCommands) IsSupported(command string) bool {
 }
 
 func (h *claudeCommands) Execute(ctx context.Context, command string) (string, error) {
-	return command, nil
+	// Slash commands are sent directly to the PTY, not executed here
+	return "", fmt.Errorf("slash commands are sent to PTY, not executed directly")
 }
 
 // Session Management Helpers

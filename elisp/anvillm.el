@@ -130,18 +130,20 @@ Applies to claude and kiro-cli backends: low→haiku, standard→sonnet, high→
    ((string= capability "high") "opus")
    (t "sonnet")))
 
-(defun anvillm--parse-session-line (line model)
-  "Parse a session LINE from the 'list' file, with MODEL string.
-Format: id backend state alias cwd (whitespace-separated; often tabs)."
+(defun anvillm--parse-session-line (line)
+  "Parse a session LINE from the 'list' file.
+Format: id backend state alias model cwd (whitespace-separated; often tabs)."
   (when (string-match
-         "^\\([^[:space:]]+\\)\\s-+\\([^[:space:]]+\\)\\s-+\\([^[:space:]]+\\)\\s-+\\([^[:space:]]+\\)\\s-+\\(.+\\)$"
+         "^\\([^[:space:]]+\\)\\s-+\\([^[:space:]]+\\)\\s-+\\([^[:space:]]+\\)\\s-+\\([^[:space:]]+\\)\\s-+\\([^[:space:]]+\\)\\s-+\\(.+\\)$"
          line)
     (let ((id (match-string 1 line))
           (backend (match-string 2 line))
           (state (match-string 3 line))
           (alias (match-string 4 line))
-          (cwd (match-string 5 line)))
+          (model (match-string 5 line))
+          (cwd (match-string 6 line)))
       (when (string= alias "-") (setq alias ""))
+      (when (string= model "-") (setq model ""))
       (list id (vector
                 (substring id 0 (min 8 (length id)))
                 alias
@@ -159,23 +161,12 @@ Format: id backend state alias cwd (whitespace-separated; often tabs)."
    ((or (string= state "error") (string= state "exited")) 'error)
    (t 'default)))
 
-(defun anvillm--session-model (session-id)
-  "Read the active model for SESSION-ID from the 9P filesystem.
-Returns the model string, or nil on error."
-  (condition-case nil
-      (string-trim (anvillm--9p-read (concat anvillm-agent-path "/" session-id "/model")))
-    (error nil)))
-
 (defun anvillm--list-sessions ()
   "Get list of sessions from the 9P filesystem."
   (condition-case err
       (let ((list-data (anvillm--9p-read (concat anvillm-agent-path "/list"))))
         (delq nil
-              (mapcar (lambda (line)
-                        (when (string-match "^\\([^[:space:]]+\\)" line)
-                          (let* ((session-id (match-string 1 line))
-                                 (model (anvillm--session-model session-id)))
-                            (anvillm--parse-session-line line model))))
+              (mapcar #'anvillm--parse-session-line
                       (split-string list-data "\n" t))))
     (error
      (message "Failed to list sessions: %s" (error-message-string err))

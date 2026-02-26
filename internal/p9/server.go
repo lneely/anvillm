@@ -1108,7 +1108,11 @@ func (s *Server) readFile(path string) string {
 				if backend == "" {
 					backend = "-"
 				}
-				lines = append(lines, fmt.Sprintf("%s\t%s\t%s\t%s\t%s", sess.ID(), backend, sess.State(), alias, meta.Cwd))
+				model := sess.Model()
+				if model == "" {
+					model = "-"
+				}
+				lines = append(lines, fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s", sess.ID(), backend, sess.State(), alias, model, meta.Cwd))
 			}
 		}
 		return strings.Join(lines, "\n") + "\n"

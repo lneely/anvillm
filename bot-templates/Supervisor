@@ -256,9 +256,14 @@ dispatch_ready_beads() {
     local ready_json
     ready_json=$(9p read "${AGENT_MOUNT}/beads/ready" 2>/dev/null || echo "[]")
 
-    echo "$ready_json" \
-        | jq -r '.[] | select((.assignee == null) or (.assignee == "")) | [.id, (.capability_level // "")] | @tsv' \
-    | while IFS=$'\t' read -r bead_id cap_level; do
+    local parsed
+    if ! parsed=$(echo "$ready_json" | jq -r '.[] | select((.assignee == null) or (.assignee == "")) | [.id, (.capability_level // "")] | @tsv' 2>&1); then
+        echo "[supervisor] ERROR: failed to parse beads/ready JSON: $parsed" >&2
+        return
+    fi
+
+    while IFS=$'\t' read -r bead_id cap_level; do
+        [ -z "$bead_id" ] && continue
         local model_tier
         model_tier=$(cap_to_model "$cap_level")
 
@@ -291,7 +296,7 @@ dispatch_ready_beads() {
             echo "[supervisor] WARNING: failed to claim ${bead_id} for session ${sess_id}" >&2
         }
         echo "[supervisor] bead ${bead_id} → session ${sess_id} (model=${model_tier:-default})"
-    done
+    done < <(echo "$parsed")
 }
 
 # ---------------------------------------------------------------------------

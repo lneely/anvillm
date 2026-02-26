@@ -461,15 +461,13 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		}
 
 		if parentID != "" {
-			if err := b.createSubtask(parentID, title, description, actor); err != nil {
+			childID, err := b.createSubtask(parentID, title, description, actor)
+			if err != nil {
 				return err
 			}
-			// Apply capability label if provided.  Determine child ID.
+			// Apply capability label if provided.
 			if capLevel != "" {
-				childID, err := b.lastChildID(parentID)
-				if err == nil && childID != "" {
-					_ = b.store.AddLabel(b.ctx, childID, capabilityPrefix+capLevel, actor)
-				}
+				_ = b.store.AddLabel(b.ctx, childID, capabilityPrefix+capLevel, actor)
 			}
 			return nil
 		}
@@ -925,14 +923,14 @@ func isAlphanumeric(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
 }
 
-func (b *BeadsFS) createSubtask(parentID, title, description, actor string) error {
+func (b *BeadsFS) createSubtask(parentID, title, description, actor string) (string, error) {
 	// Verify parent exists
 	parent, err := b.store.GetIssue(b.ctx, parentID)
 	if err != nil {
-		return fmt.Errorf("failed to get parent: %w", err)
+		return "", fmt.Errorf("failed to get parent: %w", err)
 	}
 	if parent == nil {
-		return fmt.Errorf("parent %s not found", parentID)
+		return "", fmt.Errorf("parent %s not found", parentID)
 	}
 
 	// Find next child number by scanning existing IDs
@@ -963,7 +961,10 @@ func (b *BeadsFS) createSubtask(parentID, title, description, actor string) erro
 		Priority:    2,
 	}
 
-	return b.store.CreateIssue(b.ctx, issue, actor)
+	if err := b.store.CreateIssue(b.ctx, issue, actor); err != nil {
+		return "", err
+	}
+	return childID, nil
 }
 
 // extractCapabilityLevel scans a label slice and returns the level portion
@@ -976,32 +977,6 @@ func extractCapabilityLevel(labels []string) string {
 		}
 	}
 	return ""
-}
-
-// lastChildID returns the ID of the most recently created direct child of
-// parentID by finding the child with the highest numeric suffix.  Used to
-// retrieve the ID of the child bead just created by createSubtask so that
-// a capability label can be attached immediately.
-func (b *BeadsFS) lastChildID(parentID string) (string, error) {
-	issues, err := b.store.SearchIssues(b.ctx, "", bd.IssueFilter{})
-	if err != nil {
-		return "", err
-	}
-	prefix := parentID + "."
-	best := 0
-	bestID := ""
-	for _, issue := range issues {
-		if strings.HasPrefix(issue.ID, prefix) {
-			suffix := strings.TrimPrefix(issue.ID, prefix)
-			if !strings.Contains(suffix, ".") {
-				if n, err := strconv.Atoi(suffix); err == nil && n > best {
-					best = n
-					bestID = issue.ID
-				}
-			}
-		}
-	}
-	return bestID, nil
 }
 
 func parseCtlCommand(cmd string) (string, []string, error) {
