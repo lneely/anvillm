@@ -600,7 +600,7 @@ func (s *Server) open(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	return &plan9.Fcall{Type: plan9.Ropen, Tag: fc.Tag, Qid: qid}
 }
 
-func (s *Server) create(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
+func (s *Server) create(_ *connState, fc *plan9.Fcall) *plan9.Fcall {
 	return errFcall(fc, "create not supported")
 }
 

@@ -920,8 +920,7 @@ func containsBdRef(s string) bool {
 	lower := strings.ToLower(s)
 	idx := strings.Index(lower, "bd-")
 	for idx != -1 {
-		rest := lower[idx+3:]
-		if len(rest) > 0 && isAlphanumeric(rest[0]) {
+		if idx+3 < len(lower) && isAlphanumeric(lower[idx+3]) {
 			return true
 		}
 		next := strings.Index(lower[idx+1:], "bd-")
