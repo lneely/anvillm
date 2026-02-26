@@ -10,11 +10,17 @@ When facing an unfamiliar task or 9p concept: **immediately** search skills — 
 
 ## Discovering Skills
 
+1. First, list available skill categories:
+```bash
+9p ls agent/skills
+```
+
+2. Then search for specific skills:
 ```bash
 9p read agent/skills/help | grep -i <keyword>
 ```
 
-Use broad partial terms (e.g., "messag" not "inbox"). If still no results, list all as fallback: `9p read agent/skills/help`
+Use broad partial terms (e.g., "messag" not "inbox").
 
 ## Loading a Skill
 
