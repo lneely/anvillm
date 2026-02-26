@@ -14,7 +14,14 @@ func TestValidateCode(t *testing.T) {
 		{"safe code", "echo hello", false},
 		{"rm -rf /", "rm -rf /", true},
 		{"rm -rf / with spaces", "rm  -rf  /", true},
+		{"rm -rf / with tabs", "rm\t-rf\t/", true},
+		{"rm -rf/ no space", "rm -rf/", true},
 		{"rm -fr /", "rm -fr /", true},
+		{"rm -fr/ no space", "rm -fr/", true},
+		{"rm -rf /home", "rm -rf /home", true},
+		{"rm -rf /var", "rm -rf /var", true},
+		{"rm -rf /etc", "rm -rf /etc", true},
+		{"rm -rf /usr", "rm -rf /usr", true},
 		{"fork bomb", ":(){ :|:& };:", true},
 		{"fork bomb with spaces", ": ( ) { : | : & } ; :", true},
 		{"mkfs", "mkfs.ext4 /dev/sda", true},
@@ -22,8 +29,11 @@ func TestValidateCode(t *testing.T) {
 		{"chmod 777", "chmod 777 /etc/passwd", true},
 		{"curl http", "curl http://example.com", true},
 		{"curl https", "curl https://example.com", true},
+		{"curl ftp", "curl ftp://example.com/file", true},
+		{"curl file", "curl file:///etc/passwd", true},
 		{"wget http", "wget http://example.com/file", true},
 		{"wget https", "wget https://example.com/file", true},
+		{"wget ftp", "wget ftp://example.com/file", true},
 		{"device write", "echo data > /dev/sda", true},
 		{"exec", "exec(malicious)", true},
 		{"eval", "eval(dangerous)", true},
@@ -43,6 +53,18 @@ func TestValidateCode(t *testing.T) {
 				t.Errorf("validateCode() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestDangerousPatternsCompile(t *testing.T) {
+	// Verify all patterns are valid regexes (they compile at init, but this documents the expectation)
+	if len(dangerousPatterns) == 0 {
+		t.Error("dangerousPatterns should not be empty")
+	}
+	for i, p := range dangerousPatterns {
+		if p == nil {
+			t.Errorf("dangerousPatterns[%d] is nil", i)
+		}
 	}
 }
 

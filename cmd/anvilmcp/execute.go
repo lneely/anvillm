@@ -14,13 +14,13 @@ import (
 )
 
 var dangerousPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`rm\s+-[a-z]*r[a-z]*f[a-z]*\s+/`),  // rm -rf / variants
-	regexp.MustCompile(`rm\s+-[a-z]*f[a-z]*r[a-z]*\s+/`),  // rm -fr / variants
+	regexp.MustCompile(`rm\s+-[a-z]*r[a-z]*f[a-z]*\s*/(home|var|usr|etc|boot|root|bin|sbin|lib|opt|srv)?`), // rm -rf on sensitive paths
+	regexp.MustCompile(`rm\s+-[a-z]*f[a-z]*r[a-z]*\s*/(home|var|usr|etc|boot|root|bin|sbin|lib|opt|srv)?`), // rm -fr on sensitive paths
 	regexp.MustCompile(`:\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&`), // fork bomb
 	regexp.MustCompile(`\bmkfs\b`),                         // filesystem format
 	regexp.MustCompile(`\bdd\b.*\bif=/dev/`),               // dd from device
 	regexp.MustCompile(`\bchmod\s+777\b`),                  // world-writable
-	regexp.MustCompile(`\b(curl|wget)\s+https?://`),        // network fetch
+	regexp.MustCompile(`\b(curl|wget)\s+\S*://`),           // network fetch (any protocol)
 	regexp.MustCompile(`>\s*/dev/`),                        // write to device
 	regexp.MustCompile(`\beval\s*\(`),                      // eval execution
 	regexp.MustCompile(`\bexec\s*\(`),                      // exec execution
