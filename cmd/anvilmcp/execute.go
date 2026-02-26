@@ -168,14 +168,31 @@ func executeCode(code, language string, timeout int) (string, error) {
 	case "bash", "":
 		args := []string{
 			"--rwx", workDir,
-			"--rox", "/usr",
-			"--rox", "/lib",
-			"--rox", "/lib64",
-			"--rox", "/bin",
-			"--ro", "/etc/alternatives",
-			"--ro", "/etc/ld.so.cache",
-			"--rw", namespace,
 			"--unrestricted-network",
+		}
+		
+		// Add common system paths if they exist
+		systemPaths := []struct {
+			flag string
+			path string
+		}{
+			{"--rox", "/usr"},
+			{"--rox", "/lib"},
+			{"--rox", "/lib64"},
+			{"--rox", "/bin"},
+			{"--ro", "/etc/alternatives"},
+			{"--ro", "/etc/ld.so.cache"},
+		}
+		
+		for _, sp := range systemPaths {
+			if _, err := os.Stat(sp.path); err == nil {
+				args = append(args, sp.flag, sp.path)
+			}
+		}
+		
+		// Add namespace if set
+		if namespace != "" {
+			args = append(args, "--rw", namespace)
 		}
 		
 		// Add common user binary directories
@@ -198,12 +215,13 @@ func executeCode(code, language string, timeout int) (string, error) {
 		}
 		
 		args = append(args,
-			"--env", "NAMESPACE=" + namespace,
-			"--env", "PATH=/usr/bin:/bin",
-			"--env", "HOME=" + homeDir,
+			"--env", "NAMESPACE",
+			"--env", "PATH",
+			"--env", "HOME",
+			"--env", "PLAN9",
 		)
 		if agentID != "" {
-			args = append(args, "--env", "AGENT_ID="+agentID)
+			args = append(args, "--env", "AGENT_ID")
 		}
 		args = append(args, "--", "bash", "-c", code)
 		
@@ -252,7 +270,7 @@ func executeCode(code, language string, timeout int) (string, error) {
 	if err != nil {
 		execLog.Error = err.Error()
 		logExecution(execLog)
-		return string(output), fmt.Errorf("execution failed: %v", err)
+		return string(output), fmt.Errorf("execution failed: %v\nOutput: %s", err, string(output))
 	}
 
 	logExecution(execLog)

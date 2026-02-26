@@ -9,9 +9,11 @@ when_to_load: Load when you need to send messages to other agents, respond to th
 
 ## Commands
 
-- List agents: `bash <(9p read agent/tools/agents/list_sessions.sh)`
-- Send message: `bash <(9p read agent/tools/messaging/send_message.sh) FROM TO TYPE SUBJECT BODY`
-- Check inbox: `bash <(9p read agent/tools/messaging/read_inbox.sh) AGENT_ID`
+Use `execute_code` tool with these commands:
+
+- List agents: `9p read agent/tools/agents/list_sessions.sh | bash`
+- Send message: `9p read agent/tools/messaging/send_message.sh | bash -s FROM TO TYPE SUBJECT BODY`
+- Check inbox: `9p read agent/tools/messaging/read_inbox.sh | bash -s AGENT_ID`
 
 ## Use Cases
 
