@@ -446,8 +446,8 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		for _, a := range args {
 			if a == "--no-lint" {
 				noLint = true
-			} else if strings.HasPrefix(a, "capability=") {
-				capLevel = strings.TrimPrefix(a, "capability=")
+			} else if level, ok := strings.CutPrefix(a, "capability="); ok {
+				capLevel = level
 			} else {
 				filtered = append(filtered, a)
 			}
@@ -506,7 +506,7 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		if len(args) > 1 {
 			assignee = args[1]
 		}
-		updates := map[string]interface{}{
+		updates := map[string]any{
 			"assignee": assignee,
 			"status":   bd.StatusInProgress,
 		}
@@ -519,7 +519,7 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		if err := b.store.CloseIssue(b.ctx, args[0], "completed", actor, ""); err != nil {
 			return err
 		}
-		return b.store.UpdateIssue(b.ctx, args[0], map[string]interface{}{"assignee": ""}, actor)
+		return b.store.UpdateIssue(b.ctx, args[0], map[string]any{"assignee": ""}, actor)
 
 	case "fail":
 		if len(args) < 2 {
@@ -528,7 +528,7 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		if err := b.store.CloseIssue(b.ctx, args[0], args[1], actor, ""); err != nil {
 			return err
 		}
-		return b.store.UpdateIssue(b.ctx, args[0], map[string]interface{}{"assignee": ""}, actor)
+		return b.store.UpdateIssue(b.ctx, args[0], map[string]any{"assignee": ""}, actor)
 		
 	case "dep", "add-dep":
 		if len(args) < 2 {
@@ -551,7 +551,7 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		if len(args) < 3 {
 			return fmt.Errorf("usage: update <bead-id> <field> 'value'")
 		}
-		updates := map[string]interface{}{
+		updates := map[string]any{
 			args[1]: args[2],
 		}
 		return b.store.UpdateIssue(b.ctx, args[0], updates, actor)
@@ -599,7 +599,7 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 			return err
 		}
 		for _, lbl := range existing {
-			if _, ok := strings.CutPrefix(lbl, capabilityPrefix); ok {
+			if level, ok := strings.CutPrefix(lbl, capabilityPrefix); ok && level != "" {
 				_ = b.store.RemoveLabel(b.ctx, beadID, lbl, actor)
 			}
 		}
@@ -635,7 +635,7 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		if len(args) > 1 {
 			assignee = args[1]
 		}
-		updates := map[string]interface{}{
+		updates := map[string]any{
 			"status":   StatusPendingApproval,
 			"assignee": assignee,
 		}
@@ -656,7 +656,7 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		if len(args) > 1 {
 			assignee = args[1]
 		}
-		updates := map[string]interface{}{
+		updates := map[string]any{
 			"status":   StatusPendingReview,
 			"assignee": assignee,
 		}
@@ -674,7 +674,7 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		if len(args) > 1 {
 			assignee = args[1]
 		}
-		updates := map[string]interface{}{
+		updates := map[string]any{
 			"status":   bd.StatusInProgress,
 			"assignee": assignee,
 		}
@@ -686,7 +686,7 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		if len(args) < 1 {
 			return fmt.Errorf("usage: unclaim <bead-id>")
 		}
-		updates := map[string]interface{}{
+		updates := map[string]any{
 			"assignee": "",
 			"status":   bd.StatusOpen,
 		}
@@ -957,8 +957,7 @@ func (b *BeadsFS) createSubtask(parentID, title, description, actor string) (str
 	nextChild := 1
 	prefix := parentID + "."
 	for _, issue := range children {
-		if strings.HasPrefix(issue.ID, prefix) {
-			suffix := strings.TrimPrefix(issue.ID, prefix)
+		if suffix, ok := strings.CutPrefix(issue.ID, prefix); ok {
 			if !strings.Contains(suffix, ".") {
 				if n, err := strconv.Atoi(suffix); err == nil && n >= nextChild {
 					nextChild = n + 1

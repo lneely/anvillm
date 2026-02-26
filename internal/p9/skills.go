@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"9fans.net/go/plan9"
@@ -72,16 +73,15 @@ func parseSkillFrontMatter(skillDir string) (*SkillMeta, error) {
 			continue
 		}
 
-		if strings.HasPrefix(line, "intent:") {
-			intents := strings.TrimPrefix(line, "intent:")
-			for _, i := range strings.Split(intents, ",") {
+		if intents, ok := strings.CutPrefix(line, "intent:"); ok {
+			for i := range strings.SplitSeq(intents, ",") {
 				i = strings.TrimSpace(i)
 				if i != "" {
 					meta.Intents = append(meta.Intents, i)
 				}
 			}
-		} else if strings.HasPrefix(line, "description:") {
-			meta.Description = strings.TrimSpace(strings.TrimPrefix(line, "description:"))
+		} else if desc, ok := strings.CutPrefix(line, "description:"); ok {
+			meta.Description = strings.TrimSpace(desc)
 		}
 	}
 
@@ -155,11 +155,8 @@ func (s *SkillsFS) listSkillsInIntent(intent string) ([]*SkillMeta, error) {
 			result = append(result, skill)
 			continue
 		}
-		for _, i := range skill.Intents {
-			if i == intent {
-				result = append(result, skill)
-				break
-			}
+		if slices.Contains(skill.Intents, intent) {
+			result = append(result, skill)
 		}
 	}
 	return result, nil

@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -464,18 +465,11 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 				qid = plan9.Qid{Type: QTFile, Path: qidToolsBase}
 				if name == "help" {
 					newPath = "/tools/help"
+				} else if slices.Contains(caps, name) {
+					qid = plan9.Qid{Type: QTDir, Path: qidToolsBase + hashID(name)}
+					newPath = "/tools/" + name
 				} else {
-					// Check if it's a capability
-					for _, cap := range caps {
-						if cap == name {
-							qid = plan9.Qid{Type: QTDir, Path: qidToolsBase + hashID(name)}
-							newPath = "/tools/" + name
-							break
-						}
-					}
-					if newPath == "" {
-						return errFcall(fc, "not found")
-					}
+					return errFcall(fc, "not found")
 				}
 			} else {
 				return errFcall(fc, "not found")
@@ -491,17 +485,11 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 				qid = plan9.Qid{Type: QTFile, Path: qidSkillsBase}
 				if name == "help" {
 					newPath = "/skills/help"
+				} else if slices.Contains(intents, name) {
+					qid = plan9.Qid{Type: QTDir, Path: qidSkillsBase + hashID(name)}
+					newPath = "/skills/" + name
 				} else {
-					for _, intent := range intents {
-						if intent == name {
-							qid = plan9.Qid{Type: QTDir, Path: qidSkillsBase + hashID(name)}
-							newPath = "/skills/" + name
-							break
-						}
-					}
-					if newPath == "" {
-						return errFcall(fc, "not found")
-					}
+					return errFcall(fc, "not found")
 				}
 			} else {
 				return errFcall(fc, "not found")
@@ -531,16 +519,17 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			}
 
 			// Check if it's a mailbox directory
-			if name == "inbox" {
+			switch name {
+			case "inbox":
 				qid = plan9.Qid{Type: QTDir, Path: qidInboxBase + hashID(sessID)}
 				newPath = path + "/inbox"
-			} else if name == "outbox" {
+			case "outbox":
 				qid = plan9.Qid{Type: QTDir, Path: qidOutboxBase + hashID(sessID)}
 				newPath = path + "/outbox"
-			} else if name == "completed" {
+			case "completed":
 				qid = plan9.Qid{Type: QTDir, Path: qidCompletedBase + hashID(sessID)}
 				newPath = path + "/completed"
-			} else {
+			default:
 				// Regular session file
 				idx := fileIndex(name)
 				if idx < 0 {
@@ -656,15 +645,13 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	input := strings.TrimSpace(string(fc.Data))
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
-	fmt.Fprintf(os.Stderr, "[DEBUG] write: path=%q parts=%v len=%d\n", path, parts, len(parts))
-
 	// Handle beads writes
-	if strings.HasPrefix(path, "/beads/") {
+	if beadsPath, ok := strings.CutPrefix(path, "/beads/"); ok {
 		if s.beads != nil {
 			cs.mu.Lock()
 			sessionID := cs.sessionID
 			cs.mu.Unlock()
-			if err := s.beads.Write(strings.TrimPrefix(path, "/beads/"), fc.Data, sessionID); err != nil {
+			if err := s.beads.Write(beadsPath, fc.Data, sessionID); err != nil {
 				return errFcall(fc, err.Error())
 			}
 			return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
@@ -675,8 +662,6 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	// /ctl - create new session
 	if path == "/ctl" {
 		args := strings.Fields(input)
-		fmt.Fprintf(os.Stderr, "[DEBUG] ctl write: input=%q args=%v len=%d fc.Count=%d len(fc.Data)=%d\n",
-			input, args, len(args), fc.Count, len(fc.Data))
 		if len(args) < 2 || args[0] != "new" {
 			return errFcall(fc, "usage: new <backend> <cwd> [role=<role>] [tasks=<task1,task2>]")
 		}
@@ -694,15 +679,14 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		cwdSet := false
 		for i := 2; i < len(args); i++ {
 			arg := args[i]
-			if strings.HasPrefix(arg, "role=") {
-				role = strings.TrimPrefix(arg, "role=")
-			} else if strings.HasPrefix(arg, "tasks=") {
-				taskStr := strings.TrimPrefix(arg, "tasks=")
-				if taskStr != "" {
-					tasks = strings.Split(taskStr, ",")
+			if r, ok := strings.CutPrefix(arg, "role="); ok {
+				role = r
+			} else if t, ok := strings.CutPrefix(arg, "tasks="); ok {
+				if t != "" {
+					tasks = strings.Split(t, ",")
 				}
-			} else if strings.HasPrefix(arg, "model=") {
-				model = strings.TrimPrefix(arg, "model=")
+			} else if m, ok := strings.CutPrefix(arg, "model="); ok {
+				model = m
 			} else if !cwdSet {
 				// First positional argument is cwd
 				cwd = strings.Trim(arg, `"`)
@@ -741,7 +725,6 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		if err != nil {
 			return errFcall(fc, err.Error())
 		}
-		fmt.Fprintf(os.Stderr, "[DEBUG] ctl write: session created, returning Count=%d\n", uint32(len(fc.Data)))
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
@@ -1146,11 +1129,12 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 		mailMgr := s.mgr.GetMailManager()
 		if mailMgr != nil {
 			var messages []*mailbox.Message
-			if mailboxType == "inbox" {
+			switch mailboxType {
+			case "inbox":
 				messages = mailMgr.GetInbox("user")
-			} else if mailboxType == "outbox" {
+			case "outbox":
 				messages = mailMgr.GetOutbox("user")
-			} else if mailboxType == "completed" {
+			case "completed":
 				messages = mailMgr.GetCompleted("user")
 			}
 
@@ -1180,9 +1164,10 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 		// Add regular files
 		for i, name := range fileNames {
 			mode := uint32(0444)
-			if name == "ctl" || name == "in" || name == "out" {
+			switch name {
+			case "ctl", "in", "out":
 				mode = 0222
-			} else if name == "alias" || name == "context" || name == "state" {
+			case "alias", "context", "state":
 				mode = 0644
 			}
 			content := s.getSessionFile(sess, i)
@@ -1198,13 +1183,14 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 		for _, dirName := range dirNames {
 			var qidBase uint64
 			var mode uint32
-			if dirName == "inbox" {
+			switch dirName {
+			case "inbox":
 				qidBase = qidInboxBase
 				mode = 0555 // read-only (can list and read files)
-			} else if dirName == "outbox" {
+			case "outbox":
 				qidBase = qidOutboxBase
 				mode = 0555 // read-only (can list and read files)
-			} else {
+			default:
 				qidBase = qidCompletedBase
 				mode = 0555 // read-only (can list and read files)
 			}
@@ -1226,11 +1212,12 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 		}
 
 		var messages []*mailbox.Message
-		if mailboxType == "inbox" {
+		switch mailboxType {
+		case "inbox":
 			messages = mailMgr.GetInbox(sessID)
-		} else if mailboxType == "outbox" {
+		case "outbox":
 			messages = mailMgr.GetOutbox(sessID)
-		} else if mailboxType == "completed" {
+		case "completed":
 			messages = mailMgr.GetCompleted(sessID)
 		}
 
@@ -1289,9 +1276,9 @@ func (s *Server) readFile(path string) string {
 	}
 
 	// Handle beads paths
-	if strings.HasPrefix(path, "/beads/") {
+	if beadsPath, ok := strings.CutPrefix(path, "/beads/"); ok {
 		if s.beads != nil {
-			data, err := s.beads.Read(strings.TrimPrefix(path, "/beads/"))
+			data, err := s.beads.Read(beadsPath)
 			if err != nil {
 				return ""
 			}

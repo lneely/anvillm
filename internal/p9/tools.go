@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"9fans.net/go/plan9"
@@ -70,22 +71,21 @@ func parseFrontMatter(path string) (*ToolMeta, error) {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "#") {
+		if comment, ok := strings.CutPrefix(line, "#"); ok {
+			line = strings.TrimSpace(comment)
+		} else {
 			break
 		}
-		line = strings.TrimPrefix(line, "#")
-		line = strings.TrimSpace(line)
 
-		if strings.HasPrefix(line, "capabilities:") {
-			caps := strings.TrimPrefix(line, "capabilities:")
-			for _, c := range strings.Split(caps, ",") {
+		if caps, ok := strings.CutPrefix(line, "capabilities:"); ok {
+			for c := range strings.SplitSeq(caps, ",") {
 				c = strings.TrimSpace(c)
 				if c != "" {
 					meta.Capabilities = append(meta.Capabilities, c)
 				}
 			}
-		} else if strings.HasPrefix(line, "description:") {
-			meta.Description = strings.TrimSpace(strings.TrimPrefix(line, "description:"))
+		} else if desc, ok := strings.CutPrefix(line, "description:"); ok {
+			meta.Description = strings.TrimSpace(desc)
 		}
 	}
 	return meta, nil
@@ -142,11 +142,8 @@ func (t *ToolsFS) listToolsInCapability(capability string) ([]*ToolMeta, error) 
 
 	var result []*ToolMeta
 	for _, tool := range tools {
-		for _, cap := range tool.Capabilities {
-			if cap == capability {
-				result = append(result, tool)
-				break
-			}
+		if slices.Contains(tool.Capabilities, capability) {
+			result = append(result, tool)
 		}
 	}
 	return result, nil
