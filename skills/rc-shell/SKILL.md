@@ -1,5 +1,6 @@
 ---
 name: rc-shell
+intent: scripting, shell
 description: Plan 9 rc shell scripting syntax and conventions. Use when writing .rc shell scripts or working with Plan 9 rc syntax.
 user-invocable: false
 ---

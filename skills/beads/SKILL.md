@@ -1,5 +1,6 @@
 ---
 name: beads
+intent: tasks, workflow
 description: Manage tasks using the beads 9P interface. Use when creating, updating, listing, or deleting tasks/beads, or managing task dependencies.
 ---
 

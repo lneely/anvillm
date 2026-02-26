@@ -1,5 +1,6 @@
 ---
 name: gh-cli
+intent: github, vcs
 description: Interact with GitHub repositories, issues, PRs, workflows, and more using the gh CLI. Use for GitHub operations like creating issues/PRs, managing repos, checking workflow runs, and browsing GitHub resources.
 ---
 

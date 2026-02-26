@@ -1,5 +1,6 @@
 ---
 name: github-to-beads
+intent: tasks, github
 description: Import GitHub issues and PRs into beads task tracking. Use when user asks to pull GitHub issue info, define work from an issue, or create tasks from GitHub.
 ---
 

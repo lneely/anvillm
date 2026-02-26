@@ -1,5 +1,6 @@
 ---
 name: acme-api
+intent: editor, acme
 description: Programming the acme text editor 9P API. Use when writing code to control acme windows, handle events, manipulate text, or integrate with acme via its file interface.
 version: 1.1.0
 ---

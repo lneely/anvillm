@@ -1,5 +1,6 @@
 ---
 name: anvillm-communication
+intent: messaging, agents
 description: Communicate within anvillm via the mailbox system. Use for agent-to-agent messaging (review requests, questions, approvals), agent-to-user responses, discovering peer agents, and any inter-agent coordination.
 when_to_load: Load when you need to send messages to other agents, respond to the user, discover peer agents, check your inbox, or coordinate with other agents in a workflow.
 ---

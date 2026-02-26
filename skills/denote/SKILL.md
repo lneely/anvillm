@@ -1,5 +1,6 @@
 ---
 name: denote
+intent: notes, documentation
 description: Denote file format conventions for timestamped notes. Use when creating, naming, or linking structured note files in the ~/doc/ hierarchy.
 ---
 

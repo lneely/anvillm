@@ -80,6 +80,7 @@ const (
 	qidBeadsList                 // beads/list
 	qidBeadsReady                // beads/ready
 	qidTools                     // tools directory
+	qidSkills                    // skills directory
 	qidSessionBase   = 1000
 	qidPeersBase     = 0x10000000 // peers/{id}/file
 	qidInboxBase     = 0x20000000 // session/{id}/inbox
@@ -87,7 +88,8 @@ const (
 	qidCompletedBase = 0x40000000 // session/{id}/completed
 	qidMessageBase   = 0x50000000 // message files
 	qidBeadsBase     = 0x60000000 // beads/{id}/file
-	qidToolsBase     = 0x70000000 // tools/{provider}/{tool}
+	qidToolsBase     = 0x70000000 // tools/{capability}/{tool}
+	qidSkillsBase    = 0x80000000 // skills/{intent}/{skill}
 )
 
 // File indices within a session directory
@@ -119,6 +121,7 @@ type Server struct {
 	events        *eventbus.Bus
 	beads         *BeadsFS
 	tools         *ToolsFS
+	skills        *SkillsFS
 	OnAliasChange func(backend.Session) // Called when session alias changes
 	mu            sync.RWMutex
 }
@@ -180,6 +183,7 @@ func NewServer(mgr *session.Manager, beadsStore bd.Storage) (*Server, error) {
 		events:     eventbus.New(),
 		beads:      beadsFS,
 		tools:      toolsFS,
+		skills:     NewSkillsFS(),
 	}
 	go s.acceptLoop()
 	return s, nil
@@ -402,6 +406,9 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			case "tools":
 				qid = plan9.Qid{Type: QTDir, Path: qidTools}
 				newPath = "/tools"
+			case "skills":
+				qid = plan9.Qid{Type: QTDir, Path: qidSkills}
+				newPath = "/skills"
 			default:
 				// Check if it's a session ID
 				if sess := s.mgr.Get(name); sess != nil {
@@ -476,6 +483,36 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		} else if strings.HasPrefix(path, "/tools/") && strings.Count(path, "/") == 2 {
 			// Inside tools/<capability> - tool files
 			qid = plan9.Qid{Type: QTFile, Path: qidToolsBase + hashID(path+name)}
+			newPath = path + "/" + name
+		} else if path == "/skills" {
+			// Inside skills directory - list intents + help
+			if s.skills != nil {
+				intents, _ := s.skills.listIntents()
+				qid = plan9.Qid{Type: QTFile, Path: qidSkillsBase}
+				if name == "help" {
+					newPath = "/skills/help"
+				} else {
+					for _, intent := range intents {
+						if intent == name {
+							qid = plan9.Qid{Type: QTDir, Path: qidSkillsBase + hashID(name)}
+							newPath = "/skills/" + name
+							break
+						}
+					}
+					if newPath == "" {
+						return errFcall(fc, "not found")
+					}
+				}
+			} else {
+				return errFcall(fc, "not found")
+			}
+		} else if strings.HasPrefix(path, "/skills/") && strings.Count(path, "/") == 2 {
+			// Inside skills/<intent> - skill directories
+			qid = plan9.Qid{Type: QTDir, Path: qidSkillsBase + hashID(path+name)}
+			newPath = path + "/" + name
+		} else if strings.HasPrefix(path, "/skills/") && strings.Count(path, "/") == 3 {
+			// Inside skills/<intent>/<skill> - files
+			qid = plan9.Qid{Type: QTFile, Path: qidSkillsBase + hashID(path+name)}
 			newPath = path + "/" + name
 		} else if strings.HasPrefix(path, "/beads/") && strings.Count(path, "/") == 2 {
 			// Inside a bead directory - property files
@@ -1033,6 +1070,10 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 			Qid:  plan9.Qid{Type: QTDir, Path: qidTools},
 			Mode: plan9.DMDIR | 0555, Name: "tools", Uid: "q", Gid: "q", Muid: "q",
 		})
+		dirs = append(dirs, plan9.Dir{
+			Qid:  plan9.Qid{Type: QTDir, Path: qidSkills},
+			Mode: plan9.DMDIR | 0555, Name: "skills", Uid: "q", Gid: "q", Muid: "q",
+		})
 		for _, id := range s.mgr.List() {
 			dirs = append(dirs, plan9.Dir{
 				Qid:  plan9.Qid{Type: QTDir, Path: qidSessionBase + hashID(id)},
@@ -1064,6 +1105,45 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 				dirs = append(dirs, plan9.Dir{
 					Qid:  plan9.Qid{Type: QTFile, Path: qidToolsBase + hashID(path+tool.Name)},
 					Mode: 0444, Name: tool.Name, Uid: "q", Gid: "q", Muid: "q",
+				})
+			}
+		}
+	} else if path == "/skills" {
+		if s.skills != nil {
+			// Add help file
+			dirs = append(dirs, plan9.Dir{
+				Qid:  plan9.Qid{Type: QTFile, Path: qidSkillsBase},
+				Mode: 0444, Name: "help", Uid: "q", Gid: "q", Muid: "q",
+			})
+			// Add intent directories
+			intents, _ := s.skills.listIntents()
+			for _, intent := range intents {
+				dirs = append(dirs, plan9.Dir{
+					Qid:  plan9.Qid{Type: QTDir, Path: qidSkillsBase + hashID(intent)},
+					Mode: plan9.DMDIR | 0555, Name: intent, Uid: "q", Gid: "q", Muid: "q",
+				})
+			}
+		}
+	} else if strings.HasPrefix(path, "/skills/") && strings.Count(path, "/") == 2 {
+		// Inside skills/<intent> - list skill directories
+		intent := strings.TrimPrefix(path, "/skills/")
+		if s.skills != nil {
+			skills, _ := s.skills.listSkillsInIntent(intent)
+			for _, skill := range skills {
+				dirs = append(dirs, plan9.Dir{
+					Qid:  plan9.Qid{Type: QTDir, Path: qidSkillsBase + hashID(path+skill.Name)},
+					Mode: plan9.DMDIR | 0555, Name: skill.Name, Uid: "q", Gid: "q", Muid: "q",
+				})
+			}
+		}
+	} else if strings.HasPrefix(path, "/skills/") && strings.Count(path, "/") == 3 {
+		// Inside skills/<intent>/<skill> - list files
+		if s.skills != nil {
+			skillDirs, _ := s.skills.List("agent" + path)
+			for _, sd := range skillDirs {
+				dirs = append(dirs, plan9.Dir{
+					Qid:  plan9.Qid{Type: sd.Qid.Type, Path: qidSkillsBase + hashID(path+sd.Name)},
+					Mode: sd.Mode, Name: sd.Name, Uid: "q", Gid: "q", Muid: "q",
 				})
 			}
 		}
@@ -1232,6 +1312,18 @@ func (s *Server) readFile(path string) string {
 	if strings.HasPrefix(path, "/tools/") {
 		if s.tools != nil {
 			data, err := s.tools.Read(strings.TrimPrefix(path, "/"))
+			if err != nil {
+				return ""
+			}
+			return string(data)
+		}
+		return ""
+	}
+
+	// Handle skills paths
+	if strings.HasPrefix(path, "/skills/") {
+		if s.skills != nil {
+			data, err := s.skills.Read(strings.TrimPrefix(path, "/"))
 			if err != nil {
 				return ""
 			}

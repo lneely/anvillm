@@ -1,5 +1,6 @@
 ---
 name: web-dev-browser-screencapture
+intent: web, debugging
 description: Capture screenshots of browser windows for visual feedback during web development. Use when verifying UI changes, checking dev server output, or documenting web application state.
 ---
 

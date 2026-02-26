@@ -1,5 +1,6 @@
 ---
 name: write-skills
+intent: meta, skills
 description: Guide for authoring new Agent Skills. Use when creating, updating, or reviewing skills / SKILL.md files. Always prefer the skill-creator skill if available.
 ---
 

@@ -1,5 +1,6 @@
 ---
 name: agent-kb
+intent: knowledge, learning
 description: Query and maintain a local knowledge base of code insights and architecture notes. Use when encountering unfamiliar code, needing context beyond training, or when asked to save/update learned knowledge.
 ---
 

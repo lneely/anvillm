@@ -1,5 +1,6 @@
 ---
 name: duckduckgo-search
+intent: search, web
 description: Use the `ddgr` CLI to search DuckDuckGo and return a small set of relevant, linkable sources.
 ---
 

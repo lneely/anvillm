@@ -1,5 +1,6 @@
 ---
 name: jira-to-beads
+intent: tasks, jira
 description: Import Jira tickets into beads task tracking. Use when user asks to pull Jira ticket info, define work from a ticket, or create tasks from an epic/story.
 ---
 
