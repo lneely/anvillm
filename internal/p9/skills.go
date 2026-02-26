@@ -276,8 +276,8 @@ func (s *SkillsFS) List(path string) ([]plan9.Dir, error) {
 func (s *SkillsFS) Read(path string) ([]byte, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
-	// /skills/help
-	if len(parts) == 2 && parts[0] == "skills" && parts[1] == "help" {
+	// /agent/skills/help
+	if len(parts) == 3 && parts[0] == "agent" && parts[1] == "skills" && parts[2] == "help" {
 		help, err := s.generateHelp()
 		if err != nil {
 			return nil, err
@@ -285,14 +285,14 @@ func (s *SkillsFS) Read(path string) ([]byte, error) {
 		return []byte(help), nil
 	}
 
-	// /skills/<intent>/<skillname>/<file>
-	if len(parts) < 4 || parts[0] != "skills" {
+	// /agent/skills/<intent>/<skillname>/<file>
+	if len(parts) < 5 || parts[0] != "agent" || parts[1] != "skills" {
 		return nil, fmt.Errorf("not found")
 	}
 
-	intent := parts[1]
-	skillName := parts[2]
-	fileName := strings.Join(parts[3:], "/")
+	intent := parts[2]
+	skillName := parts[3]
+	fileName := strings.Join(parts[4:], "/")
 
 	// Prevent path traversal
 	cleanName := filepath.Clean(fileName)
@@ -309,7 +309,8 @@ func (s *SkillsFS) Read(path string) ([]byte, error) {
 		if skill.Name == skillName {
 			filePath := filepath.Join(skill.Path, cleanName)
 			// Verify result stays within skill directory
-			if !strings.HasPrefix(filePath, skill.Path+string(filepath.Separator)) && filePath != skill.Path {
+			relPath, err := filepath.Rel(skill.Path, filePath)
+			if err != nil || strings.HasPrefix(relPath, "..") {
 				return nil, fmt.Errorf("invalid path")
 			}
 			return os.ReadFile(filePath)

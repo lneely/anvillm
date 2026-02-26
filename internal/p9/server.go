@@ -607,13 +607,14 @@ func (s *Server) create(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 func (s *Server) read(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	cs.mu.RLock()
 	f, ok := cs.fids[fc.Fid]
-	cs.mu.RUnlock()
 	if !ok {
+		cs.mu.RUnlock()
 		return errFcall(fc, "bad fid")
 	}
 
 	// Streaming /events: block until next event arrives (or channel closed).
 	if f.eventCh != nil {
+		cs.mu.RUnlock()
 		e, ok := <-f.eventCh
 		if !ok {
 			// Channel closed (subscription cancelled); signal EOF.
@@ -623,12 +624,16 @@ func (s *Server) read(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return &plan9.Fcall{Type: plan9.Rread, Tag: fc.Tag, Count: uint32(len(data)), Data: data}
 	}
 
+	path := f.path
+	isDir := f.qid.Type&QTDir != 0
+	cs.mu.RUnlock()
+
 	var data []byte
 
-	if f.qid.Type&QTDir != 0 {
-		data = s.readDir(f.path, fc.Offset, fc.Count)
+	if isDir {
+		data = s.readDir(path, fc.Offset, fc.Count)
 	} else {
-		content := s.readFile(f.path)
+		content := s.readFile(path)
 		if fc.Offset < uint64(len(content)) {
 			end := min(int(fc.Offset)+int(fc.Count), len(content))
 			data = []byte(content[fc.Offset:end])
@@ -639,14 +644,14 @@ func (s *Server) read(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 }
 
 func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
-	cs.mu.Lock()
+	cs.mu.RLock()
 	f, ok := cs.fids[fc.Fid]
 	if !ok {
-		cs.mu.Unlock()
+		cs.mu.RUnlock()
 		return errFcall(fc, "bad fid")
 	}
 	path := f.path
-	cs.mu.Unlock()
+	cs.mu.RUnlock()
 
 	input := strings.TrimSpace(string(fc.Data))
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
@@ -656,9 +661,9 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	// Handle beads writes
 	if strings.HasPrefix(path, "/beads/") {
 		if s.beads != nil {
-			cs.mu.RLock()
+			cs.mu.Lock()
 			sessionID := cs.sessionID
-			cs.mu.RUnlock()
+			cs.mu.Unlock()
 			if err := s.beads.Write(strings.TrimPrefix(path, "/beads/"), fc.Data, sessionID); err != nil {
 				return errFcall(fc, err.Error())
 			}
@@ -1027,7 +1032,7 @@ func (s *Server) remove(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		msgID := strings.TrimSuffix(parts[2], ".json")
 
 		// Validate ownership: only allow removing from own inbox or user inbox
-		if sessionID == "" || (sessID != "user" && sessID != sessionID) {
+		if sessID != "user" && sessID != sessionID {
 			return errFcall(fc, "permission denied: can only remove from own inbox")
 		}
 
@@ -1278,7 +1283,7 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 
 		mailMgr := s.mgr.GetMailManager()
 		if mailMgr == nil {
-			return nil
+			return []byte("[]")
 		}
 
 		var messages []*mailbox.Message
