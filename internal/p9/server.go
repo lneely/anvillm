@@ -570,15 +570,19 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		path = newPath
 	}
 
+	if len(qids) == 0 {
+		return errFcall(fc, "walk failed")
+	}
+
 	cs.fids[fc.Newfid] = &fid{qid: qids[len(qids)-1], path: path}
 	return &plan9.Fcall{Type: plan9.Rwalk, Tag: fc.Tag, Wqid: qids}
 }
 
 func (s *Server) open(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	cs.mu.Lock()
-	defer cs.mu.Unlock()
 	f, ok := cs.fids[fc.Fid]
 	if !ok {
+		cs.mu.Unlock()
 		return errFcall(fc, "bad fid")
 	}
 	f.mode = fc.Mode
@@ -590,8 +594,10 @@ func (s *Server) open(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		f.eventCh = ch
 		f.eventUnsub = cancel
 	}
+	qid := f.qid
+	cs.mu.Unlock()
 
-	return &plan9.Fcall{Type: plan9.Ropen, Tag: fc.Tag, Qid: f.qid}
+	return &plan9.Fcall{Type: plan9.Ropen, Tag: fc.Tag, Qid: qid}
 }
 
 func (s *Server) create(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
@@ -635,20 +641,25 @@ func (s *Server) read(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	cs.mu.Lock()
 	f, ok := cs.fids[fc.Fid]
-	cs.mu.Unlock()
 	if !ok {
+		cs.mu.Unlock()
 		return errFcall(fc, "bad fid")
 	}
+	path := f.path
+	cs.mu.Unlock()
 
 	input := strings.TrimSpace(string(fc.Data))
-	parts := strings.Split(strings.TrimPrefix(f.path, "/"), "/")
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
-	fmt.Fprintf(os.Stderr, "[DEBUG] write: path=%q parts=%v len=%d\n", f.path, parts, len(parts))
+	fmt.Fprintf(os.Stderr, "[DEBUG] write: path=%q parts=%v len=%d\n", path, parts, len(parts))
 
 	// Handle beads writes
-	if strings.HasPrefix(f.path, "/beads/") {
+	if strings.HasPrefix(path, "/beads/") {
 		if s.beads != nil {
-			if err := s.beads.Write(strings.TrimPrefix(f.path, "/beads/"), fc.Data, cs.sessionID); err != nil {
+			cs.mu.RLock()
+			sessionID := cs.sessionID
+			cs.mu.RUnlock()
+			if err := s.beads.Write(strings.TrimPrefix(path, "/beads/"), fc.Data, sessionID); err != nil {
 				return errFcall(fc, err.Error())
 			}
 			return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
@@ -657,7 +668,7 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	}
 
 	// /ctl - create new session
-	if f.path == "/ctl" {
+	if path == "/ctl" {
 		args := strings.Fields(input)
 		fmt.Fprintf(os.Stderr, "[DEBUG] ctl write: input=%q args=%v len=%d fc.Count=%d len(fc.Data)=%d\n",
 			input, args, len(args), fc.Count, len(fc.Data))
@@ -862,11 +873,9 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			}
 		}
 
-		// Track this connection's session ID
+		// Track this connection's session ID (first write wins)
 		cs.mu.Lock()
-		if cs.sessionID == "" {
-			cs.sessionID = sessID
-		}
+		cs.sessionID = sessID
 		cs.mu.Unlock()
 
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
@@ -876,11 +885,9 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	if len(parts) == 2 && parts[1] == "mail" {
 		sessID := parts[0]
 
-		// Track this connection's session ID
+		// Track this connection's session ID (first write wins)
 		cs.mu.Lock()
-		if cs.sessionID == "" {
-			cs.sessionID = sessID
-		}
+		cs.sessionID = sessID
 		cs.mu.Unlock()
 
 		// Parse JSON message
@@ -1005,14 +1012,16 @@ func (s *Server) stat(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 func (s *Server) remove(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	cs.mu.Lock()
 	f, ok := cs.fids[fc.Fid]
-	sessionID := cs.sessionID
-	cs.mu.Unlock()
 	if !ok {
+		cs.mu.Unlock()
 		return errFcall(fc, "bad fid")
 	}
+	path := f.path
+	sessionID := cs.sessionID
+	cs.mu.Unlock()
 
 	// Only support removing inbox messages (marks them as completed)
-	parts := strings.Split(strings.TrimPrefix(f.path, "/"), "/")
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	if len(parts) == 3 && parts[1] == "inbox" && strings.HasSuffix(parts[2], ".json") {
 		sessID := parts[0]
 		msgID := strings.TrimSuffix(parts[2], ".json")

@@ -577,21 +577,22 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		if len(args) < 2 {
 			return fmt.Errorf("usage: set-capability <bead-id> low|standard|high")
 		}
+		beadID := args[0]
 		level := args[1]
 		if level != "low" && level != "standard" && level != "high" {
 			return fmt.Errorf("invalid capability level %q: must be low, standard, or high", level)
 		}
 		// Remove any existing capability labels first.
-		existing, err := b.store.GetLabels(b.ctx, args[0])
+		existing, err := b.store.GetLabels(b.ctx, beadID)
 		if err != nil {
 			return err
 		}
 		for _, lbl := range existing {
 			if strings.HasPrefix(lbl, capabilityPrefix) {
-				_ = b.store.RemoveLabel(b.ctx, args[0], lbl, actor)
+				_ = b.store.RemoveLabel(b.ctx, beadID, lbl, actor)
 			}
 		}
-		return b.store.AddLabel(b.ctx, args[0], capabilityPrefix+level, actor)
+		return b.store.AddLabel(b.ctx, beadID, capabilityPrefix+level, actor)
 
 	case "batch-create":
 		if len(args) < 1 {

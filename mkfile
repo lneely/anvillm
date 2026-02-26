@@ -23,10 +23,10 @@ build:V:
 	mkdir -p $HOME/.config/anvillm
 	cp -rf cfg/* $HOME/.config/anvillm/
 	mkdir -p $HOME/.config/anvillm/skills
-	cp -r skills/* $HOME/.config/anvillm/skills/
+	cp -rf skills/* $HOME/.config/anvillm/skills/
 	find $HOME/.config/anvillm/skills -type f -name "*.sh" -exec chmod 0755 {} \;
 	mkdir -p $HOME/.config/anvillm/mcptools
-	cp mcptools/* $HOME/.config/anvillm/mcptools/
+	cp -rf mcptools/* $HOME/.config/anvillm/mcptools/
 	chmod 0755 $HOME/.config/anvillm/mcptools/*
 	mkdir -p $HOME/.kiro/agents/kiro-cli
 	mkdir -p $HOME/.config/anvillm/claude/agents

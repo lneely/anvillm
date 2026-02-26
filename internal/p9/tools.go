@@ -246,7 +246,8 @@ func (t *ToolsFS) Read(path string) ([]byte, error) {
 	}
 
 	// Prevent path traversal
-	if strings.Contains(filename, "/") || strings.Contains(filename, "..") {
+	cleanName := filepath.Clean(filename)
+	if strings.Contains(cleanName, string(filepath.Separator)) || strings.Contains(cleanName, "..") || filepath.IsAbs(cleanName) {
 		return nil, fmt.Errorf("invalid filename")
 	}
 

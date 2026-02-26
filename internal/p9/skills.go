@@ -295,7 +295,8 @@ func (s *SkillsFS) Read(path string) ([]byte, error) {
 	fileName := strings.Join(parts[3:], "/")
 
 	// Prevent path traversal
-	if strings.Contains(fileName, "..") {
+	cleanName := filepath.Clean(fileName)
+	if strings.Contains(cleanName, "..") || filepath.IsAbs(cleanName) {
 		return nil, fmt.Errorf("invalid path")
 	}
 
@@ -306,7 +307,11 @@ func (s *SkillsFS) Read(path string) ([]byte, error) {
 
 	for _, skill := range skills {
 		if skill.Name == skillName {
-			filePath := filepath.Join(skill.Path, fileName)
+			filePath := filepath.Join(skill.Path, cleanName)
+			// Verify result stays within skill directory
+			if !strings.HasPrefix(filePath, skill.Path+string(filepath.Separator)) && filePath != skill.Path {
+				return nil, fmt.Errorf("invalid path")
+			}
 			return os.ReadFile(filePath)
 		}
 	}
