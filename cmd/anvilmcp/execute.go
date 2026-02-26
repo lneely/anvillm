@@ -175,10 +175,33 @@ func executeCode(code, language string, timeout int) (string, error) {
 			"--ro", "/etc/alternatives",
 			"--ro", "/etc/ld.so.cache",
 			"--rw", namespace,
+			"--unrestricted-network",
+		}
+		
+		// Add common user binary directories
+		userBinDirs := []string{
+			filepath.Join(homeDir, "bin"),
+			filepath.Join(homeDir, ".local", "bin"),
+			filepath.Join(homeDir, "opt"),
+			filepath.Join(homeDir, "go", "bin"),
+		}
+		
+		// Add PLAN9 bin if set
+		if plan9 := os.Getenv("PLAN9"); plan9 != "" {
+			userBinDirs = append(userBinDirs, filepath.Join(plan9, "bin"))
+		}
+		
+		for _, dir := range userBinDirs {
+			if _, err := os.Stat(dir); err == nil {
+				args = append(args, "--rox", dir)
+			}
+		}
+		
+		args = append(args,
 			"--env", "NAMESPACE=" + namespace,
 			"--env", "PATH=/usr/bin:/bin",
 			"--env", "HOME=" + homeDir,
-		}
+		)
 		if agentID != "" {
 			args = append(args, "--env", "AGENT_ID="+agentID)
 		}

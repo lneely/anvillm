@@ -5,266 +5,94 @@ description: Plan 9 rc shell scripting syntax and conventions. Use when writing 
 user-invocable: false
 ---
 
-# Plan 9 rc Shell Scripting
+# Plan 9 rc Shell Syntax
 
-Reference for writing shell scripts using Plan 9 rc syntax (`.rc` files).
+Shebang: `#!/usr/bin/env rc` Extension: `.rc`
 
-## File Setup
+## Variables
 
-**Shebang:**
 ```
-#!/usr/bin/env rc
-```
-Always use `/usr/bin/env rc` (not a direct path like `/usr/local/plan9/bin/rc`) because plan9port installation locations vary across systems.
-
-**File extension:** `.rc`
-
-## Core Syntax Differences from Bash/sh
-
-### Variables
-
-**Assignment** (NO spaces around `=`):
-```
-name=value
-path=(/bin /usr/bin)
+name=value                   # NO spaces around =
+files=(a b c)                # lists in parens
+$name $files(1) $files(2-)   # substitute, 1st element, from 2nd onward
+$files(2-4)                  # range
+$#files                      # count
+$"files                      # join with spaces
+$^files                      # concat (no spaces)
 ```
 
-**Reference** (NO `$` for simple cases in some contexts, but use `$` for safety):
+## Command Substitution
+
 ```
-echo $name
-for(file in *.txt) echo $file
+result=`{command}            # backticks, NOT $()
+result=`split{command}       # split using 'split' instead of $ifs
 ```
 
-**Lists** (space-separated in parentheses):
-```
-files=(foo.txt bar.txt baz.txt)
-echo $files          # prints all elements
-echo $files(1)       # prints first element (1-indexed)
-echo $files(2-)      # prints from second element onward
-```
+## Control Flow
 
-### Command Substitution
-
-**Backticks** (like classic sh):
 ```
-files=`{ls *.txt}
-date=`{date}
-```
-
-### Quoting
-
-**Single quotes** for literals:
-```
-echo 'hello $world'   # prints: hello $world
-```
-
-**Double quotes** are NOT special in rc - use single quotes or concatenation.
-
-### Control Structures
-
-**if statement** (note: condition is a command, `if not` is a separate statement):
-```
-if(test -f file.txt) {
-    echo 'file exists'
+if(test -f file) {
+    echo exists
 }
-if not {
-    echo 'file does not exist'
+if not {                     # separate statement, new line
+    echo missing
 }
 
-# Single statement form
-if(test -f file.txt)
-    echo 'exists'
-if not
-    echo 'does not exist'
-```
+for(i in 1 2 3) { echo $i }
+for(i) { echo $i }           # iterates over $* if no list
 
-**for loop:**
-```
-for(file in *.txt) {
-    echo $file
-}
+while(test $n -lt 10) { n=`{echo $n + 1 | bc} }
 
-for(i in 1 2 3 4 5) {
-    echo iteration $i
-}
-```
-
-**while loop:**
-```
-while(test $count -lt 10) {
-    echo $count
-    count=`{echo $count + 1 | bc}
-}
-```
-
-**switch statement:**
-```
 switch($file) {
 case *.txt
-    echo 'text file'
-case *.md
-    echo 'markdown file'
+    echo text
 case *
-    echo 'other file'
+    echo other
 }
 ```
 
-### Functions
-
-**Definition:**
-```
-fn myfunction {
-    echo 'arguments:' $*
-    echo 'first arg:' $1
-}
-
-# Call it
-myfunction foo bar baz
-```
-
-**Local variables** (use `local` keyword or just assign):
-```
-fn myfunction {
-    local=(old $local)
-    # ... function body
-}
-```
-
-### Exit Status
-
-**Check exit status:**
-```
-if(grep -q pattern file.txt) {
-    echo 'found'
-}
-```
-
-**Explicit status check:**
-```
-command
-status=$status
-if(~ $status 0) {
-    echo 'success'
-}
-```
-
-### Pattern Matching
-
-**The `~` operator:**
-```
-if(~ $file *.txt) {
-    echo 'text file'
-}
-
-if(~ $#list 0) {
-    echo 'empty list'
-}
-```
-
-### Pipelines and Redirection
-
-**Standard pipelines:**
-```
-cat file.txt | grep pattern | sort
-```
-
-**Redirection:**
-```
-echo hello >file.txt          # write
-echo world >>file.txt         # append
-command >[2=1]                # redirect stderr to stdout
-command >[2]/dev/null         # redirect stderr to /dev/null
-```
-
-### Important Operators
-
-- `~` - pattern match
-- `$#var` - count elements in list
-- `$var(N)` - Nth element of list (1-indexed)
-- `$var(N-)` - elements from N onward
-- `$^var` - concatenate list elements (no spaces)
-- `$$var` - pid of command
-
-### Comments
+## Functions & Pattern Matching
 
 ```
-# This is a comment
-echo hello  # inline comment
+fn name { echo $* $1 }       # define (all args, first arg)
+fn name                      # remove definition
+~ $file *.txt                # pattern match (sets $status)
+if(~ $#list 0) { echo empty }
 ```
 
-## Common Patterns
+## Redirection & Pipes
 
-### Check if variable is set
 ```
-if(~ $#var 0) {
-    echo 'var is not set'
-}
-```
-
-### Iterate over arguments
-```
-fn process {
-    for(arg in $*) {
-        echo processing $arg
-    }
-}
+>out >>out <in <<EOF         # stdout, append, stdin, here doc
+>[2]err >[2=1] >[2=]         # fd 2 to file, fd 2 to fd 1, close fd 2
+<[0=3]                       # fd 0 from fd 3
+<{cmd} >{cmd} <>{cmd}        # process substitution
+cmd1 | cmd2                  # pipe
+|[2] |[1=2]                  # pipe fd 2, pipe fd 2 to fd 1
 ```
 
-### Build path list
-```
-path=($home/bin /usr/local/bin /usr/bin /bin)
-```
+## Operators
 
-### Conditional execution
-```
-test -f file.txt && echo 'exists'
-test -f file.txt || echo 'does not exist'
-```
+`; & && || ! @` - sequence, async, and, or, invert, subshell
+`^` - concatenate (auto-inserted without whitespace)
 
-### Here documents
-```
-cat <<EOF
-line 1
-line 2
-EOF
-```
+## Special Variables
+
+`$*` `$status` `$apid` `$pid` `$ifs` `$path` `$home`
+
+## Built-ins
+
+`. file` `cd` `eval` `exec` `exit` `shift` `wait` `whatis`
 
 ## Key Differences from Bash
 
-1. **No `$()` syntax** - use backticks for command substitution
-2. **Lists are first-class** - use parentheses for lists
-3. **1-indexed arrays** - `$list(1)` is first element
-4. **`if not` instead of `else`** - written as a separate statement, not on same line
-5. **No `[[ ]]` or `[ ]`** - use `test` command or `~` operator
-6. **Pattern matching with `~`** - not `==` or `=`
-7. **`$#var` for count** - not `${#var}`
-8. **Different redirection** - `>[2=1]` not `2>&1`
-9. **No parameter expansion** - no `${var:-default}` syntax
-10. **Functions use `fn`** - not `function` keyword
-
-## Best Practices
-
-1. Always use `#!/usr/bin/env rc` shebang
-2. Use meaningful variable names
-3. Quote variables when word splitting matters
-4. Use `~` for pattern matching
-5. Remember lists are 1-indexed
-6. Write `if not` as a separate statement on a new line
-7. Prefer `test` for file/string comparisons
-8. Use `$#var` to check if variable is set
-9. Leverage list operations for cleaner code
-10. Keep scripts simple and readable
-
-## Common Gotchas
-
-- **NO spaces around `=`** in assignments
-- **Double quotes are NOT special** - use single quotes
-- **Arrays are 1-indexed**, not 0-indexed
-- **`if not` is a separate statement** - write it on a new line, not `} if not {`
-- **No `${}` parameter expansion**
-- **Different redirection syntax** from bash
-- **`test` command behavior** may differ from bash `test`
-
-## Resources
-
-For detailed documentation, see `9 man rc` or the Plan 9 documentation.
+- Backticks `{cmd}`, not `$(cmd)`
+- Lists `(a b c)`, 1-indexed
+- `if not` on new line
+- `test` or `~`, not `[[ ]]`
+- `$#var` not `${#var}`, `$"var` not `"$*"`
+- `>[2=1]` not `2>&1`
+- No `${var:-default}`
+- `fn name` not `function name`
+- Single quotes only (double quotes not special)
+- Free carets: `$x.c` → `$x^.c`
