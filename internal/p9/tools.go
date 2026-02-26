@@ -172,7 +172,7 @@ func (t *ToolsFS) generateHelp() (string, error) {
 }
 
 func (t *ToolsFS) List(path string) ([]plan9.Dir, error) {
-	parts := strings.Split(strings.Trim(path, "/"), "/")
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
 	// /tools - list capabilities + help file
 	if len(parts) == 2 && parts[0] == "agent" && parts[1] == "tools" {
@@ -222,7 +222,7 @@ func (t *ToolsFS) List(path string) ([]plan9.Dir, error) {
 }
 
 func (t *ToolsFS) Read(path string) ([]byte, error) {
-	parts := strings.Split(strings.Trim(path, "/"), "/")
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
 	// /tools/help - aggregated index
 	if len(parts) == 2 && parts[0] == "tools" && parts[1] == "help" {

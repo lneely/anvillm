@@ -189,7 +189,7 @@ func (s *SkillsFS) generateHelp() (string, error) {
 
 // List returns directory entries for a skills path
 func (s *SkillsFS) List(path string) ([]plan9.Dir, error) {
-	parts := strings.Split(strings.Trim(path, "/"), "/")
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
 	// /skills - list intents + help file
 	if len(parts) == 2 && parts[0] == "agent" && parts[1] == "skills" {
@@ -274,7 +274,7 @@ func (s *SkillsFS) List(path string) ([]plan9.Dir, error) {
 
 // Read returns file content for a skills path
 func (s *SkillsFS) Read(path string) ([]byte, error) {
-	parts := strings.Split(strings.Trim(path, "/"), "/")
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
 	// /skills/help
 	if len(parts) == 2 && parts[0] == "skills" && parts[1] == "help" {

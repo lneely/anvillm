@@ -84,13 +84,13 @@ func (b *BeadsFS) Close() error {
 
 // Read handles reads from beads filesystem.
 func (b *BeadsFS) Read(path string) ([]byte, error) {
-	parts := strings.Split(strings.Trim(path, "/"), "/")
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	
 	switch {
 	case len(parts) == 1 && parts[0] == "list":
 		return b.readList()
 	case len(parts) == 1 && parts[0] == "ready":
-		return b.readReady("")
+		return b.readReady()
 	case len(parts) == 1 && parts[0] == "pending":
 		return b.readPending()
 	case len(parts) == 1 && parts[0] == "stats":
@@ -128,7 +128,7 @@ func (b *BeadsFS) Read(path string) ([]byte, error) {
 
 // Write handles writes to beads filesystem.
 func (b *BeadsFS) Write(path string, data []byte, sessionID string) error {
-	parts := strings.Split(strings.Trim(path, "/"), "/")
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	
 	if len(parts) == 1 && parts[0] == "query" {
 		return b.executeQuery(data)
@@ -169,7 +169,7 @@ func (b *BeadsFS) readList() ([]byte, error) {
 	return json.MarshalIndent(result, "", "  ")
 }
 
-func (b *BeadsFS) readReady(role string) ([]byte, error) {
+func (b *BeadsFS) readReady() ([]byte, error) {
 	filter := bd.WorkFilter{}
 	issues, err := b.store.GetReadyWork(b.ctx, filter)
 	if err != nil {
@@ -332,6 +332,9 @@ func (b *BeadsFS) readBeadProperty(beadID, property string) ([]byte, error) {
 	issue, err := b.store.GetIssue(b.ctx, beadID)
 	if err != nil {
 		return nil, err
+	}
+	if issue == nil {
+		return nil, fmt.Errorf("bead not found: %s", beadID)
 	}
 	
 	switch property {

@@ -294,13 +294,13 @@ func (s *Server) serve(conn net.Conn) {
 	// Cancel any outstanding event subscriptions when the connection drops.
 	defer func() {
 		cs.mu.Lock()
+		defer cs.mu.Unlock()
 		for _, f := range cs.fids {
 			if f.eventUnsub != nil {
 				f.eventUnsub()
 				f.eventUnsub = nil
 			}
 		}
-		cs.mu.Unlock()
 	}()
 
 	for {
@@ -599,9 +599,9 @@ func (s *Server) create(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 }
 
 func (s *Server) read(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
-	cs.mu.Lock()
+	cs.mu.RLock()
 	f, ok := cs.fids[fc.Fid]
-	cs.mu.Unlock()
+	cs.mu.RUnlock()
 	if !ok {
 		return errFcall(fc, "bad fid")
 	}
@@ -666,7 +666,10 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		}
 
 		backendName := args[1]
-		cwd, _ := os.Getwd()
+		cwd, err := os.Getwd()
+		if err != nil {
+			return errFcall(fc, fmt.Sprintf("failed to get working directory: %v", err))
+		}
 		var role string
 		var tasks []string
 		var model string
@@ -718,7 +721,7 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			Tasks: tasks,
 			Model: model,
 		}
-		_, err := s.mgr.New(opts, backendName)
+		_, err = s.mgr.New(opts, backendName)
 		if err != nil {
 			return errFcall(fc, err.Error())
 		}
