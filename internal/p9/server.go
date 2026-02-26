@@ -186,6 +186,9 @@ func NewServer(mgr *session.Manager, beadsStore bd.Storage) (*Server, error) {
 }
 
 func loadMCPTools() []Tool {
+	// These tool definitions are exposed via 9P at agent/tools/anvilmcp/
+	// for progressive discovery by agents using the code execution pattern.
+	// The actual MCP tool (execute_code) is defined in main.go for tools/list.
 	return []Tool{
 		{
 			Name:        "read_inbox",
@@ -251,7 +254,7 @@ func loadMCPTools() []Tool {
 					"language": {Type: "string", Description: "Programming language (bash)", Enum: []string{"bash"}},
 					"timeout":  {Type: "integer", Description: "Timeout in seconds (default: 30)"},
 				},
-				Required: []string{"code", "language"},
+				Required: []string{"code"},
 			},
 		},
 	}

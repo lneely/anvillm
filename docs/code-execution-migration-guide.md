@@ -182,21 +182,8 @@ TOOL CALL send_message(from: "agent-1", to: "agent-2", type: "PROMPT_REQUEST", s
 ```
 
 **After**:
-```
-execute_code with code: "bash <(9p read agent/tools/anvilmcp/send_message.sh) agent-1 agent-2 PROMPT_REQUEST 'Task' 'Do X'"
-```
-```
-
-**After**:
 ```bash
-# Call tools from agent/tools/anvilmcp/send_message.sh";
-await send_message({
-  from: "agent-1",
-  to: "agent-2",
-  type: "PROMPT_REQUEST",
-  subject: "Task",
-  body: "Do X"
-});
+bash <(9p read agent/tools/anvilmcp/send_message.sh) agent-1 agent-2 PROMPT_REQUEST 'Task' 'Do X'
 ```
 
 ### list_sessions
@@ -237,15 +224,14 @@ execute_code with code: "bash <(9p read agent/tools/anvilmcp/list_skills.sh) | j
 
 ## Compatibility Notes
 
-### When to Use Code Execution
+### When to Use Direct Tools
 
-Code execution is best for:
+Direct tools are better for:
 
-1. **Multiple operations**: Loops, batches, pipelines
-2. **Large data**: Filtering, aggregation, transformation
-3. **Complex logic**: Conditionals, polling, error handling
-4. **Privacy**: Keep PII out of context
-3. **Fallback**: If code execution fails, fall back to direct tools
+1. **Single operations**: Simple one-off calls
+2. **Small data**: Results under 1,000 tokens
+3. **Simple logic**: No conditionals or loops needed
+4. **Debugging**: When you need to see intermediate results
 
 ### When to Use Code Execution
 
@@ -275,72 +261,71 @@ Code execution is better for:
 
 **Bad**:
 ```bash
-const result = await read_inbox({ agent_id: "82b93a8a" });
-console.log(result.content);  // Could be 50,000 tokens
+result=$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) 82b93a8a)
+echo "$result"  # Could be 50,000 tokens
 ```
 
 **Good**:
 ```bash
-const result = await read_inbox({ agent_id: "82b93a8a" });
-const lines = result.content.split("\n");
-console.log(`Inbox has ${lines.length} messages`);  // ~10 tokens
+result=$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) 82b93a8a)
+count=$(echo "$result" | wc -l)
+echo "Inbox has $count messages"  # ~10 tokens
 ```
 
 ### Pitfall 2: Not Using Loops
 
 **Bad**:
 ```bash
-const result1 = await read_inbox({ agent_id: "agent-1" });
-console.log(result1.content);
-const result2 = await read_inbox({ agent_id: "agent-2" });
-console.log(result2.content);
-const result3 = await read_inbox({ agent_id: "agent-3" });
-console.log(result3.content);
+result1=$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) agent-1)
+echo "$result1"
+result2=$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) agent-2)
+echo "$result2"
+result3=$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) agent-3)
+echo "$result3"
 ```
 
 **Good**:
 ```bash
-const agents = ["agent-1", "agent-2", "agent-3"];
-for (const agentId of agents) {
-  const result = await read_inbox({ agent_id: agentId });
-  console.log(`${agentId}: ${result.content.split("\n").length} messages`);
-}
+for agent_id in agent-1 agent-2 agent-3; do
+  result=$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) "$agent_id")
+  count=$(echo "$result" | wc -l)
+  echo "$agent_id: $count messages"
+done
 ```
 
 ### Pitfall 3: Ignoring Errors
 
 **Bad**:
 ```bash
-const result = await read_inbox({ agent_id: "invalid-id" });
-console.log(result.content);  // Crashes
+result=$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) invalid-id)
+echo "$result"  # May fail silently
 ```
 
 **Good**:
 ```bash
-try {
-  const result = await read_inbox({ agent_id: "invalid-id" });
-  console.log(result.content);
-} catch (error) {
-  console.error("Failed to read inbox:", error.message);
-}
+if result=$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) invalid-id 2>&1); then
+  echo "$result"
+else
+  echo "Failed to read inbox: $result" >&2
+fi
 ```
 
 ### Pitfall 4: Re-reading Tool Definitions
 
 **Bad**:
 ```bash
-for (let i = 0; i < 10; i++) {
-  const toolCode = bash.readTextFileSync("agent/tools/anvilmcp/read_inbox.sh");
-  // Parse and use...
-}
+for i in {1..10}; do
+  tool=$(9p read agent/tools/anvilmcp/read_inbox.sh)
+  # Parse and use...
+done
 ```
 
 **Good**:
 ```bash
-# Call tools from agent/tools/anvilmcp/read_inbox.sh";
-for (let i = 0; i < 10; i++) {
-  await read_inbox({ agent_id: "82b93a8a" });
-}
+# Call tool directly each time
+for i in {1..10}; do
+  bash <(9p read agent/tools/anvilmcp/read_inbox.sh) 82b93a8a
+done
 ```
 
 ## Performance Comparison

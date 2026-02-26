@@ -8,31 +8,41 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
 
+var dangerousPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`rm\s+-[a-z]*r[a-z]*f[a-z]*\s+/`),  // rm -rf / variants
+	regexp.MustCompile(`rm\s+-[a-z]*f[a-z]*r[a-z]*\s+/`),  // rm -fr / variants
+	regexp.MustCompile(`:\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&`), // fork bomb
+	regexp.MustCompile(`\bmkfs\b`),                         // filesystem format
+	regexp.MustCompile(`\bdd\b.*\bif=/dev/`),               // dd from device
+	regexp.MustCompile(`\bchmod\s+777\b`),                  // world-writable
+	regexp.MustCompile(`\b(curl|wget)\s+https?://`),        // network fetch
+	regexp.MustCompile(`>\s*/dev/`),                        // write to device
+	regexp.MustCompile(`\beval\s*\(`),                      // eval execution
+	regexp.MustCompile(`\bexec\s*\(`),                      // exec execution
+	regexp.MustCompile(`\b(sudo|su)\b`),                    // privilege escalation
+	regexp.MustCompile(`/etc/(passwd|shadow|sudoers)`),     // sensitive files
+}
+
+var whitespacePattern = regexp.MustCompile(`\s+`)
+
 func validateCode(code string) error {
-	dangerous := []string{
-		"rm -rf /",
-		":(){ :|:& };:",
-		"mkfs",
-		"dd if=/dev/zero",
-		"chmod 777",
-		"curl http",
-		"wget http",
-		"> /dev/",
-		"exec(",
-		"eval(",
-	}
-	for _, pattern := range dangerous {
-		if strings.Contains(code, pattern) {
+	// Normalize: collapse whitespace, lowercase for pattern matching
+	normalized := strings.ToLower(code)
+	normalized = whitespacePattern.ReplaceAllString(normalized, " ")
+
+	for _, pattern := range dangerousPatterns {
+		if pattern.MatchString(normalized) {
 			logSecurityEvent(SecurityEvent{
 				Timestamp: time.Now(),
 				EventType: "validation_failure",
-				Details:   fmt.Sprintf("dangerous pattern: %s", pattern),
+				Details:   fmt.Sprintf("dangerous pattern: %s", pattern.String()),
 			})
-			return fmt.Errorf("dangerous pattern detected: %s", pattern)
+			return fmt.Errorf("dangerous pattern detected")
 		}
 	}
 	return nil
@@ -167,15 +177,19 @@ type limitedWriter struct {
 
 func (lw *limitedWriter) Write(p []byte) (n int, err error) {
 	if lw.written >= lw.limit {
-		return 0, fmt.Errorf("output size limit exceeded (%d bytes)", lw.limit)
+		return len(p), nil // Discard silently, report all bytes consumed
 	}
-	
+
 	remaining := lw.limit - lw.written
+	toWrite := p
 	if len(p) > remaining {
-		p = p[:remaining]
+		toWrite = p[:remaining]
 	}
-	
-	n, err = lw.w.Write(p)
-	lw.written += n
-	return n, err
+
+	written, err := lw.w.Write(toWrite)
+	lw.written += written
+	if err != nil {
+		return written, err
+	}
+	return len(p), nil // Report all input bytes as consumed
 }

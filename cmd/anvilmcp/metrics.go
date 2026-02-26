@@ -106,7 +106,7 @@ func logSecurityEvent(event SecurityEvent) error {
 	}
 	
 	logFile := filepath.Join(logDir, "security.jsonl")
-	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}

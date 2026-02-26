@@ -3,9 +3,14 @@
 # Usage: list_sessions
 # Output: JSON array of sessions
 
-sessions=()
-while IFS=$'\t' read -r id name state assignee workdir; do
-  sessions+=("{\"id\":\"$id\",\"name\":\"$name\",\"state\":\"$state\",\"assignee\":\"$assignee\",\"workdir\":\"$workdir\"}")
-done < <(9p read agent/list)
-
-echo "[$(IFS=,; echo "${sessions[*]}")]"
+9p read agent/list | jq -Rs '
+  split("\n") | map(select(length > 0)) | map(
+    split("\t") | {
+      id: .[0],
+      name: .[1],
+      state: .[2],
+      assignee: .[3],
+      workdir: .[4]
+    }
+  )
+'
