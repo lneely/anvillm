@@ -192,10 +192,6 @@ func (m *Manager) mailProcessingLoop() {
 
 // processMailboxes handles outbox delivery and inbox processing
 func (m *Manager) processMailboxes() {
-	if m.mailManager == nil {
-		return
-	}
-	
 	m.mu.RLock()
 	sessions := make([]backend.Session, 0, len(m.sessions))
 	for _, sess := range m.sessions {
@@ -258,7 +254,7 @@ func (m *Manager) processMailboxes() {
 	}
 }
 
-// GetMailManager returns the mailbox manager
+// GetMailManager returns the mailbox manager (guaranteed non-nil)
 func (m *Manager) GetMailManager() *mailbox.Manager {
 	return m.mailManager
 }

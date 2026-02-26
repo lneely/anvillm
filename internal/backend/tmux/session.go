@@ -426,7 +426,11 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	// Check command support if applicable
 	if strings.HasPrefix(prompt, "/") && s.commands != nil {
 		if !s.commands.IsSupported(prompt) {
-			cmd := strings.Fields(prompt)[0]
+			fields := strings.Fields(prompt)
+			cmd := "unknown"
+			if len(fields) > 0 {
+				cmd = fields[0]
+			}
 			s.mu.Unlock()
 			return "", fmt.Errorf("slash command not supported by %s backend: %s\nTo use manually, middle-click Attach", s.backendName, cmd)
 		}
