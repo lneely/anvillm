@@ -1,7 +1,7 @@
 #!/bin/bash
+# capabilities: skills
+# description: List all available skills (JSON array)
 set -euo pipefail
-# list_skills - List all available skills
-# Usage: list_skills
 
 if [ -z "${ANVILLM_SKILLS_PATH:-}" ]; then
   echo "[]"

@@ -1,7 +1,7 @@
 #!/bin/bash
+# capabilities: messaging
+# description: Read messages from agent inbox: AGENT_ID
 set -euo pipefail
-# read_inbox - Read messages from agent inbox
-# Usage: read_inbox <agent_id>
 
 agent_id="${1:?Usage: read_inbox <agent_id>}"
 inbox_path="agent/${agent_id}/inbox"

@@ -1,8 +1,7 @@
 #!/bin/bash
+# capabilities: agents
+# description: Set agent state: AGENT_ID STATE (idle|running|stopped|starting|error|exited)
 set -euo pipefail
-# set_state - Set agent state
-# Usage: set_state <agent_id> <state>
-# Valid states: idle, running, stopped, starting, error, exited
 
 agent_id="${1:?Usage: set_state <agent_id> <state>}"
 state="${2:?Usage: set_state <agent_id> <state>}"

@@ -1,7 +1,7 @@
 #!/bin/bash
+# capabilities: messaging
+# description: Send message to agent or user: FROM TO TYPE SUBJECT BODY
 set -euo pipefail
-# send_message - Send message to another agent or user
-# Usage: send_message <from> <to> <type> <subject> <body>
 
 from="${1:?Usage: send_message <from> <to> <type> <subject> <body>}"
 to="${2:?Usage: send_message <from> <to> <type> <subject> <body>}"

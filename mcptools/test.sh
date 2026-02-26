@@ -1,6 +1,7 @@
 #!/bin/bash
+# capabilities: testing
+# description: Test all bash wrappers
 set -euo pipefail
-# test.sh - Test all bash wrappers
 
 echo "Testing read_inbox..."
 if result=$(./read_inbox.sh user 2>&1); then
