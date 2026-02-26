@@ -6,64 +6,44 @@ description: Capture screenshots of browser windows for visual feedback during w
 
 # Web Dev Browser Screencapture
 
-## Purpose
+Capture browser window showing a specific URL.
 
-Capture screenshots of browser windows showing localhost dev servers for visual feedback.
-
-## When to Use
-
-- Verifying UI changes match expected design
-- Checking dev server output visually
-- Documenting current state of web application
-- Getting visual feedback during development
-
-## When NOT to Use
-
-- When browser is not running
-- When target page is not open in browser
-
-## Instructions
-
-### Usage
+## Usage
 
 ```bash
-<capture-browser.sh> ${TMPDIR:-/tmp}/capture.png localhost:3000
+capture_browser.sh [output_path] [url_pattern]
 ```
 
-If running in a sandbox without display access, use `execute-elevated-bash` (no quotes):
+**Defaults:**
+- `output_path`: `${TMPDIR:-/tmp}/browser_capture.png`
+- `url_pattern`: `localhost`
 
+**Examples:**
 ```bash
-execute-elevated-bash <capture-browser.sh> ${TMPDIR:-/tmp}/capture.png localhost:3000
+capture_browser.sh /tmp/capture.png localhost:3000
+capture_browser.sh /tmp/app.png myapp.local
 ```
 
-Note: Replace `<capture-browser.sh>` with the actual path shown in "Companion Files" above.
-
-### Parameters
-
-- First arg: output path (default: `${TMPDIR:-/tmp}/browser_capture.png`)
-- Second arg: URL pattern to match (default: `localhost`)
-
-### Reading the captured image
+## Reading Captured Image
 
 Use `fs_read` with Image mode:
-
 ```json
-{"operations": [{"mode": "Image", "image_paths": ["<path_from_script_output>"]}]}
+{"operations": [{"mode": "Image", "image_paths": ["<path_from_output>"]}]}
 ```
-
-Then describe the UI elements visible.
 
 ## Platform Support
 
-The script auto-detects the OS via `uname -s`:
+- **macOS**: Google Chrome + `osascript` + `screencapture`
+- **Linux**: `brotab` + `wmctrl` + `import` (ImageMagick)
 
-**macOS:**
-- Uses `osascript` to activate Chrome and bring matching window to front
-- Uses `screencapture` for capture
-- Requires: Google Chrome
+## When to Use
 
-**Linux (X11):**
-- Uses `brotab` to find and activate the tab by URL
-- Uses `wmctrl` to find window by page title
-- Uses `import` (ImageMagick) for capture
-- Requires: brotab with browser extension, wmctrl, ImageMagick
+- Verify UI changes match design
+- Check dev server output visually
+- Document application state
+- Get visual feedback during development
+
+## When NOT to Use
+
+- Browser not running
+- Target page not open

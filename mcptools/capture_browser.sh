@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# Capture browser window showing a specific URL
-# Works on macOS (Chrome) and Linux/X11 (Firefox/Chrome via brotab)
-# Usage: capture-browser.sh [output_path] [url_pattern]
-
+# capabilities: web, browser, screenshot
+# description: Capture browser window showing a specific URL: capture_browser.sh [output_path] [url_pattern]
 set -e
 
 OUTPUT="${1:-${TMPDIR:-/tmp}/browser_capture.png}"
