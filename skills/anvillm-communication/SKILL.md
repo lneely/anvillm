@@ -8,9 +8,12 @@ when_to_load: Load when you need to send messages to other agents, respond to th
 
 ## Discovering Agents
 
-Use `list_sessions` to see all running agents. Output format: `{session_id} {alias} {state} {pid} {cwd}`
+List all running agents:
+```
+execute_code with code: "bash <(9p read agent/tools/anvilmcp/list_sessions.sh)"
+```
 
-The session_id (first field) is what you need for communication.
+Returns JSON array with id, name, state, assignee, workdir. Use the `id` field for communication.
 
 ## Message Body Schema
 
@@ -37,12 +40,17 @@ No prose. No preamble. No summaries of completed work.
 
 ## Sending Messages
 
-Use the `send_message` tool with these parameters:
-- `from`: your AGENT_ID
-- `to`: recipient session_id or "user"
-- `type`: message type (see below)
-- `subject`: brief description (≤10 words)
-- `body`: structured message content (see schema above)
+Send a message:
+```
+execute_code with code: "bash <(9p read agent/tools/anvilmcp/send_message.sh) FROM TO TYPE SUBJECT BODY"
+```
+
+Parameters:
+- FROM: your AGENT_ID
+- TO: recipient session_id or "user"
+- TYPE: message type (see below)
+- SUBJECT: brief description (≤10 words)
+- BODY: structured message content (see schema above)
 
 ### Message Types
 
@@ -63,46 +71,34 @@ Use the `send_message` tool with these parameters:
 
 **Simple response to user:**
 ```
-send_message with:
-  from: your AGENT_ID
-  to: user
-  type: PROMPT_RESPONSE
-  subject: Task complete
-  body: Implemented the feature and ran tests successfully
+execute_code with code: "bash <(9p read agent/tools/anvilmcp/send_message.sh) YOUR_AGENT_ID user PROMPT_RESPONSE 'Task complete' 'Implemented the feature and ran tests successfully'"
 ```
 
 **Ask user a question:**
 ```
-send_message with:
-  from: your AGENT_ID
-  to: user
-  type: QUERY_REQUEST
-  subject: Need deployment target
-  body: Which environment should I deploy to: staging or production?
+execute_code with code: "bash <(9p read agent/tools/anvilmcp/send_message.sh) YOUR_AGENT_ID user QUERY_REQUEST 'Need deployment target' 'Which environment should I deploy to: staging or production?'"
 ```
 
 **Send work to another agent:**
 ```
-send_message with:
-  from: your AGENT_ID
-  to: abc123def
-  type: PROMPT_REQUEST
-  subject: Review needed
-  body: Please review the changes in commit xyz789
+execute_code with code: "bash <(9p read agent/tools/anvilmcp/send_message.sh) YOUR_AGENT_ID abc123def PROMPT_REQUEST 'Review needed' 'Please review the changes in commit xyz789'"
 ```
 
 ## Checking Your Inbox
 
 **Messages are delivered automatically** - you don't need to actively check. The system will deliver incoming messages to you.
 
-To manually check: `read_inbox` with `agent_id` set to your AGENT_ID
+To manually check:
+```
+execute_code with code: "bash <(9p read agent/tools/anvilmcp/read_inbox.sh) YOUR_AGENT_ID"
+```
 
 ### Responding to Messages
 
 When you receive a message:
 1. **Read and understand** the message content
 2. **Take the requested action** (answer question, review code, etc.)
-3. **Send a response** back to the sender using `send_message`
+3. **Send a response** back to the sender (see examples above)
 
 For `PROMPT_REQUEST` messages, respond with `PROMPT_RESPONSE`.
 For `QUERY_REQUEST` messages, respond with `QUERY_RESPONSE`.
@@ -113,35 +109,29 @@ Example response flow:
 ```
 # Received: PROMPT_REQUEST from agent abc123
 # After completing the work, respond:
-send_message with:
-  from: your AGENT_ID
-  to: abc123
-  type: PROMPT_RESPONSE
-  subject: Task completed
-  body: I've completed the requested work. Details: ...
+execute_code with code: "bash <(9p read agent/tools/anvilmcp/send_message.sh) YOUR_AGENT_ID abc123 PROMPT_RESPONSE 'Task completed' 'Status: completed\nBeads: none\nErrors: none'"
 ```
 
 ## Agent State
 
-Use `set_state` to change your state:
-- `idle` - Ready for work
-- `running` - Currently processing
-- `stopped` - Paused
-- `starting` - Initializing
-- `error` - Error state
-- `exited` - Terminated
+Set your state:
+```
+execute_code with code: "bash <(9p read agent/tools/anvilmcp/set_state.sh) YOUR_AGENT_ID STATE"
+```
 
-Check other agents' states via `list_sessions` output (third field).
+States: idle, running, stopped, starting, error, exited
+
+Check other agents' states via list_sessions output.
 
 ## Message Flow
 
-1. **bot → user**: Use `send_message` with `to="user"`. Message appears in bot's chat log. Sender transitions to idle.
+1. **bot → user**: Send message with `to="user"`. Message appears in bot's chat log. Sender transitions to idle.
 2. **user → bot**: User sends to bot's session_id. Delivered to bot's inbox automatically.
-3. **bot → bot**: Use `send_message` with target session_id. Delivered to recipient's inbox automatically.
+3. **bot → bot**: Send message with target session_id. Delivered to recipient's inbox automatically.
 
 ## Quick Reference
 
-- **List agents**: `list_sessions`
-- **Send message**: `send_message` (from, to, type, subject, body)
-- **Check inbox**: `read_inbox` (agent_id)
-- **Set state**: `set_state` (agent_id, state)
+- **List agents**: `bash <(9p read agent/tools/anvilmcp/list_sessions.sh)`
+- **Send message**: `bash <(9p read agent/tools/anvilmcp/send_message.sh) FROM TO TYPE SUBJECT BODY`
+- **Check inbox**: `bash <(9p read agent/tools/anvilmcp/read_inbox.sh) AGENT_ID`
+- **Set state**: `bash <(9p read agent/tools/anvilmcp/set_state.sh) AGENT_ID STATE`

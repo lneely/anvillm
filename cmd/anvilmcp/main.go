@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
-	"strings"
+	"time"
+)
+
+var (
+	executionSemaphore = make(chan struct{}, 3) // Max 3 concurrent executions
 )
 
 type MCPRequest struct {
@@ -84,57 +87,16 @@ func main() {
 			sendResponse(req.ID, map[string]interface{}{
 				"tools": []Tool{
 					{
-						Name:        "read_inbox",
-						Description: "Read messages from agent's inbox",
+						Name:        "execute_code",
+						Description: "Execute bash code as a subprocess with timeout",
 						InputSchema: InputSchema{
 							Type: "object",
 							Properties: map[string]Property{
-								"agent_id": {Type: "string", Description: "Agent session ID (or 'user')"},
+								"code":     {Type: "string", Description: "Bash code to execute"},
+								"language": {Type: "string", Description: "Programming language (bash)", Enum: []string{"bash"}},
+								"timeout":  {Type: "integer", Description: "Timeout in seconds (default: 30)"},
 							},
-							Required: []string{"agent_id"},
-						},
-					},
-					{
-						Name:        "send_message",
-						Description: "Send message to another agent or user",
-						InputSchema: InputSchema{
-							Type: "object",
-							Properties: map[string]Property{
-								"from":    {Type: "string", Description: "Sender agent ID (or 'user')"},
-								"to":      {Type: "string", Description: "Recipient agent ID (or 'user')"},
-								"type":    {Type: "string", Description: "Message type"},
-								"subject": {Type: "string", Description: "Message subject"},
-								"body":    {Type: "string", Description: "Message body"},
-							},
-							Required: []string{"from", "to", "type", "subject", "body"},
-						},
-					},
-					{
-						Name:        "list_sessions",
-						Description: "List all active sessions",
-						InputSchema: InputSchema{
-							Type:       "object",
-							Properties: map[string]Property{},
-						},
-					},
-					{
-						Name:        "set_state",
-						Description: "Set agent state (idle, running, stopped, etc.)",
-						InputSchema: InputSchema{
-							Type: "object",
-							Properties: map[string]Property{
-								"agent_id": {Type: "string", Description: "Agent session ID"},
-								"state":    {Type: "string", Description: "State value", Enum: []string{"idle", "running", "stopped", "starting", "error", "exited"}},
-							},
-							Required: []string{"agent_id", "state"},
-						},
-					},
-					{
-						Name:        "list_skills",
-						Description: "List all available skills from $ANVILLM_SKILLS_PATH",
-						InputSchema: InputSchema{
-							Type:       "object",
-							Properties: map[string]Property{},
+							Required: []string{"code"},
 						},
 					},
 				},
@@ -160,81 +122,45 @@ func handleToolCall(req MCPRequest) {
 
 	fmt.Fprintf(os.Stderr, "[anvilmcp] Tool call: %s with args: %v\n", params.Name, params.Arguments)
 	switch params.Name {
-	case "read_inbox":
-		agentID, _ := params.Arguments["agent_id"].(string)
-		fmt.Fprintf(os.Stderr, "[anvilmcp] Reading inbox for: %s\n", agentID)
-		result, err := readInbox(agentID)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "[anvilmcp] Error: %v\n", err)
-			sendError(req.ID, -32000, err.Error())
-			return
+	case "execute_code":
+		code, _ := params.Arguments["code"].(string)
+		language, _ := params.Arguments["language"].(string)
+		if language == "" {
+			language = "bash"
 		}
-		fmt.Fprintf(os.Stderr, "[anvilmcp] Success: %d bytes\n", len(result))
-		sendResponse(req.ID, map[string]interface{}{
-			"content": []map[string]string{
-				{"type": "text", "text": result},
-			},
+		timeout := 30
+		if t, ok := params.Arguments["timeout"].(float64); ok {
+			timeout = int(t)
+		}
+
+		// Acquire execution slot
+		executionSemaphore <- struct{}{}
+		defer func() { <-executionSemaphore }()
+
+		fmt.Fprintf(os.Stderr, "[anvilmcp] Executing bash code (timeout: %ds)\n", timeout)
+		result, err := executeCode(code, language, timeout)
+
+		// Log token comparison
+		codeTokens := estimateTokens(code)
+		outputTokens := estimateTokens(result)
+		reduction := 0.0
+		if codeTokens > 0 {
+			reduction = (1.0 - float64(outputTokens)/float64(codeTokens)) * 100
+		}
+		logTokens(TokenLog{
+			Timestamp:      time.Now(),
+			Method:         "execute_code",
+			DirectTokens:   codeTokens,
+			CodeExecTokens: outputTokens,
+			Reduction:      reduction,
 		})
-	case "send_message":
-		from, _ := params.Arguments["from"].(string)
-		to, _ := params.Arguments["to"].(string)
-		msgType, _ := params.Arguments["type"].(string)
-		subject, _ := params.Arguments["subject"].(string)
-		body, _ := params.Arguments["body"].(string)
-		
-		fmt.Fprintf(os.Stderr, "[anvilmcp] Sending message: %s -> %s (type: %s)\n", from, to, msgType)
-		err := sendMessage(from, to, msgType, subject, body)
+
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[anvilmcp] Error: %v\n", err)
 			sendError(req.ID, -32000, err.Error())
 			return
 		}
-		fmt.Fprintf(os.Stderr, "[anvilmcp] Message sent successfully\n")
-		sendResponse(req.ID, map[string]interface{}{
-			"content": []map[string]string{
-				{"type": "text", "text": "Message sent"},
-			},
-		})
-	case "list_sessions":
-		fmt.Fprintf(os.Stderr, "[anvilmcp] Listing sessions\n")
-		result, err := listSessions()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "[anvilmcp] Error: %v\n", err)
-			sendError(req.ID, -32000, err.Error())
-			return
-		}
-		fmt.Fprintf(os.Stderr, "[anvilmcp] Found sessions: %d bytes\n", len(result))
-		sendResponse(req.ID, map[string]interface{}{
-			"content": []map[string]string{
-				{"type": "text", "text": result},
-			},
-		})
-	case "set_state":
-		agentID, _ := params.Arguments["agent_id"].(string)
-		state, _ := params.Arguments["state"].(string)
-		
-		fmt.Fprintf(os.Stderr, "[anvilmcp] Setting state for %s to %s\n", agentID, state)
-		err := setState(agentID, state)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "[anvilmcp] Error: %v\n", err)
-			sendError(req.ID, -32000, err.Error())
-			return
-		}
-		fmt.Fprintf(os.Stderr, "[anvilmcp] State set successfully\n")
-		sendResponse(req.ID, map[string]interface{}{
-			"content": []map[string]string{
-				{"type": "text", "text": "State set"},
-			},
-		})
-	case "list_skills":
-		fmt.Fprintf(os.Stderr, "[anvilmcp] Listing skills\n")
-		result, err := listSkills()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "[anvilmcp] Error: %v\n", err)
-			sendError(req.ID, -32000, err.Error())
-			return
-		}
-		fmt.Fprintf(os.Stderr, "[anvilmcp] Skills listed: %d bytes\n", len(result))
+		fmt.Fprintf(os.Stderr, "[anvilmcp] Execution complete: %d bytes\n", len(result))
 		sendResponse(req.ID, map[string]interface{}{
 			"content": []map[string]string{
 				{"type": "text", "text": result},
@@ -243,157 +169,6 @@ func handleToolCall(req MCPRequest) {
 	default:
 		sendError(req.ID, -32601, "Tool not found")
 	}
-}
-
-func readInbox(agentID string) (string, error) {
-	inboxPath := fmt.Sprintf("agent/%s/inbox", agentID)
-	
-	cmd := exec.Command("9p", "ls", inboxPath)
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("failed to list inbox: %v", err)
-	}
-	
-	files := strings.Split(strings.TrimSpace(string(output)), "\n")
-	if len(files) == 0 || files[0] == "" {
-		return "No messages", nil
-	}
-	
-	// Read first message only
-	var firstFile string
-	for _, file := range files {
-		if strings.HasSuffix(file, ".json") {
-			firstFile = file
-			break
-		}
-	}
-	
-	if firstFile == "" {
-		return "No messages", nil
-	}
-	
-	msgPath := fmt.Sprintf("%s/%s", inboxPath, firstFile)
-	cmd = exec.Command("9p", "read", msgPath)
-	data, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("failed to read message: %v", err)
-	}
-	
-	// Mark as complete (strip .json extension)
-	msgID := strings.TrimSuffix(firstFile, ".json")
-	ctlPath := fmt.Sprintf("agent/%s/ctl", agentID)
-	cmd = exec.Command("9p", "write", ctlPath)
-	cmd.Stdin = strings.NewReader(fmt.Sprintf("complete %s", msgID))
-	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "[anvilmcp] Warning: Failed to mark message as complete: %v\n", err)
-	}
-	
-	// Parse and format the message like 9p-read-inbox does
-	var msg map[string]interface{}
-	if err := json.Unmarshal(data, &msg); err != nil {
-		// If parsing fails, return raw JSON
-		return string(data), nil
-	}
-	
-	// Format: [Message from {from}]\nType: {type}\nSubject: {subject}\n\n{body}
-	from, _ := msg["from"].(string)
-	msgType, _ := msg["type"].(string)
-	subject, _ := msg["subject"].(string)
-	body, _ := msg["body"].(string)
-	
-	formatted := fmt.Sprintf("[Message from %s]\nType: %s\nSubject: %s\n\n%s", from, msgType, subject, body)
-	return formatted, nil
-}
-
-func sendMessage(from, to, msgType, subject, body string) error {
-	msg := map[string]string{
-		"to":      to,
-		"type":    msgType,
-		"subject": subject,
-		"body":    body,
-	}
-	
-	data, err := json.Marshal(msg)
-	if err != nil {
-		return err
-	}
-	
-	mailPath := fmt.Sprintf("agent/%s/mail", from)
-	cmd := exec.Command("9p", "write", mailPath)
-	cmd.Stdin = strings.NewReader(string(data))
-	
-	// Capture both stdout and stderr to get error messages
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		// Return the actual error message from 9p
-		if len(output) > 0 {
-			return fmt.Errorf("%s", strings.TrimSpace(string(output)))
-		}
-		return err
-	}
-	return nil
-}
-
-func listSessions() (string, error) {
-	cmd := exec.Command("9p", "read", "agent/list")
-	output, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-	
-	return string(output), nil
-}
-
-func setState(agentID, state string) error {
-	statePath := fmt.Sprintf("agent/%s/state", agentID)
-	cmd := exec.Command("9p", "write", statePath)
-	cmd.Stdin = strings.NewReader(state)
-	return cmd.Run()
-}
-
-func listSkills() (string, error) {
-	skillsPath := os.Getenv("ANVILLM_SKILLS_PATH")
-	if skillsPath == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("failed to get home directory: %v", err)
-		}
-		skillsPath = fmt.Sprintf("%s/.config/anvillm/skills", home)
-	}
-	
-	var result strings.Builder
-	for _, dir := range strings.Split(skillsPath, ":") {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
-			}
-			
-			skillPath := fmt.Sprintf("%s/%s/SKILL.md", dir, entry.Name())
-			data, err := os.ReadFile(skillPath)
-			if err != nil {
-				continue
-			}
-			
-			desc := "No description"
-			scanner := bufio.NewScanner(strings.NewReader(string(data)))
-			for scanner.Scan() {
-				line := scanner.Text()
-				if strings.HasPrefix(line, "description: ") {
-					desc = strings.TrimPrefix(line, "description: ")
-					break
-				}
-			}
-			
-			result.WriteString(fmt.Sprintf("%s: %s\n", entry.Name(), desc))
-		}
-	}
-	
-	return result.String(), nil
 }
 
 func sendResponse(id interface{}, result interface{}) {

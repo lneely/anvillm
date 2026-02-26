@@ -77,6 +77,37 @@ Workflow:
 
 Core skills: beads, anvillm-communication, agent-kb
 
+## Code Execution Pattern
+
+Use execute_code for orchestration logic instead of multiple tool calls. This reduces token consumption by 80-99%.
+
+Progressive discovery: List tools via 9p, read specific .sh files to understand interfaces, then execute via bash.
+
+Example - Check child completion status:
+```
+execute_code with code: "
+children=\$(9p read agent/beads/children/bd-49d)
+incomplete=\$(echo \"\$children\" | jq '[.[] | select(.status != \"closed\")]')
+count=\$(echo \"\$incomplete\" | jq 'length')
+total=\$(echo \"\$children\" | jq 'length')
+echo \"Remaining: \$count/\$total\"
+echo \"\$incomplete\" | jq -r '.[] | \"\\(.id): \\(.title)\"'
+"
+```
+
+Example - Batch bot status check:
+```
+execute_code with code: "
+bash <(9p read agent/tools/anvilmcp/list_sessions.sh) | jq -r '.[] | select(.state == \"running\") | .id' | while read bot_id; do
+  inbox=\$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) \$bot_id)
+  msg_count=\$(echo \"\$inbox\" | grep -c '^' || echo 0)
+  echo \"\$bot_id: \$msg_count messages\"
+done
+"
+```
+
+See docs/code-execution-user-guide.md for more examples.
+
 ## KB Protocol
 
 Before starting any task, search the knowledge base for relevant context:
