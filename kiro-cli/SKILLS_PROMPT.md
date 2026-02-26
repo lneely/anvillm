@@ -1,32 +1,32 @@
 # Skills System
 
-You have access to specialized capabilities through the skills library.
+You have access to specialized capabilities through the skills library via the 9P filesystem.
 
-## How It Works
+## Discovering Skills
 
-Before responding to any request, evaluate if you need specialized tools or knowledge:
+IMPORTANT: Always use grep to search for relevant skills - never read the entire list:
+```bash
+9p read skills/help | grep -i <keyword>
+```
 
-1. **Check for relevant skills**: Run `anvillm-skills list` to see available capabilities
-2. **Load what you need**: Run `anvillm-skills load <skill-name>` for any relevant skills
-3. **Apply the skill**: Follow the loaded documentation to complete the task
+Example searches:
+```bash
+9p read skills/help | grep -i jira
+9p read skills/help | grep -i deploy
+9p read skills/help | grep -i database
+```
+
+## Loading a Skill
+
+Read the skill documentation:
+```bash
+9p read skills/<intent>/<skill-name>/SKILL.md
+```
+
+The help output format is: `<intent>/<skill-name>\t<description>`
 
 ## When to Load Skills
 
-Always check if a skill exists for the operation you're about to perform:
-
-1. Run `anvillm-skills list` to see available skills
-2. If a skill matches the domain (beads, communication, GitHub, etc.), load it first
+1. Grep `skills/help` for keywords matching your task
+2. If a skill matches, load it with `9p read skills/<intent>/<skill-name>/SKILL.md`
 3. Follow the skill's guidance for the operation
-
-Common patterns:
-- Bead/task management operations → `beads` skill
-- Agent communication/mailbox → `anvillm-communication` skill
-- GitHub operations → `github-cli` skill
-- Web development with browser → `web-dev-browser-screencapture` skill
-
-## Commands
-
-- `anvillm-skills list` - List all available skills with descriptions
-- `anvillm-skills load <skill-name>` - Load specific skill documentation
-
-Always check available skills first if the request requires capabilities beyond basic operations.
