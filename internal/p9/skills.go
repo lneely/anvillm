@@ -12,11 +12,13 @@ import (
 )
 
 // SkillsFS provides virtual filesystem for skills organized by intent
+// SkillsFS provides 9P filesystem access to agent skills organized by intent.
+// Skills are discovered from configured directories and exposed as virtual files.
 type SkillsFS struct {
 	skillsDirs []string
 }
 
-// SkillMeta holds parsed YAML front-matter from SKILL.md
+// SkillMeta holds parsed YAML front-matter from SKILL.md files.
 type SkillMeta struct {
 	Name        string
 	Intents     []string
@@ -24,7 +26,8 @@ type SkillMeta struct {
 	Path        string // directory path
 }
 
-// NewSkillsFS creates a new skills filesystem
+// NewSkillsFS creates a new skills filesystem handler.
+// It discovers skills from SKILLS_DIR environment variable or default locations.
 func NewSkillsFS() *SkillsFS {
 	var dirs []string
 

@@ -5,6 +5,7 @@ package eventbus
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -71,6 +72,10 @@ func (b *Bus) Subscribe() (<-chan *Event, func()) {
 
 // MarshalEvent encodes an event as a JSON line (with trailing newline).
 func MarshalEvent(e *Event) []byte {
-	data, _ := json.Marshal(e)
+	data, err := json.Marshal(e)
+	if err != nil {
+		// Log marshal error but return valid JSON to avoid breaking event stream
+		return []byte(fmt.Sprintf(`{"error":"failed to marshal event: %v"}`+"\n", err))
+	}
 	return append(data, '\n')
 }

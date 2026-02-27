@@ -46,20 +46,27 @@ agent/beads/
 | Command | Format | Description |
 |---------|--------|-------------|
 | `new` | `new 'title' ['description'] [parent-id]` | Create new bead (optionally as child) |
+| `create` | `create 'title' ['description'] [parent-id]` | Alias for new |
 | `claim` | `claim <bead-id>` | Claim bead (sets assignee + in_progress) |
 | `complete` | `complete <bead-id>` | Mark bead as completed |
 | `close` | `close <bead-id>` | Alias for complete |
 | `fail` | `fail <bead-id> 'reason'` | Mark bead as failed |
 | `dep` | `dep <child-id> <parent-id>` | Add dependency (parent blocks child) |
+| `add-dep` | `add-dep <child-id> <parent-id>` | Alias for dep |
 | `undep` | `undep <child-id> <parent-id>` | Remove dependency |
+| `rm-dep` | `rm-dep <child-id> <parent-id>` | Alias for undep |
 | `update` | `update <bead-id> <field> 'value'` | Update bead field |
 | `delete` | `delete <bead-id>` | Delete bead |
+| `rm` | `rm <bead-id>` | Alias for delete |
 | `comment` | `comment <bead-id> 'text'` | Add comment to bead |
 | `label` | `label <bead-id> 'label'` | Add label to bead |
 | `unlabel` | `unlabel <bead-id> 'label'` | Remove label from bead |
+| `set-capability` | `set-capability <bead-id> low\|standard\|high` | Set capability level (replaces existing) |
 | `pending-approval` | `pending-approval <bead-id> [assignee]` | Set status=pending_approval and assignee (default: user) |
 | `pending-review` | `pending-review <bead-id> [assignee]` | Set status=pending_review and assignee (default: user) |
 | `resume` | `resume <bead-id> [assignee]` | Set status=in_progress and assignee after approval (default: user) |
+| `init` | `init [prefix]` | Initialize beads with custom ID prefix (default: bd) |
+| `batch-create` | `batch-create <json-array>` | Create multiple beads from JSON array |
 
 ## Usage Examples
 
@@ -141,11 +148,19 @@ echo "comment bd-a1b2 'Work in progress'" | 9p write agent/beads/ctl
 
 # Add label
 echo "label bd-a1b2 'backend'" | 9p write agent/beads/ctl
+
+# Set capability level
+echo "set-capability bd-a1b2 high" | 9p write agent/beads/ctl
+
+# Initialize with custom prefix
+echo "init myprefix" | 9p write agent/beads/ctl
 ```
 
 ## Filtered Queries
 
-The `agent/beads/query` endpoint accepts JSON filter criteria for complex queries:
+The `agent/beads/query` endpoint accepts JSON filter criteria for complex queries.
+
+**Note:** The query endpoint is stateful per session. Write a filter to set the query, then read to retrieve results. The filter persists until overwritten.
 
 ```sh
 # Query by assignee and priority

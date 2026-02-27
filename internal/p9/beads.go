@@ -66,6 +66,8 @@ const (
 )
 
 // BeadsFS handles beads filesystem operations.
+// BeadsFS provides 9P filesystem access to beads task tracking.
+// It exposes beads operations through virtual files and directories.
 type BeadsFS struct {
 	store       bd.Storage
 	ctx         context.Context
@@ -83,7 +85,9 @@ func (b *BeadsFS) Close() error {
 	return nil
 }
 
-// Read handles reads from beads filesystem.
+// Read handles reads from beads filesystem paths.
+// Supports list, ready, pending, stats, blocked, stale, query, config endpoints,
+// as well as search, batch, label, and per-bead property access.
 func (b *BeadsFS) Read(path string) ([]byte, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	
@@ -131,7 +135,8 @@ func (b *BeadsFS) Read(path string) ([]byte, error) {
 	}
 }
 
-// Write handles writes to beads filesystem.
+// Write handles writes to beads filesystem paths.
+// Supports query filter updates and ctl command execution.
 func (b *BeadsFS) Write(path string, data []byte, sessionID string) error {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	

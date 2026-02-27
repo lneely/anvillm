@@ -117,6 +117,8 @@ var fileNames = []string{"ctl", "state", "pid", "cwd", "alias", "backend", "cont
 // Directory names in session
 var dirNames = []string{"inbox", "outbox", "completed"}
 
+// Server implements a 9P file server for agent session management.
+// It exposes sessions, beads, tools, skills, and events through a virtual filesystem.
 type Server struct {
 	mgr           *session.Manager
 	listener      net.Listener

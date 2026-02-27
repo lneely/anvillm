@@ -11,23 +11,28 @@ import (
 	"9fans.net/go/plan9"
 )
 
+// ToolsFS provides 9P filesystem access to agent tools organized by capability level.
+// Tools are shell scripts with YAML front-matter defining their interface.
 type ToolsFS struct {
 	tools    []Tool
 	toolsDir string
 }
 
+// Tool represents an agent tool with its MCP-compatible schema.
 type Tool struct {
 	Name        string      `json:"name"`
 	Description string      `json:"description"`
 	InputSchema InputSchema `json:"inputSchema"`
 }
 
+// InputSchema defines the JSON schema for tool input parameters.
 type InputSchema struct {
 	Type       string              `json:"type"`
 	Properties map[string]Property `json:"properties"`
 	Required   []string            `json:"required,omitempty"`
 }
 
+// Property defines a single input parameter schema.
 type Property struct {
 	Type        string   `json:"type"`
 	Description string   `json:"description"`
@@ -35,6 +40,7 @@ type Property struct {
 	Enum        []string `json:"enum,omitempty"`
 }
 
+// Items defines the schema for array item types.
 type Items struct {
 	Type string `json:"type"`
 }
