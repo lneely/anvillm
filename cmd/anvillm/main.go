@@ -5,7 +5,6 @@ import (
 	"anvillm/internal/logging"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,7 +43,8 @@ type SessionInfo struct {
 
 func main() {
 	if err := logging.Init(); err != nil {
-		log.Fatalf("Failed to initialize logging: %v", err)
+		fmt.Fprintf(os.Stderr, "Failed to initialize logging: %v\n", err)
+		os.Exit(1)
 	}
 	defer logging.Logger().Sync()
 
@@ -1117,6 +1117,7 @@ func attachToSession() {
 		tmuxPath := filepath.Join(sess.ID, "tmux")
 		tmuxData, err := readFile(tmuxPath)
 		if err != nil {
+			logging.Logger().Error("failed to read tmux session", zap.String("session", sess.ID), zap.Error(err))
 			fmt.Printf("Error reading tmux session: %v\n", err)
 			fmt.Println("Press Enter to continue...")
 			fmt.Scanln()
@@ -1125,6 +1126,7 @@ func attachToSession() {
 
 		tmuxSession := strings.TrimSpace(string(tmuxData))
 		if tmuxSession == "" {
+			logging.Logger().Warn("no tmux session found", zap.String("session", sess.ID))
 			fmt.Println("No tmux session found for this agent")
 			fmt.Println("Press Enter to continue...")
 			fmt.Scanln()
@@ -1132,6 +1134,7 @@ func attachToSession() {
 		}
 
 		// Attach to tmux
+		logging.Logger().Info("attaching to tmux session", zap.String("session", sess.ID), zap.String("tmux", tmuxSession))
 		fmt.Printf("Attaching to tmux session: %s\n", tmuxSession)
 		fmt.Printf("Press Ctrl-b d to detach\n\n")
 
@@ -1141,6 +1144,7 @@ func attachToSession() {
 		cmd.Stderr = os.Stderr
 
 		if err := cmd.Run(); err != nil {
+			logging.Logger().Error("failed to attach to tmux", zap.String("tmux", tmuxSession), zap.Error(err))
 			fmt.Printf("Error attaching to tmux: %v\n", err)
 			fmt.Println("Press Enter to continue...")
 			fmt.Scanln()

@@ -35,8 +35,14 @@ func Init() error {
 		return err
 	}
 
-	core := zapcore.NewCore(fileEncoder, zapcore.AddSync(logFile), zapcore.InfoLevel)
+	logLevel := zapcore.InfoLevel
+	if os.Getenv("ANVILLM_DEBUG") != "" {
+		logLevel = zapcore.DebugLevel
+	}
+
+	core := zapcore.NewCore(fileEncoder, zapcore.AddSync(logFile), logLevel)
 	logger = zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+	logger.Info("logging initialized", zap.String("program", progName), zap.String("log_file", logPath), zap.String("level", logLevel.String()))
 	return nil
 }
 

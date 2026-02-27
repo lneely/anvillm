@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -71,7 +70,8 @@ var (
 
 func main() {
 	if err := logging.Init(); err != nil {
-		log.Fatalf("Failed to initialize logging: %v", err)
+		fmt.Fprintf(os.Stderr, "Failed to initialize logging: %v\n", err)
+		os.Exit(1)
 	}
 	defer logging.Logger().Sync()
 
@@ -888,6 +888,7 @@ func handleContextWindow(w *acme.Win, sess *SessionInfo) {
 					fmt.Fprintf(os.Stderr, "Error writing context: %v\n", err)
 				} else {
 					w.Ctl("clean")
+					logging.Logger().Info("context updated", zap.String("session", sess.ID))
 					fmt.Printf("Context updated for session %s\n", sess.ID)
 				}
 				continue

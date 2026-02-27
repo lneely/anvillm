@@ -10,7 +10,6 @@ import (
 	"anvillm/internal/session"
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -83,7 +82,8 @@ func usage() {
 func start(daemonize bool) {
 	// Initialize logging first
 	if err := logging.Init(); err != nil {
-		log.Fatalf("Failed to initialize logging: %v", err)
+		fmt.Fprintf(os.Stderr, "Failed to initialize logging: %v\n", err)
+		os.Exit(1)
 	}
 	defer logging.Logger().Sync()
 
@@ -100,6 +100,7 @@ func start(daemonize bool) {
 			logging.Logger().Fatal("agent already running", zap.Int("pid", existingPid))
 		}
 		// Stale PID file
+		logging.Logger().Warn("removing stale PID file", zap.Int("pid", existingPid))
 		os.Remove(pidFile)
 	}
 
@@ -107,10 +108,12 @@ func start(daemonize bool) {
 	if daemonize {
 		// Check if we're already the daemon (via environment variable)
 		if os.Getenv("ANVILSRV_DAEMON") != "1" {
+			logging.Logger().Info("daemonizing anvilsrv")
 			// Fork the daemon process - use full path to executable
 			cmd, err := os.Executable()
 			if err != nil {
-				log.Fatalf("Failed to get executable path: %v", err)
+				fmt.Fprintf(os.Stderr, "Failed to get executable path: %v\n", err)
+				os.Exit(1)
 			}
 			args := []string{"fgstart"} // Use fgstart to avoid re-daemonizing
 
@@ -122,7 +125,8 @@ func start(daemonize bool) {
 
 			proc, err := os.StartProcess(cmd, append([]string{cmd}, args...), attr)
 			if err != nil {
-				log.Fatalf("Failed to daemonize: %v", err)
+				fmt.Fprintf(os.Stderr, "Failed to daemonize: %v\n", err)
+				os.Exit(1)
 			}
 
 			// Wait a moment to ensure daemon starts and writes PID file
@@ -146,29 +150,34 @@ func start(daemonize bool) {
 	pid := os.Getpid()
 	pidContent := fmt.Sprintf("%d\n", pid)
 
+	logging.Logger().Info("starting anvilsrv", zap.Int("pid", pid), zap.Bool("daemonized", daemonize))
+
 	// Try to create PID file exclusively (fails if exists)
 	f, err := os.OpenFile(pidFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 	if err != nil {
 		// File exists, check if process is still running
 		if existingPid := readPidFile(); existingPid != 0 {
 			if isProcessRunning(existingPid) {
-				log.Fatalf("anvilsrv already running (PID %d)", existingPid)
+				logging.Logger().Fatal("anvilsrv already running", zap.Int("pid", existingPid))
 			}
 			// Stale PID file, remove and retry
+			logging.Logger().Warn("removing stale PID file on startup", zap.Int("pid", existingPid))
 			os.Remove(pidFile)
 			f, err = os.OpenFile(pidFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 			if err != nil {
-				log.Fatalf("Failed to create PID file: %v", err)
+				fmt.Fprintf(os.Stderr, "Failed to create PID file: %v\n", err)
+				os.Exit(1)
 			}
 		} else {
-			log.Fatalf("Failed to create PID file: %v", err)
+			fmt.Fprintf(os.Stderr, "Failed to create PID file: %v\n", err)
+			os.Exit(1)
 		}
 	}
 
 	if _, err := f.WriteString(pidContent); err != nil {
 		f.Close()
 		os.Remove(pidFile)
-		log.Fatalf("Failed to write PID file: %v", err)
+		logging.Logger().Fatal("failed to write PID file", zap.Error(err))
 	}
 	f.Close()
 	defer os.Remove(pidFile)
@@ -179,6 +188,7 @@ func start(daemonize bool) {
 
 	// Create all backends
 	nsSuffix := getNamespaceSuffix()
+	logging.Logger().Debug("initializing backends", zap.String("namespace_suffix", nsSuffix))
 	backendMap := map[string]backend.Backend{
 		"kiro-cli": backends.NewKiroCLI(nsSuffix),
 		"claude":   backends.NewClaude(nsSuffix),
@@ -186,6 +196,7 @@ func start(daemonize bool) {
 	}
 
 	mgr := session.NewManager(backendMap)
+	logging.Logger().Info("session manager initialized")
 
 	// Cleanup tmux sessions on exit
 	defer func() {
@@ -205,6 +216,7 @@ func start(daemonize bool) {
 	if beadsDir == "" {
 		beadsDir = filepath.Join(os.Getenv("HOME"), ".beads")
 	}
+	logging.Logger().Debug("initializing beads store", zap.String("path", beadsDir))
 	beadsStore, err := bd.OpenFromConfig(context.Background(), beadsDir)
 	if err != nil {
 		logging.Logger().Warn("failed to initialize beads store", zap.Error(err))
@@ -212,6 +224,7 @@ func start(daemonize bool) {
 	}
 	if beadsStore != nil {
 		defer beadsStore.Close()
+		logging.Logger().Info("beads store initialized", zap.String("path", beadsDir))
 	}
 
 	// Start 9P server
@@ -228,6 +241,7 @@ func start(daemonize bool) {
 
 	// Start background monitor for self-healing
 	stopMonitor := make(chan struct{})
+	logging.Logger().Debug("starting background session monitor")
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -245,6 +259,7 @@ func start(daemonize bool) {
 					}
 				}
 			case <-stopMonitor:
+				logging.Logger().Debug("stopping background session monitor")
 				return
 			}
 		}
@@ -282,7 +297,8 @@ func stop() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Sent SIGTERM to anvilsrv (PID %d)\n", pid)
+	logging.Logger().Info("stopping anvilsrv", zap.Int("pid", pid))
+	fmt.Printf("Stopping anvilsrv (PID %d)\n", pid)
 }
 
 func status() {
@@ -297,6 +313,7 @@ func status() {
 		os.Exit(1)
 	}
 
+	logging.Logger().Info("anvilsrv status check", zap.Int("pid", pid), zap.Bool("running", true))
 	fmt.Printf("anvilsrv is running (PID %d)\n", pid)
 }
 

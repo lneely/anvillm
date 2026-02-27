@@ -9,11 +9,12 @@ import (
 	"anvillm/internal/logging"
 	"embed"
 	"flag"
+	"fmt"
 	"io/fs"
-	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 
 	"go.uber.org/zap"
 )
@@ -28,7 +29,8 @@ var (
 
 func main() {
 	if err := logging.Init(); err != nil {
-		log.Fatalf("Failed to initialize logging: %v", err)
+		fmt.Fprintf(os.Stderr, "Failed to initialize logging: %v\n", err)
+		os.Exit(1)
 	}
 	defer logging.Logger().Sync()
 

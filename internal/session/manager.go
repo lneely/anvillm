@@ -89,11 +89,14 @@ func (m *Manager) New(opts backend.SessionOptions, backendName string) (backend.
 	m.mu.RUnlock()
 
 	if !ok {
+		logging.Logger().Warn("backend not found", zap.String("backend", backendName))
 		return nil, backend.ErrBackendNotFound
 	}
 
+	logging.Logger().Info("creating new session", zap.String("backend", backendName), zap.String("cwd", opts.CWD))
 	sess, err := b.CreateSession(context.Background(), opts)
 	if err != nil {
+		logging.Logger().Error("failed to create session", zap.String("backend", backendName), zap.Error(err))
 		return nil, err
 	}
 
@@ -113,6 +116,7 @@ func (m *Manager) New(opts backend.SessionOptions, backendName string) (backend.
 	// Create mailbox structure for new session
 	m.mailManager.EnsureMailbox(sess.ID())
 
+	logging.Logger().Info("session created", zap.String("id", sess.ID()), zap.String("backend", backendName))
 	return sess, nil
 }
 
@@ -165,8 +169,12 @@ func (m *Manager) List() []string {
 // Remove removes a session from the manager
 func (m *Manager) Remove(id string) {
 	m.mu.Lock()
-	delete(m.sessions, id)
-	m.mu.Unlock()
+	defer m.mu.Unlock()
+	
+	if _, exists := m.sessions[id]; exists {
+		logging.Logger().Info("removing session", zap.String("id", id))
+		delete(m.sessions, id)
+	}
 }
 
 // Stop stops the mail processing loop

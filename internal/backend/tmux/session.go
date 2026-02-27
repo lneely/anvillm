@@ -139,13 +139,16 @@ func (s *Session) transitionToLocked(newState string) error {
 		s.idleCond.Broadcast()
 	case s.state == "error" && newState == "starting":
 		// Restart from error state
+		logging.Logger().Info("restarting from error state", zap.String("session", s.id))
 		s.state = newState
 	case newState == "stopped" || newState == "killed":
 		// Allow transition to stopped/exited from any state
+		logging.Logger().Info("session stopped", zap.String("session", s.id), zap.String("old_state", oldState), zap.String("new_state", newState))
 		s.state = newState
 		s.idleCond.Broadcast()
 	case s.state == "stopped" && newState == "starting":
 		// Allow restart from stopped state
+		logging.Logger().Info("restarting from stopped state", zap.String("session", s.id))
 		s.state = newState
 	default:
 		return fmt.Errorf("invalid state transition: %s → %s", s.state, newState)
@@ -437,6 +440,8 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 		}
 	}
 
+	logging.Logger().Debug("sending prompt to session", zap.String("session", s.id), zap.Int("prompt_length", len(prompt)))
+
 	// Instruction to send response via mailbox (triggers idle transition)
 	outInstruction := fmt.Sprintf("When done, send your response using the send_message tool:\n  from: %s\n  to: [sender's agent_id, or \"user\"]\n  type: [PROMPT_RESPONSE, REVIEW_RESPONSE, QUERY_RESPONSE, or APPROVAL_RESPONSE]\n  subject: [brief description of what you did]\n  body: YOUR_SUMMARY_HERE\n", s.id)
 
@@ -473,6 +478,8 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 		s.TransitionTo("idle")
 		return "", fmt.Errorf("send enter failed: %w", err)
 	}
+
+	logging.Logger().Info("prompt sent to session", zap.String("session", s.id))
 
 	// Hook handles state transitions
 	return "", nil

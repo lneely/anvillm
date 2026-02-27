@@ -10,7 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -80,7 +79,8 @@ func usage() {
 
 func startCmd(daemonize bool) {
 	if err := logging.Init(); err != nil {
-		log.Fatalf("Failed to initialize logging: %v", err)
+		fmt.Fprintf(os.Stderr, "Failed to initialize logging: %v\n", err)
+		os.Exit(1)
 	}
 	defer logging.Logger().Sync()
 
@@ -92,12 +92,14 @@ func startCmd(daemonize bool) {
 			logging.Logger().Fatal("anvilwebgw already running", zap.Int("pid", existingPid))
 		}
 		// Stale PID file
+		logging.Logger().Warn("removing stale PID file", zap.Int("pid", existingPid))
 		os.Remove(pidFile)
 	}
 
 	// Daemonize if requested
 	if daemonize {
 		if os.Getenv("ANVILWEBGW_DAEMON") != "1" {
+			logging.Logger().Info("daemonizing anvilwebgw")
 			cmd, err := os.Executable()
 			if err != nil {
 				logging.Logger().Fatal("failed to get executable path", zap.Error(err))
@@ -116,7 +118,8 @@ func startCmd(daemonize bool) {
 
 			proc, err := os.StartProcess(cmd, append([]string{cmd}, fwdArgs...), attr)
 			if err != nil {
-				log.Fatalf("Failed to daemonize: %v", err)
+				fmt.Fprintf(os.Stderr, "Failed to daemonize: %v\n", err)
+				os.Exit(1)
 			}
 			proc.Release()
 
@@ -134,25 +137,29 @@ func startCmd(daemonize bool) {
 
 	// We're the daemon (or running in foreground)
 	pid := os.Getpid()
+	logging.Logger().Info("starting anvilwebgw", zap.Int("pid", pid), zap.Bool("daemonized", daemonize))
 	f, err := os.OpenFile(pidFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 	if err != nil {
 		if existingPid := readPidFile(); existingPid != 0 {
 			if isProcessRunning(existingPid) {
-				log.Fatalf("anvilwebgw already running (PID %d)", existingPid)
+				logging.Logger().Fatal("anvilwebgw already running", zap.Int("pid", existingPid))
 			}
+			logging.Logger().Warn("removing stale PID file on startup", zap.Int("pid", existingPid))
 			os.Remove(pidFile)
 			f, err = os.OpenFile(pidFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 			if err != nil {
-				log.Fatalf("Failed to create PID file: %v", err)
+				fmt.Fprintf(os.Stderr, "Failed to create PID file: %v\n", err)
+				os.Exit(1)
 			}
 		} else {
-			log.Fatalf("Failed to create PID file: %v", err)
+			fmt.Fprintf(os.Stderr, "Failed to create PID file: %v\n", err)
+			os.Exit(1)
 		}
 	}
 	if _, err := fmt.Fprintf(f, "%d\n", pid); err != nil {
 		f.Close()
 		os.Remove(pidFile)
-		log.Fatalf("Failed to write PID file: %v", err)
+		logging.Logger().Fatal("failed to write PID file", zap.Error(err))
 	}
 	f.Close()
 	defer os.Remove(pidFile)
@@ -223,7 +230,8 @@ func stopCmd() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Sent SIGTERM to anvilwebgw (PID %d)\n", pid)
+	logging.Logger().Info("stopping anvilwebgw", zap.Int("pid", pid))
+	fmt.Printf("Stopping anvilwebgw (PID %d)\n", pid)
 }
 
 func statusCmd() {
@@ -238,6 +246,7 @@ func statusCmd() {
 		os.Exit(1)
 	}
 
+	logging.Logger().Info("anvilwebgw status check", zap.Int("pid", pid), zap.Bool("running", true))
 	fmt.Printf("anvilwebgw is running (PID %d)\n", pid)
 }
 
