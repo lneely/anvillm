@@ -2,6 +2,7 @@
 package main
 
 import (
+	"anvillm/internal/logging"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -16,6 +17,7 @@ import (
 	"9fans.net/go/plan9/client"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"go.uber.org/zap"
 )
 
 var (
@@ -41,11 +43,16 @@ type SessionInfo struct {
 }
 
 func main() {
+	if err := logging.Init(); err != nil {
+		log.Fatalf("Failed to initialize logging: %v", err)
+	}
+	defer logging.Logger().Sync()
+
 	// Connect to anvilsrv
 	var err error
 	fs, err = connectToServer()
 	if err != nil {
-		log.Fatalf("Failed to connect to anvilsrv: %v\nRun 'anvilsrv start' first", err)
+		logging.Logger().Fatal("failed to connect to anvilsrv", zap.Error(err))
 	}
 	defer fs.Close()
 
@@ -60,7 +67,7 @@ func main() {
 
 	// Run application
 	if err := app.SetRoot(pages, true).EnableMouse(true).Run(); err != nil {
-		log.Fatal(err)
+		logging.Logger().Fatal("application error", zap.Error(err))
 	}
 }
 

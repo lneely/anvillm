@@ -6,15 +6,16 @@
 package main
 
 import (
+	"anvillm/internal/logging"
 	"embed"
 	"flag"
-	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"os"
+
+	"go.uber.org/zap"
 )
 
 //go:embed static/*
@@ -26,17 +27,21 @@ var (
 )
 
 func main() {
+	if err := logging.Init(); err != nil {
+		log.Fatalf("Failed to initialize logging: %v", err)
+	}
+	defer logging.Logger().Sync()
+
 	flag.Parse()
 
 	gwURL, err := url.Parse(*gwAddr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Invalid gateway URL %q: %v\n", *gwAddr, err)
-		os.Exit(1)
+		logging.Logger().Fatal("invalid gateway URL", zap.String("url", *gwAddr), zap.Error(err))
 	}
 
 	staticFS, err := fs.Sub(static, "static")
 	if err != nil {
-		log.Fatal(err)
+		logging.Logger().Fatal("failed to load static files", zap.Error(err))
 	}
 
 	// Reverse proxy for /api/* to anvilwebgw
@@ -46,7 +51,8 @@ func main() {
 	mux.Handle("/api/", proxy)
 	mux.Handle("/", http.FileServer(http.FS(staticFS)))
 
-	log.Printf("Starting anvilweb on %s", *addr)
-	log.Printf("Proxying /api/* to %s", *gwAddr)
-	log.Fatal(http.ListenAndServe(*addr, mux))
+	logging.Logger().Info("starting anvilweb", zap.String("addr", *addr), zap.String("gateway", *gwAddr))
+	if err := http.ListenAndServe(*addr, mux); err != nil {
+		logging.Logger().Fatal("server error", zap.Error(err))
+	}
 }

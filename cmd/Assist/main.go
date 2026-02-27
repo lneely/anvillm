@@ -2,6 +2,7 @@
 package main
 
 import (
+	"anvillm/internal/logging"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"9fans.net/go/acme"
 	"9fans.net/go/plan9"
 	"9fans.net/go/plan9/client"
+	"go.uber.org/zap"
 )
 
 const windowName = "/AnviLLM/"
@@ -68,6 +70,11 @@ var (
 )
 
 func main() {
+	if err := logging.Init(); err != nil {
+		log.Fatalf("Failed to initialize logging: %v", err)
+	}
+	defer logging.Logger().Sync()
+
 	flag.Parse()
 
 	// Connect to anvilsrv via 9P, auto-starting if needed
@@ -75,11 +82,11 @@ func main() {
 	fs, err = connectToServer()
 	if err != nil {
 		// Try to start anvilsrv automatically
-		log.Printf("anvilsrv not running, attempting to start...")
+		logging.Logger().Info("anvilsrv not running, attempting to start")
 		startCmd := exec.Command("anvilsrv", "start")
 		if err := startCmd.Run(); err != nil {
-			log.Printf("ERROR: Failed to start anvilsrv: %v", err)
-			log.Printf("Continuing without daemon connection. Use 'Daemon' command to manage server.")
+			logging.Logger().Error("failed to start anvilsrv", zap.Error(err))
+			logging.Logger().Info("continuing without daemon connection")
 		} else {
 			// Wait a moment for daemon to initialize
 			for i := 0; i < 20; i++ {
@@ -91,8 +98,8 @@ func main() {
 			}
 
 			if err != nil {
-				log.Printf("ERROR: Failed to connect to anvilsrv after starting: %v", err)
-				log.Printf("Continuing without daemon connection. Use 'Daemon' command to manage server.")
+				logging.Logger().Error("failed to connect to anvilsrv after starting", zap.Error(err))
+				logging.Logger().Info("continuing without daemon connection")
 			}
 		}
 	}
@@ -102,7 +109,7 @@ func main() {
 
 	w, err := acme.New()
 	if err != nil {
-		log.Fatal(err)
+		logging.Logger().Fatal("failed to create acme window", zap.Error(err))
 	}
 	defer w.CloseFiles()
 

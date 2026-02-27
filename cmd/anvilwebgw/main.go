@@ -5,6 +5,7 @@
 package main
 
 import (
+	"anvillm/internal/logging"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 
 	"9fans.net/go/plan9"
 	"9fans.net/go/plan9/client"
+	"go.uber.org/zap"
 )
 
 const terminalCommand = "foot"
@@ -77,12 +79,17 @@ func usage() {
 }
 
 func startCmd(daemonize bool) {
+	if err := logging.Init(); err != nil {
+		log.Fatalf("Failed to initialize logging: %v", err)
+	}
+	defer logging.Logger().Sync()
+
 	pidFile := getPidFilePath()
 
 	// Check if already running before daemonizing
 	if existingPid := readPidFile(); existingPid != 0 {
 		if isProcessRunning(existingPid) {
-			log.Fatalf("anvilwebgw already running (PID %d)", existingPid)
+			logging.Logger().Fatal("anvilwebgw already running", zap.Int("pid", existingPid))
 		}
 		// Stale PID file
 		os.Remove(pidFile)
@@ -93,7 +100,7 @@ func startCmd(daemonize bool) {
 		if os.Getenv("ANVILWEBGW_DAEMON") != "1" {
 			cmd, err := os.Executable()
 			if err != nil {
-				log.Fatalf("Failed to get executable path: %v", err)
+				logging.Logger().Fatal("failed to get executable path", zap.Error(err))
 			}
 			// Reconstruct args: flags + fgstart
 			fwdArgs := []string{"fgstart"}
@@ -180,16 +187,14 @@ func startCmd(daemonize bool) {
 
 	go func() {
 		sig := <-sigChan
-		log.Printf("Received signal %v, shutting down", sig)
+		logging.Logger().Info("received signal, shutting down", zap.String("signal", sig.String()))
 		server.Close()
 	}()
 
-	log.Printf("anvilwebgw started successfully")
-	log.Printf("HTTP gateway listening on %s", *addr)
-	log.Printf("Using 9P namespace: %s", *namespace)
+	logging.Logger().Info("anvilwebgw started successfully", zap.String("addr", *addr), zap.String("namespace", *namespace))
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatal(err)
+		logging.Logger().Fatal("server error", zap.Error(err))
 	}
 }
 
