@@ -4,6 +4,7 @@ package tmux
 import (
 	"anvillm/internal/backend"
 	"anvillm/internal/debug"
+	"anvillm/internal/logging"
 	"anvillm/internal/sandbox"
 	"context"
 	"crypto/rand"
@@ -248,15 +249,15 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 	}
 	if !sandbox.IsAvailable() {
 		if sandboxCfg.General.BestEffort {
-			fmt.Fprintf(os.Stderr, "WARNING: landrun not available, running UNSANDBOXED (best-effort mode)\n")
-			fmt.Fprintf(os.Stderr, "WARNING: No filesystem or network restrictions will be enforced!\n")
-			fmt.Fprintf(os.Stderr, "Install landrun: go install github.com/landlock-lsm/landrun@latest\n")
+			logging.Logger().Warn("landrun not available, running UNSANDBOXED (best-effort mode)")
+			logging.Logger().Warn("no filesystem or network restrictions will be enforced")
+			logging.Logger().Warn("install landrun: go install github.com/landlock-lsm/landrun@latest")
 		} else {
 			os.Remove(fifoPath)
 			killWindow(b.tmuxSession, windowName)
-			fmt.Fprintf(os.Stderr, "ERROR: landrun not available and sandboxing is required\n")
-			fmt.Fprintf(os.Stderr, "Install landrun: go install github.com/landlock-lsm/landrun@latest\n")
-			fmt.Fprintf(os.Stderr, "Or enable best_effort mode in ~/.config/anvillm/global.yaml (NOT RECOMMENDED)\n")
+			logging.Logger().Error("landrun not available and sandboxing is required")
+			logging.Logger().Error("install landrun: go install github.com/landlock-lsm/landrun@latest")
+			logging.Logger().Error("or enable best_effort mode in ~/.config/anvillm/global.yaml (NOT RECOMMENDED)")
 			return nil, fmt.Errorf("landrun not available")
 		}
 	}

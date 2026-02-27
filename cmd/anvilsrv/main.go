@@ -5,6 +5,7 @@ import (
 	"anvillm/internal/backend"
 	"anvillm/internal/backend/tmux"
 	"anvillm/internal/backends"
+	"anvillm/internal/logging"
 	"anvillm/internal/p9"
 	"anvillm/internal/session"
 	"context"
@@ -20,6 +21,7 @@ import (
 
 	"9fans.net/go/plan9/client"
 	bd "github.com/steveyegge/beads"
+	"go.uber.org/zap"
 )
 
 func getPidFilePath() string {
@@ -79,6 +81,12 @@ func usage() {
 }
 
 func start(daemonize bool) {
+	// Initialize logging first
+	if err := logging.Init(); err != nil {
+		log.Fatalf("Failed to initialize logging: %v", err)
+	}
+	defer logging.Logger().Sync()
+
 	// Set CLAUDE_CONFIG_DIR if not already set in the environment
 	if os.Getenv("CLAUDE_CONFIG_DIR") == "" {
 		os.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(os.Getenv("HOME"), ".config", "anvillm", "claude"))
@@ -89,7 +97,7 @@ func start(daemonize bool) {
 	// Check if already running before daemonizing
 	if existingPid := readPidFile(); existingPid != 0 {
 		if isProcessRunning(existingPid) {
-			log.Fatalf("agent already running")
+			logging.Logger().Fatal("agent already running", zap.Int("pid", existingPid))
 		}
 		// Stale PID file
 		os.Remove(pidFile)
@@ -181,7 +189,10 @@ func start(daemonize bool) {
 
 	// Cleanup tmux sessions on exit
 	defer func() {
-		log.Println("Shutting down: cleaning up tmux sessions")
+		if r := recover(); r != nil {
+			logging.Logger().Fatal("panic in main", zap.Any("panic", r))
+		}
+		logging.Logger().Info("shutting down: cleaning up tmux sessions")
 		for _, b := range backendMap {
 			if tmuxBackend, ok := b.(*tmux.Backend); ok {
 				tmuxBackend.Cleanup()
@@ -196,7 +207,7 @@ func start(daemonize bool) {
 	}
 	beadsStore, err := bd.OpenFromConfig(context.Background(), beadsDir)
 	if err != nil {
-		log.Printf("Warning: failed to initialize beads store: %v", err)
+		logging.Logger().Warn("failed to initialize beads store", zap.Error(err))
 		beadsStore = nil // Continue without beads support
 	}
 	if beadsStore != nil {
@@ -206,19 +217,23 @@ func start(daemonize bool) {
 	// Start 9P server
 	srv, err := p9.NewServer(mgr, beadsStore)
 	if err != nil {
-		log.Fatal(err)
+		logging.Logger().Fatal("failed to start 9P server", zap.Error(err))
 	}
 	defer srv.Close()
 
 	// Wire up event bus to session manager
 	mgr.SetEventBus(srv.Events())
 
-	log.Println("anvilsrv started successfully")
-	log.Printf("9P server listening on %s", srv.SocketPath())
+	logging.Logger().Info("anvilsrv started successfully", zap.String("socket", srv.SocketPath()))
 
 	// Start background monitor for self-healing
 	stopMonitor := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logging.Logger().Error("panic in monitor goroutine", zap.Any("panic", r))
+			}
+		}()
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -237,7 +252,7 @@ func start(daemonize bool) {
 
 	// Wait for termination signal
 	sig := <-sigChan
-	log.Printf("Received signal %v, shutting down", sig)
+	logging.Logger().Info("received signal, shutting down", zap.String("signal", sig.String()))
 	close(stopMonitor)
 }
 

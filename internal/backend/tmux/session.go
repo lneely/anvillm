@@ -3,6 +3,7 @@ package tmux
 import (
 	"anvillm/internal/backend"
 	"anvillm/internal/debug"
+	"anvillm/internal/logging"
 	"anvillm/internal/sandbox"
 	"bytes"
 	"context"
@@ -13,6 +14,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // Session implements backend.Session for tmux-based tools
@@ -343,8 +346,7 @@ func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error
 			hasPrompt := strings.Contains(output, "!>")
 			if !hasPrompt && (strings.Contains(output, "Failed to apply sandbox") ||
 			   strings.Contains(output, "missing kernel Landlock support")) {
-				fmt.Fprintf(os.Stderr, "Error: backend failed to launch\n")
-				fmt.Fprintf(os.Stderr, "Backend output:\n%s\n", output)
+				logging.Logger().Error("backend failed to launch", zap.String("output", output))
 				return fmt.Errorf("backend launch failed")
 			}
 
@@ -376,10 +378,9 @@ func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error
 				output := s.output.String()
 				debug.Log("[session %s] timeout, current output: %s", s.id, output)
 				if output != "" {
-					fmt.Fprintf(os.Stderr, "Error: timeout waiting for backend to be ready\n")
-					fmt.Fprintf(os.Stderr, "Backend output:\n%s\n", output)
+					logging.Logger().Error("timeout waiting for backend", zap.String("session", s.id), zap.String("output", output))
 				} else {
-					fmt.Fprintf(os.Stderr, "Error: timeout waiting for backend to be ready (no output received)\n")
+					logging.Logger().Error("timeout waiting for backend (no output)", zap.String("session", s.id))
 				}
 				return fmt.Errorf("timeout waiting for ready")
 			}

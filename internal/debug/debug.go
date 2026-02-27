@@ -1,6 +1,8 @@
 package debug
 
-import "log"
+import (
+	"anvillm/internal/logging"
+)
 
 // Enabled controls whether debug logs are printed
 var Enabled = false
@@ -8,6 +10,6 @@ var Enabled = false
 // Log prints a log message only when debug mode is enabled
 func Log(format string, args ...interface{}) {
 	if Enabled {
-		log.Printf(format, args...)
+		logging.Logger().Sugar().Infof(format, args...)
 	}
 }

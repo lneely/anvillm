@@ -32,9 +32,17 @@ func NewSkillsFS() *SkillsFS {
 	if envDirs := os.Getenv("ANVILLM_SKILLS_DIR"); envDirs != "" {
 		dirs = strings.Split(envDirs, ":")
 	} else {
-		// Default fallback
+		// Default: Claude, Kiro, AnviLLM config directories
 		homeDir, _ := os.UserHomeDir()
-		dirs = []string{filepath.Join(homeDir, ".config/anvillm/skills")}
+		var defaults []string
+		if claudeDir := os.Getenv("CLAUDE_CONFIG_DIR"); claudeDir != "" {
+			defaults = append(defaults, filepath.Join(claudeDir, "skills"))
+		}
+		defaults = append(defaults,
+			filepath.Join(homeDir, ".kiro/skills"),
+			filepath.Join(homeDir, ".config/anvillm/skills"),
+		)
+		dirs = defaults
 	}
 
 	return &SkillsFS{skillsDirs: dirs}

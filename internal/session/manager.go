@@ -5,13 +5,15 @@ import (
 	"anvillm/internal/backend"
 	"anvillm/internal/backend/tmux"
 	"anvillm/internal/eventbus"
+	"anvillm/internal/logging"
 	"anvillm/internal/mailbox"
 	"context"
 	"fmt"
-	"os"
 	"sort"
 	"sync"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // Manager holds all active sessions
@@ -176,6 +178,11 @@ func (m *Manager) Stop() {
 // mailProcessingLoop processes mailboxes every 5 seconds
 func (m *Manager) mailProcessingLoop() {
 	defer m.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			logging.Logger().Error("panic in mailProcessingLoop", zap.Any("panic", r))
+		}
+	}()
 	
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -192,6 +199,12 @@ func (m *Manager) mailProcessingLoop() {
 
 // processMailboxes handles outbox delivery and inbox processing
 func (m *Manager) processMailboxes() {
+	defer func() {
+		if r := recover(); r != nil {
+			logging.Logger().Error("panic in processMailboxes", zap.Any("panic", r))
+		}
+	}()
+
 	m.mu.RLock()
 	sessions := make([]backend.Session, 0, len(m.sessions))
 	for _, sess := range m.sessions {
@@ -205,6 +218,7 @@ func (m *Manager) processMailboxes() {
 		for m.mailManager.HasOutbox(senderID) {
 			msg, err := m.mailManager.PeekOutbox(senderID)
 			if err != nil {
+				logging.Logger().Error("failed to peek outbox", zap.String("sender", senderID), zap.Error(err))
 				break
 			}
 			// Deliver first, then remove only if successful
@@ -216,7 +230,7 @@ func (m *Manager) processMailboxes() {
 				}
 				msg.Metadata["error"] = err.Error()
 				m.mailManager.MoveToCompleted(senderID, msg)
-				fmt.Fprintf(os.Stderr, "Message undeliverable to %s: %v\n", msg.To, err)
+				logging.Logger().Warn("message undeliverable", zap.String("to", msg.To), zap.Error(err))
 			} else {
 				// Remove only after successful delivery
 				m.mailManager.RemoveFromOutbox(senderID)
@@ -250,7 +264,10 @@ func (m *Manager) processMailboxes() {
 		
 		// Prompt agent to check inbox
 		ctx := context.Background()
-		sess.Send(ctx, fmt.Sprintf("You have a new message. Read it using read_inbox (agent_id=%s) and respond appropriately.", sess.ID()))
+		_, err := sess.Send(ctx, fmt.Sprintf("You have a new message. Read it using read_inbox (agent_id=%s) and respond appropriately.", sess.ID()))
+		if err != nil {
+			logging.Logger().Error("failed to prompt agent", zap.String("session", sess.ID()), zap.Error(err))
+		}
 	}
 }
 

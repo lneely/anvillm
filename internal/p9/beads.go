@@ -1,16 +1,17 @@
 package p9
 
 import (
+	"anvillm/internal/logging"
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	bd "github.com/steveyegge/beads"
+	"go.uber.org/zap"
 )
 
 // Approval gate statuses extend the beads status set locally.
@@ -170,7 +171,7 @@ func (b *BeadsFS) readList() ([]byte, error) {
 		result[i].Issue = issue
 		blockers, err := b.getBlockers(issue.ID)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to get blockers for %s: %v\n", issue.ID, err)
+			logging.Logger().Warn("failed to get blockers", zap.String("issue", issue.ID), zap.Error(err))
 		} else if len(blockers) > 0 {
 			result[i].Blockers = blockers
 		}
@@ -470,7 +471,7 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		isIdea := strings.HasPrefix(strings.ToUpper(title), "IDEA:")
 		if !noLint && !isIdea && description != "" {
 			for _, w := range lintDescription(description) {
-				fmt.Fprintf(os.Stderr, "lint warning [%s]: %s\n", title, w)
+				logging.Logger().Warn("lint warning", zap.String("title", title), zap.String("warning", w))
 			}
 		}
 
@@ -516,19 +517,19 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		if len(args) < 1 {
 			return fmt.Errorf("usage: complete <bead-id>")
 		}
-		if err := b.store.CloseIssue(b.ctx, args[0], "completed", actor, ""); err != nil {
+		if err := b.store.UpdateIssue(b.ctx, args[0], map[string]any{"assignee": ""}, actor); err != nil {
 			return err
 		}
-		return b.store.UpdateIssue(b.ctx, args[0], map[string]any{"assignee": ""}, actor)
+		return b.store.CloseIssue(b.ctx, args[0], "completed", actor, "")
 
 	case "fail":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: fail <bead-id> 'reason'")
 		}
-		if err := b.store.CloseIssue(b.ctx, args[0], args[1], actor, ""); err != nil {
+		if err := b.store.UpdateIssue(b.ctx, args[0], map[string]any{"assignee": ""}, actor); err != nil {
 			return err
 		}
-		return b.store.UpdateIssue(b.ctx, args[0], map[string]any{"assignee": ""}, actor)
+		return b.store.CloseIssue(b.ctx, args[0], args[1], actor, "")
 		
 	case "dep", "add-dep":
 		if len(args) < 2 {

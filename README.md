@@ -94,6 +94,23 @@ NAMESPACE=/tmp/ns.$USER.:1 Assist
 | `CLAUDE_AGENT_NAME` | `anvillm-agent` | Claude agent configuration name |
 | `KIRO_API_KEY` | — | Kiro API key (optional if using `kiro-cli login`) |
 | `ANVILLM_OLLAMA_MODEL` | `qwen3:8b` | Ollama model to use for ollama backend |
+| `ANVILLM_SKILLS_DIR` | `$CLAUDE_CONFIG_DIR/skills:~/.kiro/skills:~/.config/anvillm/skills` | Colon-separated skill directories (searched in order) |
+
+### Skills System
+
+Skills are loaded from multiple directories via the `agent/skills` 9pfs. By default, searches:
+1. `$CLAUDE_CONFIG_DIR/skills` (if `CLAUDE_CONFIG_DIR` set)
+2. `~/.kiro/skills`
+3. `~/.config/anvillm/skills`
+
+Override with `ANVILLM_SKILLS_DIR` (colon-separated paths). Skills are organized by intent (virtual directories) and discovered via `SKILL.md` front-matter.
+
+**Usage:**
+```sh
+9p ls agent/skills                    # list intents
+9p read agent/skills/help             # search index
+9p read agent/skills/tasks/beads/SKILL.md
+```
 
 ### Sandbox Config Templates
 

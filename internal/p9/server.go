@@ -5,6 +5,7 @@ import (
 	"anvillm/internal/backend"
 	"anvillm/internal/backend/tmux"
 	"anvillm/internal/eventbus"
+	"anvillm/internal/logging"
 	"anvillm/internal/mailbox"
 	"anvillm/internal/session"
 	"context"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/google/uuid"
 	bd "github.com/steveyegge/beads"
+	"go.uber.org/zap"
 
 	"9fans.net/go/plan9"
 	"9fans.net/go/plan9/client"
@@ -280,7 +282,7 @@ func (s *Server) acceptLoop() {
 		conn, err := s.listener.Accept()
 		if err != nil {
 			if !errors.Is(err, net.ErrClosed) {
-				fmt.Fprintf(os.Stderr, "accept: %v\n", err)
+				logging.Logger().Error("accept error", zap.Error(err))
 			}
 			return
 		}
@@ -308,14 +310,14 @@ func (s *Server) serve(conn net.Conn) {
 		fc, err := plan9.ReadFcall(conn)
 		if err != nil {
 			if err != io.EOF {
-				fmt.Fprintf(os.Stderr, "read: %v\n", err)
+				logging.Logger().Error("read error", zap.Error(err))
 			}
 			return
 		}
 
 		rfc := s.handle(cs, fc)
 		if err := plan9.WriteFcall(conn, rfc); err != nil {
-			fmt.Fprintf(os.Stderr, "write: %v\n", err)
+			logging.Logger().Error("write error", zap.Error(err))
 			return
 		}
 	}
