@@ -1,8 +1,10 @@
 package logging
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -15,11 +17,14 @@ func Init() error {
 	if configDir == "" {
 		configDir = "/tmp"
 	}
-	logDir := filepath.Join(configDir, ".config", "anvillm")
+	logDir := filepath.Join(configDir, ".config", "anvillm", "logs")
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return err
 	}
-	logPath := filepath.Join(logDir, "logs")
+	
+	progName := filepath.Base(os.Args[0])
+	timestamp := time.Now().Format("20060102T150405")
+	logPath := filepath.Join(logDir, fmt.Sprintf("%s-%s.log", timestamp, progName))
 
 	config := zap.NewProductionEncoderConfig()
 	config.EncodeTime = zapcore.ISO8601TimeEncoder
