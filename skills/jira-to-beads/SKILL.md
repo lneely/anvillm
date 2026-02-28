@@ -11,7 +11,7 @@ Import Jira ticket hierarchies into beads.
 ## Usage
 
 ```bash
-jira-to-beads PROJ-12345
+jira_to_beads.sh PROJ-12345
 ```
 
 **What it does:**

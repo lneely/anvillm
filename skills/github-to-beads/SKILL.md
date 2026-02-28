@@ -11,7 +11,7 @@ Import GitHub issues into beads.
 ## Usage
 
 ```bash
-github-to-beads OWNER/REPO ISSUE_NUMBER
+github_to_beads.sh OWNER/REPO ISSUE_NUMBER
 ```
 
 **What it does:**
