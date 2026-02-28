@@ -8,6 +8,7 @@ import (
 	"anvillm/internal/logging"
 	"anvillm/internal/p9"
 	"anvillm/internal/session"
+	"anvillm/internal/supervisor"
 	"context"
 	"fmt"
 	"os"
@@ -236,6 +237,11 @@ func start(daemonize bool) {
 
 	// Wire up event bus to session manager
 	mgr.SetEventBus(srv.Events())
+
+	// Start supervisor
+	ctx := context.Background()
+	sup := supervisor.New(mgr, srv.Beads(), mgr.GetMailManager(), srv.Events())
+	go sup.Run(ctx)
 
 	logging.Logger().Info("anvilsrv started successfully", zap.String("socket", srv.SocketPath()))
 

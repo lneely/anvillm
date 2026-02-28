@@ -8,9 +8,20 @@ description: Manage tasks using the beads 9P interface. Use when creating, updat
 
 Hierarchical task tracking via 9P. Persists to Dolt immediately.
 
+## Project Mount Discovery
+
+Find your project's beads mount:
+```bash
+MY_CWD=$(pwd)
+MOUNT=$(9p read agent/beads/mtab | grep "$MY_CWD" | awk '{print $1}')
+BEADS_PATH="agent/beads/$MOUNT"
+```
+
+Use `$BEADS_PATH` for all operations below instead of `agent/beads`.
+
 ## Commands
 
-All via `9p write agent/beads/ctl`:
+All via `9p write $BEADS_PATH/ctl`:
 - `claim bd-abc $AGENT_ID` - claim and start
 - `complete bd-abc` - finish
 - `fail bd-abc "reason"` - fail with reason
@@ -26,11 +37,11 @@ All via `9p write agent/beads/ctl`:
 ## Queries
 
 All via `9p read`:
-- `agent/beads/ready` - unblocked work
-- `agent/beads/<id>/json` - single bead
-- `agent/beads/children/<id>` - child beads
-- `agent/beads/search/<term>` - search
-- `agent/beads/<id>/events` - history
+- `$BEADS_PATH/ready` - unblocked work
+- `$BEADS_PATH/<id>/json` - single bead
+- `$BEADS_PATH/children/<id>` - child beads
+- `$BEADS_PATH/search/<term>` - search
+- `$BEADS_PATH/<id>/events` - history
 
 ## Workflow
 
@@ -43,6 +54,7 @@ All via `9p read`:
 
 ## Rules
 
+- Discover your mount first using mtab
 - Claim before working
 - Complete children before parent
 - Only parse JSON output

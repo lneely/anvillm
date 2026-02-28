@@ -5,9 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	bd "github.com/steveyegge/beads"
@@ -65,6 +68,15 @@ const (
 	requiresReviewLabel   = "requires_review"
 )
 
+// MountedProject represents a project-specific beads instance.
+type MountedProject struct {
+	name       string
+	cwd        string
+	dbPath     string
+	jsonlPath  string
+	store      bd.Storage
+}
+
 // BeadsFS handles beads filesystem operations.
 // BeadsFS provides 9P filesystem access to beads task tracking.
 // It exposes beads operations through virtual files and directories.
@@ -73,11 +85,17 @@ type BeadsFS struct {
 	ctx         context.Context
 	lastQuery   *bd.IssueFilter
 	queryResult []*bd.Issue
+	mounts      map[string]*MountedProject
+	mountsMu    sync.RWMutex
 }
 
 // NewBeadsFS creates a beads filesystem handler from an existing store.
 func NewBeadsFS(store bd.Storage, ctx context.Context) *BeadsFS {
-	return &BeadsFS{store: store, ctx: ctx}
+	return &BeadsFS{
+		store:  store,
+		ctx:    ctx,
+		mounts: make(map[string]*MountedProject),
+	}
 }
 
 // Close is a no-op since the store is managed externally.
@@ -85,11 +103,88 @@ func (b *BeadsFS) Close() error {
 	return nil
 }
 
+// ListMounts returns the names of all mounted projects.
+func (b *BeadsFS) ListMounts() map[string]struct{} {
+	b.mountsMu.RLock()
+	defer b.mountsMu.RUnlock()
+	result := make(map[string]struct{}, len(b.mounts))
+	for name := range b.mounts {
+		result[name] = struct{}{}
+	}
+	return result
+}
+
+// Mount adds a project-specific beads instance.
+func (b *BeadsFS) Mount(name, cwd string) error {
+	b.mountsMu.Lock()
+	defer b.mountsMu.Unlock()
+	if _, exists := b.mounts[name]; exists {
+		return fmt.Errorf("mount %s exists", name)
+	}
+	// Use cwd as db path, replacing / with -
+	cwdHyphenated := strings.ReplaceAll(cwd, "/", "-")
+	dbPath := filepath.Join(os.Getenv("HOME"), ".beads", cwdHyphenated)
+	if err := os.MkdirAll(dbPath, 0755); err != nil {
+		return fmt.Errorf("failed to create db directory: %w", err)
+	}
+	jsonlPath := filepath.Join(cwd, ".beads", "issues.jsonl")
+	store, err := bd.OpenFromConfig(b.ctx, dbPath)
+	if err != nil {
+		return err
+	}
+	// Import is not available in beads v0.54.0, skip for now
+	b.mounts[name] = &MountedProject{name, cwd, dbPath, jsonlPath, store}
+	return nil
+}
+
+// Umount removes a project-specific beads instance.
+func (b *BeadsFS) Umount(name string) error {
+	b.mountsMu.Lock()
+	defer b.mountsMu.Unlock()
+	m, ok := b.mounts[name]
+	if !ok {
+		return fmt.Errorf("mount %s not found", name)
+	}
+	if err := m.store.Close(); err != nil {
+		return fmt.Errorf("failed to close store: %w", err)
+	}
+	delete(b.mounts, name)
+	return nil
+}
+
+// Sync exports a mounted project's beads to its jsonl file.
+func (b *BeadsFS) Sync(name string) error {
+	b.mountsMu.RLock()
+	m := b.mounts[name]
+	b.mountsMu.RUnlock()
+	if m == nil {
+		return fmt.Errorf("mount not found")
+	}
+	// Export is not available in beads v0.54.0, skip for now
+	return nil
+}
+
+
 // Read handles reads from beads filesystem paths.
 // Supports list, ready, pending, stats, blocked, stale, query, config endpoints,
 // as well as search, batch, label, and per-bead property access.
 func (b *BeadsFS) Read(path string) ([]byte, error) {
+	// Check for mount paths (format: mountname/endpoint)
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) >= 2 {
+		// Check if first part is a mount name
+		b.mountsMu.RLock()
+		m := b.mounts[parts[0]]
+		b.mountsMu.RUnlock()
+		if m != nil {
+			endpoint := strings.Join(parts[1:], "/")
+			if endpoint == "cwd" {
+				return []byte(m.cwd), nil
+			}
+			// Route to mount-specific read
+			return b.readFromMount(m, endpoint)
+		}
+	}
 	
 	if len(parts) == 0 {
 		return nil, fmt.Errorf("invalid path: %s", path)
@@ -98,7 +193,16 @@ func (b *BeadsFS) Read(path string) ([]byte, error) {
 	switch {
 	case len(parts) == 1 && parts[0] == "list":
 		return b.readList()
+	case len(parts) == 1 && parts[0] == "mtab":
+		return b.readMtab()
 	case len(parts) == 1 && parts[0] == "ready":
+		// If we have mounts, aggregate ready from all mounts
+		b.mountsMu.RLock()
+		hasMounts := len(b.mounts) > 0
+		b.mountsMu.RUnlock()
+		if hasMounts {
+			return b.readReadyAggregate()
+		}
 		return b.readReady()
 	case len(parts) == 1 && parts[0] == "pending":
 		return b.readPending()
@@ -135,10 +239,56 @@ func (b *BeadsFS) Read(path string) ([]byte, error) {
 	}
 }
 
+func (b *BeadsFS) readFromMount(m *MountedProject, endpoint string) ([]byte, error) {
+	parts := strings.Split(endpoint, "/")
+	switch {
+	case len(parts) == 1 && parts[0] == "list":
+		return b.readListFromStore(m.store)
+	case len(parts) == 1 && parts[0] == "ready":
+		return b.readReadyFromStore(m.store)
+	case len(parts) == 1 && parts[0] == "pending":
+		return b.readPendingFromStore(m.store)
+	case len(parts) == 1 && parts[0] == "blocked":
+		return b.readBlockedFromStore(m.store)
+	case len(parts) == 1 && parts[0] == "stale":
+		return b.readStaleFromStore(m.store)
+	case len(parts) == 2 && parts[0] == "search":
+		return b.readSearchFromStore(m.store, parts[1])
+	case len(parts) == 2 && parts[0] == "by-ref":
+		return b.readByExternalRefFromStore(m.store, parts[1])
+	case len(parts) == 2 && parts[0] == "batch":
+		return b.readBatchFromStore(m.store, parts[1])
+	case len(parts) == 2 && parts[0] == "label":
+		return b.readByLabelFromStore(m.store, parts[1])
+	case len(parts) == 2 && parts[0] == "children":
+		return b.readChildrenFromStore(m.store, parts[1])
+	case len(parts) == 2:
+		return b.readBeadPropertyFromStore(m.store, parts[0], parts[1])
+	case len(parts) == 3 && parts[2] == "dependencies-meta":
+		return b.readDependenciesMetaFromStore(m.store, parts[1])
+	case len(parts) == 3 && parts[2] == "dependents-meta":
+		return b.readDependentsMetaFromStore(m.store, parts[1])
+	default:
+		return nil, fmt.Errorf("unsupported mount endpoint: %s", endpoint)
+	}
+}
+
 // Write handles writes to beads filesystem paths.
 // Supports query filter updates and ctl command execution.
 func (b *BeadsFS) Write(path string, data []byte, sessionID string) error {
+	// Check for mount paths (format: mountname/endpoint)
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) >= 2 {
+		// Check if first part is a mount name
+		b.mountsMu.RLock()
+		m := b.mounts[parts[0]]
+		b.mountsMu.RUnlock()
+		if m != nil {
+			logging.Logger().Info("mount write", zap.String("mount", parts[0]), zap.String("endpoint", strings.Join(parts[1:], "/")))
+			endpoint := strings.Join(parts[1:], "/")
+			return b.writeToMount(m, endpoint, data, sessionID)
+		}
+	}
 	
 	if len(parts) == 0 {
 		return fmt.Errorf("invalid path: %s", path)
@@ -155,17 +305,43 @@ func (b *BeadsFS) Write(path string, data []byte, sessionID string) error {
 	return b.executeCtl(string(data))
 }
 
+func (b *BeadsFS) writeToMount(m *MountedProject, endpoint string, data []byte, sessionID string) error {
+	parts := strings.Split(endpoint, "/")
+	if len(parts) == 1 && parts[0] == "ctl" {
+		return b.executeCtlOnStore(m.store, string(data))
+	}
+	return fmt.Errorf("unsupported mount write endpoint: %s", endpoint)
+}
+
 func (b *BeadsFS) readList() ([]byte, error) {
-	issues, err := b.store.SearchIssues(b.ctx, "", bd.IssueFilter{})
+	return b.readListFromStore(b.store)
+}
+
+func (b *BeadsFS) readMtab() ([]byte, error) {
+	b.mountsMu.RLock()
+	defer b.mountsMu.RUnlock()
+	
+	var lines []string
+	for name, m := range b.mounts {
+		lines = append(lines, name+"\t"+m.cwd)
+	}
+	return []byte(strings.Join(lines, "\n")), nil
+}
+
+func (b *BeadsFS) readListFromStore(store bd.Storage) ([]byte, error) {
+	issues, err := store.SearchIssues(b.ctx, "", bd.IssueFilter{})
 	if err != nil {
 		return nil, err
+	}
+	if issues == nil {
+		issues = []*bd.Issue{}
 	}
 	// Sort by ID for hierarchical view (bd-a3f8, bd-a3f8.1, bd-a3f8.1.1, etc.)
 	sort.Slice(issues, func(i, j int) bool {
 		return issues[i].ID < issues[j].ID
 	})
 
-	// Enrich with blockers and capability level.
+	// Enrich with blockers, labels, and capability level.
 	type BeadWithBlockers struct {
 		*bd.Issue
 		Blockers        []string `json:"blockers,omitempty"`
@@ -173,8 +349,15 @@ func (b *BeadsFS) readList() ([]byte, error) {
 	}
 	result := make([]BeadWithBlockers, len(issues))
 	for i, issue := range issues {
+		// Fetch labels if not already populated
+		if issue.Labels == nil {
+			labels, err := store.GetLabels(b.ctx, issue.ID)
+			if err == nil {
+				issue.Labels = labels
+			}
+		}
 		result[i].Issue = issue
-		blockers, err := b.getBlockers(issue.ID)
+		blockers, err := b.getBlockersFromStore(store, issue.ID)
 		if err != nil {
 			logging.Logger().Warn("failed to get blockers", zap.String("issue", issue.ID), zap.Error(err))
 		} else if len(blockers) > 0 {
@@ -187,24 +370,96 @@ func (b *BeadsFS) readList() ([]byte, error) {
 }
 
 func (b *BeadsFS) readReady() ([]byte, error) {
+	return b.readReadyFromStore(b.store)
+}
+
+func (b *BeadsFS) readReadyFromStore(store bd.Storage) ([]byte, error) {
 	filter := bd.WorkFilter{}
-	issues, err := b.store.GetReadyWork(b.ctx, filter)
+	issues, err := store.GetReadyWork(b.ctx, filter)
 	if err != nil {
 		return nil, err
 	}
-	return json.MarshalIndent(issues, "", "  ")
+	if issues == nil {
+		issues = []*bd.Issue{}
+	}
+	// Filter out blocked issues - ready means unblocked
+	ready := []*bd.Issue{}
+	for _, issue := range issues {
+		// Fetch labels if not already populated
+		if issue.Labels == nil {
+			labels, err := store.GetLabels(b.ctx, issue.ID)
+			if err == nil {
+				issue.Labels = labels
+			}
+		}
+		blockers, err := b.getBlockersFromStore(store, issue.ID)
+		if err != nil || len(blockers) == 0 {
+			ready = append(ready, issue)
+		}
+	}
+	return json.MarshalIndent(ready, "", "  ")
+}
+
+func (b *BeadsFS) readReadyAggregate() ([]byte, error) {
+	b.mountsMu.RLock()
+	defer b.mountsMu.RUnlock()
+	
+	type TaskWithMount struct {
+		*bd.Issue
+		Mount string `json:"mount"`
+		Cwd   string `json:"cwd"`
+	}
+	
+	allReady := []TaskWithMount{}
+	for name, m := range b.mounts {
+		filter := bd.WorkFilter{}
+		issues, err := m.store.GetReadyWork(b.ctx, filter)
+		if err != nil {
+			continue
+		}
+		// Filter out blocked issues
+		for _, issue := range issues {
+			// Fetch labels if not already populated
+			if issue.Labels == nil {
+				labels, err := m.store.GetLabels(b.ctx, issue.ID)
+				if err == nil {
+					issue.Labels = labels
+				}
+			}
+			blockers, err := b.getBlockersFromStore(m.store, issue.ID)
+			if err != nil || len(blockers) == 0 {
+				allReady = append(allReady, TaskWithMount{
+					Issue: issue,
+					Mount: name,
+					Cwd:   m.cwd,
+				})
+			}
+		}
+	}
+	return json.MarshalIndent(allReady, "", "  ")
 }
 
 func (b *BeadsFS) readSearch(query string) ([]byte, error) {
-	issues, err := b.store.SearchIssues(b.ctx, query, bd.IssueFilter{})
+	return b.readSearchFromStore(b.store, query)
+}
+
+func (b *BeadsFS) readSearchFromStore(store bd.Storage, query string) ([]byte, error) {
+	issues, err := store.SearchIssues(b.ctx, query, bd.IssueFilter{})
 	if err != nil {
 		return nil, err
+	}
+	if issues == nil {
+		issues = []*bd.Issue{}
 	}
 	return json.MarshalIndent(issues, "", "  ")
 }
 
 func (b *BeadsFS) readByExternalRef(ref string) ([]byte, error) {
-	issue, err := b.store.GetIssueByExternalRef(b.ctx, ref)
+	return b.readByExternalRefFromStore(b.store, ref)
+}
+
+func (b *BeadsFS) readByExternalRefFromStore(store bd.Storage, ref string) ([]byte, error) {
+	issue, err := store.GetIssueByExternalRef(b.ctx, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -228,27 +483,48 @@ func (b *BeadsFS) readAllConfig() ([]byte, error) {
 }
 
 func (b *BeadsFS) readBatch(ids string) ([]byte, error) {
+	return b.readBatchFromStore(b.store, ids)
+}
+
+func (b *BeadsFS) readBatchFromStore(store bd.Storage, ids string) ([]byte, error) {
 	idList := strings.Split(ids, ",")
-	issues, err := b.store.GetIssuesByIDs(b.ctx, idList)
+	issues, err := store.GetIssuesByIDs(b.ctx, idList)
 	if err != nil {
 		return nil, err
+	}
+	if issues == nil {
+		issues = []*bd.Issue{}
 	}
 	return json.MarshalIndent(issues, "", "  ")
 }
 
 func (b *BeadsFS) readByLabel(label string) ([]byte, error) {
-	issues, err := b.store.GetIssuesByLabel(b.ctx, label)
+	return b.readByLabelFromStore(b.store, label)
+}
+
+func (b *BeadsFS) readByLabelFromStore(store bd.Storage, label string) ([]byte, error) {
+	issues, err := store.GetIssuesByLabel(b.ctx, label)
 	if err != nil {
 		return nil, err
+	}
+	if issues == nil {
+		issues = []*bd.Issue{}
 	}
 	return json.MarshalIndent(issues, "", "  ")
 }
 
 func (b *BeadsFS) readBlocked() ([]byte, error) {
+	return b.readBlockedFromStore(b.store)
+}
+
+func (b *BeadsFS) readBlockedFromStore(store bd.Storage) ([]byte, error) {
 	filter := bd.WorkFilter{}
-	blocked, err := b.store.GetBlockedIssues(b.ctx, filter)
+	blocked, err := store.GetBlockedIssues(b.ctx, filter)
 	if err != nil {
 		return nil, err
+	}
+	if blocked == nil {
+		blocked = []*bd.BlockedIssue{}
 	}
 	return json.MarshalIndent(blocked, "", "  ")
 }
@@ -256,11 +532,15 @@ func (b *BeadsFS) readBlocked() ([]byte, error) {
 // readPending returns beads in pending_approval or pending_review status,
 // i.e. those awaiting a human APPROVAL_RESPONSE or REVIEW_RESPONSE.
 func (b *BeadsFS) readPending() ([]byte, error) {
-	issues, err := b.store.SearchIssues(b.ctx, "", bd.IssueFilter{})
+	return b.readPendingFromStore(b.store)
+}
+
+func (b *BeadsFS) readPendingFromStore(store bd.Storage) ([]byte, error) {
+	issues, err := store.SearchIssues(b.ctx, "", bd.IssueFilter{})
 	if err != nil {
 		return nil, err
 	}
-	var pending []*bd.Issue
+	pending := []*bd.Issue{}
 	for _, issue := range issues {
 		if issue.Status == StatusPendingApproval || issue.Status == StatusPendingReview {
 			pending = append(pending, issue)
@@ -270,7 +550,11 @@ func (b *BeadsFS) readPending() ([]byte, error) {
 }
 
 func (b *BeadsFS) readDependenciesMeta(beadID string) ([]byte, error) {
-	deps, err := b.store.GetDependenciesWithMetadata(b.ctx, beadID)
+	return b.readDependenciesMetaFromStore(b.store, beadID)
+}
+
+func (b *BeadsFS) readDependenciesMetaFromStore(store bd.Storage, beadID string) ([]byte, error) {
+	deps, err := store.GetDependenciesWithMetadata(b.ctx, beadID)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +562,11 @@ func (b *BeadsFS) readDependenciesMeta(beadID string) ([]byte, error) {
 }
 
 func (b *BeadsFS) readDependentsMeta(beadID string) ([]byte, error) {
-	deps, err := b.store.GetDependentsWithMetadata(b.ctx, beadID)
+	return b.readDependentsMetaFromStore(b.store, beadID)
+}
+
+func (b *BeadsFS) readDependentsMetaFromStore(store bd.Storage, beadID string) ([]byte, error) {
+	deps, err := store.GetDependentsWithMetadata(b.ctx, beadID)
 	if err != nil {
 		return nil, err
 	}
@@ -286,25 +574,36 @@ func (b *BeadsFS) readDependentsMeta(beadID string) ([]byte, error) {
 }
 
 func (b *BeadsFS) readChildren(parentID string) ([]byte, error) {
+	return b.readChildrenFromStore(b.store, parentID)
+}
+
+func (b *BeadsFS) readChildrenFromStore(store bd.Storage, parentID string) ([]byte, error) {
 	filter := bd.IssueFilter{ParentID: &parentID}
-	children, err := b.store.SearchIssues(b.ctx, "", filter)
+	children, err := store.SearchIssues(b.ctx, "", filter)
 	if err != nil {
 		return nil, err
+	}
+	if children == nil {
+		children = []*bd.Issue{}
 	}
 	return json.MarshalIndent(children, "", "  ")
 }
 
 func (b *BeadsFS) readStale() ([]byte, error) {
+	return b.readStaleFromStore(b.store)
+}
+
+func (b *BeadsFS) readStaleFromStore(store bd.Storage) ([]byte, error) {
 	// Get all non-closed issues
 	filter := bd.IssueFilter{}
-	issues, err := b.store.SearchIssues(b.ctx, "", filter)
+	issues, err := store.SearchIssues(b.ctx, "", filter)
 	if err != nil {
 		return nil, err
 	}
 	
 	// Filter to stale issues (not updated in 30+ days, status open or in_progress)
 	cutoff := time.Now().AddDate(0, 0, -30)
-	var stale []*bd.Issue
+	stale := []*bd.Issue{}
 	for _, issue := range issues {
 		if issue.Status != bd.StatusClosed && issue.UpdatedAt.Before(cutoff) {
 			stale = append(stale, issue)
@@ -346,7 +645,11 @@ func (b *BeadsFS) readStats() ([]byte, error) {
 }
 
 func (b *BeadsFS) readBeadProperty(beadID, property string) ([]byte, error) {
-	issue, err := b.store.GetIssue(b.ctx, beadID)
+	return b.readBeadPropertyFromStore(b.store, beadID, property)
+}
+
+func (b *BeadsFS) readBeadPropertyFromStore(store bd.Storage, beadID, property string) ([]byte, error) {
+	issue, err := store.GetIssue(b.ctx, beadID)
 	if err != nil {
 		return nil, err
 	}
@@ -370,37 +673,37 @@ func (b *BeadsFS) readBeadProperty(beadID, property string) ([]byte, error) {
 			CapabilityLevel string   `json:"capability_level,omitempty"`
 		}
 		result := BeadWithBlockers{Issue: issue}
-		if blockers, err := b.getBlockers(beadID); err == nil {
+		if blockers, err := b.getBlockersFromStore(store, beadID); err == nil {
 			result.Blockers = blockers
 		}
 		result.CapabilityLevel = extractCapabilityLevel(issue.Labels)
 		return json.MarshalIndent(result, "", "  ")
 	case "comments":
-		comments, err := b.store.GetIssueComments(b.ctx, beadID)
+		comments, err := store.GetIssueComments(b.ctx, beadID)
 		if err != nil {
 			return nil, err
 		}
 		return json.MarshalIndent(comments, "", "  ")
 	case "labels":
-		labels, err := b.store.GetLabels(b.ctx, beadID)
+		labels, err := store.GetLabels(b.ctx, beadID)
 		if err != nil {
 			return nil, err
 		}
 		return json.MarshalIndent(labels, "", "  ")
 	case "dependents":
-		dependents, err := b.store.GetDependents(b.ctx, beadID)
+		dependents, err := store.GetDependents(b.ctx, beadID)
 		if err != nil {
 			return nil, err
 		}
 		return json.MarshalIndent(dependents, "", "  ")
 	case "tree":
-		tree, err := b.store.GetDependencyTree(b.ctx, beadID, 10, false, false)
+		tree, err := store.GetDependencyTree(b.ctx, beadID, 10, false, false)
 		if err != nil {
 			return nil, err
 		}
 		return json.MarshalIndent(tree, "", "  ")
 	case "events":
-		events, err := b.store.GetEvents(b.ctx, beadID, 100)
+		events, err := store.GetEvents(b.ctx, beadID, 100)
 		if err != nil {
 			return nil, err
 		}
@@ -411,7 +714,11 @@ func (b *BeadsFS) readBeadProperty(beadID, property string) ([]byte, error) {
 }
 
 func (b *BeadsFS) getBlockers(id string) ([]string, error) {
-	deps, err := b.store.GetDependenciesWithMetadata(b.ctx, id)
+	return b.getBlockersFromStore(b.store, id)
+}
+
+func (b *BeadsFS) getBlockersFromStore(store bd.Storage, id string) ([]string, error) {
+	deps, err := store.GetDependenciesWithMetadata(b.ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -425,6 +732,10 @@ func (b *BeadsFS) getBlockers(id string) ([]string, error) {
 }
 
 func (b *BeadsFS) executeCtl(cmd string) error {
+	return b.executeCtlOnStore(b.store, cmd)
+}
+
+func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 	command, args, err := parseCtlCommand(cmd)
 	if err != nil {
 		return err
@@ -438,7 +749,23 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		if len(args) > 0 {
 			prefix = args[0]
 		}
-		return b.store.SetConfig(b.ctx, "issue_prefix", prefix)
+		return store.SetConfig(b.ctx, "issue_prefix", prefix)
+		
+	case "mount":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: mount <cwd> <name>")
+		}
+		return b.Mount(args[1], args[0])
+	case "umount":
+		if len(args) < 1 {
+			return fmt.Errorf("usage: umount <name>")
+		}
+		return b.Umount(args[0])
+	case "sync":
+		if len(args) < 1 {
+			return fmt.Errorf("usage: sync <name>")
+		}
+		return b.Sync(args[0])
 		
 	case "new", "create":
 		if len(args) < 1 {
@@ -487,7 +814,7 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 			}
 			// Apply capability label if provided.
 			if capLevel != "" {
-				_ = b.store.AddLabel(b.ctx, childID, capabilityPrefix+capLevel, actor)
+				_ = store.AddLabel(b.ctx, childID, capabilityPrefix+capLevel, actor)
 			}
 			return nil
 		}
@@ -502,7 +829,7 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		if capLevel != "" {
 			issue.Labels = []string{capabilityPrefix + capLevel}
 		}
-		return b.store.CreateIssue(b.ctx, issue, actor)
+		return store.CreateIssue(b.ctx, issue, actor)
 		
 	case "claim":
 		if len(args) < 1 {
@@ -516,25 +843,25 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 			"assignee": assignee,
 			"status":   bd.StatusInProgress,
 		}
-		return b.store.UpdateIssue(b.ctx, args[0], updates, actor)
+		return store.UpdateIssue(b.ctx, args[0], updates, actor)
 		
 	case "complete", "close":
 		if len(args) < 1 {
 			return fmt.Errorf("usage: complete <bead-id>")
 		}
-		if err := b.store.UpdateIssue(b.ctx, args[0], map[string]any{"assignee": ""}, actor); err != nil {
+		if err := store.UpdateIssue(b.ctx, args[0], map[string]any{"assignee": ""}, actor); err != nil {
 			return err
 		}
-		return b.store.CloseIssue(b.ctx, args[0], "completed", actor, "")
+		return store.CloseIssue(b.ctx, args[0], "completed", actor, "")
 
 	case "fail":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: fail <bead-id> 'reason'")
 		}
-		if err := b.store.UpdateIssue(b.ctx, args[0], map[string]any{"assignee": ""}, actor); err != nil {
+		if err := store.UpdateIssue(b.ctx, args[0], map[string]any{"assignee": ""}, actor); err != nil {
 			return err
 		}
-		return b.store.CloseIssue(b.ctx, args[0], args[1], actor, "")
+		return store.CloseIssue(b.ctx, args[0], args[1], actor, "")
 		
 	case "dep", "add-dep":
 		if len(args) < 2 {
@@ -545,13 +872,13 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 			DependsOnID: args[1],
 			Type:        bd.DepBlocks,
 		}
-		return b.store.AddDependency(b.ctx, dep, actor)
+		return store.AddDependency(b.ctx, dep, actor)
 
 	case "undep", "rm-dep":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: undep <child-id> <parent-id>")
 		}
-		return b.store.RemoveDependency(b.ctx, args[0], args[1], actor)
+		return store.RemoveDependency(b.ctx, args[0], args[1], actor)
 
 	case "update":
 		if len(args) < 3 {
@@ -579,13 +906,13 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 		if len(args) < 2 {
 			return fmt.Errorf("usage: label <bead-id> 'label'")
 		}
-		return b.store.AddLabel(b.ctx, args[0], args[1], actor)
+		return store.AddLabel(b.ctx, args[0], args[1], actor)
 
 	case "unlabel":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: unlabel <bead-id> 'label'")
 		}
-		return b.store.RemoveLabel(b.ctx, args[0], args[1], actor)
+		return store.RemoveLabel(b.ctx, args[0], args[1], actor)
 
 	case "set-capability":
 		// Convenience command that replaces any existing capability label with
@@ -609,7 +936,7 @@ func (b *BeadsFS) executeCtl(cmd string) error {
 				_ = b.store.RemoveLabel(b.ctx, beadID, lbl, actor)
 			}
 		}
-		return b.store.AddLabel(b.ctx, beadID, capabilityPrefix+level, actor)
+		return store.AddLabel(b.ctx, beadID, capabilityPrefix+level, actor)
 
 	case "batch-create":
 		if len(args) < 1 {

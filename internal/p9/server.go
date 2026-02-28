@@ -81,6 +81,7 @@ const (
 	qidBeads                     // beads directory
 	qidBeadsCtl                  // beads/ctl
 	qidBeadsList                 // beads/list
+	qidBeadsMtab                 // beads/mtab
 	qidBeadsReady                // beads/ready
 	qidTools                     // tools directory
 	qidSkills                    // skills directory
@@ -279,6 +280,11 @@ func (s *Server) Events() *eventbus.Bus {
 	return s.events
 }
 
+// Beads returns the BeadsFS instance.
+func (s *Server) Beads() *BeadsFS {
+	return s.beads
+}
+
 func (s *Server) acceptLoop() {
 	for {
 		conn, err := s.listener.Accept()
@@ -453,6 +459,9 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			case "list":
 				qid = plan9.Qid{Type: QTFile, Path: qidBeadsList}
 				newPath = "/beads/list"
+			case "mtab":
+				qid = plan9.Qid{Type: QTFile, Path: qidBeadsMtab}
+				newPath = "/beads/mtab"
 			case "ready":
 				qid = plan9.Qid{Type: QTFile, Path: qidBeadsReady}
 				newPath = "/beads/ready"
@@ -507,9 +516,28 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			qid = plan9.Qid{Type: QTFile, Path: qidSkillsBase + hashID(path+name)}
 			newPath = path + "/" + name
 		} else if strings.HasPrefix(path, "/beads/") && strings.Count(path, "/") == 2 {
-			// Inside a bead directory - property files
+			// Inside a bead directory OR mount directory
 			beadID := strings.TrimPrefix(path, "/beads/")
-			qid = plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(beadID+name)}
+			// Check if it's a mount
+			if s.beads != nil {
+				mounts := s.beads.ListMounts()
+				if _, isMount := mounts[beadID]; isMount {
+					// It's a mount directory - name is a file or subdirectory
+					qid = plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(beadID+name)}
+					newPath = path + "/" + name
+				} else {
+					// It's a bead directory - property files
+					qid = plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(beadID+name)}
+					newPath = path + "/" + name
+				}
+			} else {
+				// No beads, treat as bead directory
+				qid = plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(beadID+name)}
+				newPath = path + "/" + name
+			}
+		} else if strings.HasPrefix(path, "/beads/") && strings.Count(path, "/") == 3 {
+			// Inside a mount's bead directory - property files
+			qid = plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(path+name)}
 			newPath = path + "/" + name
 		} else if strings.HasPrefix(path, "/user/") && strings.Count(path, "/") == 2 {
 			// Inside user mailbox directory - message files
@@ -1091,17 +1119,98 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 			}
 		}
 	} else if path == "/beads" {
-		// Beads directory
+		// Beads directory - only ctl, mtab, ready (aggregate), and mounted projects
 		dirs = append(dirs, plan9.Dir{
 			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsCtl}, Mode: 0222, Name: "ctl",
 			Uid: "q", Gid: "q", Muid: "q",
 		})
 		dirs = append(dirs, plan9.Dir{
-			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsList}, Mode: 0444, Name: "list",
+			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsMtab}, Mode: 0444, Name: "mtab",
 			Uid: "q", Gid: "q", Muid: "q",
 		})
 		dirs = append(dirs, plan9.Dir{
 			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsReady}, Mode: 0444, Name: "ready",
+			Uid: "q", Gid: "q", Muid: "q",
+		})
+		// Add mounted projects as directories
+		if s.beads != nil {
+			for name := range s.beads.ListMounts() {
+				dirs = append(dirs, plan9.Dir{
+					Qid: plan9.Qid{Type: QTDir, Path: qidBeadsBase + uint64(len(name))}, Mode: 0555 | plan9.DMDIR, Name: name,
+					Uid: "q", Gid: "q", Muid: "q",
+				})
+			}
+		}
+	} else if strings.HasPrefix(path, "/beads/") && strings.Count(path, "/") == 2 {
+		// Inside a mounted project directory - show all beads endpoints
+		mountName := strings.TrimPrefix(path, "/beads/")
+		if s.beads != nil {
+			mounts := s.beads.ListMounts()
+			if _, exists := mounts[mountName]; exists {
+				// Show all standard beads endpoints for this mount
+				dirs = append(dirs, plan9.Dir{
+					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"cwd")}, Mode: 0444, Name: "cwd",
+					Uid: "q", Gid: "q", Muid: "q",
+				})
+				dirs = append(dirs, plan9.Dir{
+					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"ctl")}, Mode: 0222, Name: "ctl",
+					Uid: "q", Gid: "q", Muid: "q",
+				})
+				dirs = append(dirs, plan9.Dir{
+					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"list")}, Mode: 0444, Name: "list",
+					Uid: "q", Gid: "q", Muid: "q",
+				})
+				dirs = append(dirs, plan9.Dir{
+					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"ready")}, Mode: 0444, Name: "ready",
+					Uid: "q", Gid: "q", Muid: "q",
+				})
+				dirs = append(dirs, plan9.Dir{
+					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"pending")}, Mode: 0444, Name: "pending",
+					Uid: "q", Gid: "q", Muid: "q",
+				})
+				dirs = append(dirs, plan9.Dir{
+					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"stats")}, Mode: 0444, Name: "stats",
+					Uid: "q", Gid: "q", Muid: "q",
+				})
+				dirs = append(dirs, plan9.Dir{
+					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"blocked")}, Mode: 0444, Name: "blocked",
+					Uid: "q", Gid: "q", Muid: "q",
+				})
+				dirs = append(dirs, plan9.Dir{
+					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"stale")}, Mode: 0444, Name: "stale",
+					Uid: "q", Gid: "q", Muid: "q",
+				})
+				dirs = append(dirs, plan9.Dir{
+					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"query")}, Mode: 0644, Name: "query",
+					Uid: "q", Gid: "q", Muid: "q",
+				})
+				dirs = append(dirs, plan9.Dir{
+					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"config")}, Mode: 0444, Name: "config",
+					Uid: "q", Gid: "q", Muid: "q",
+				})
+			}
+		}
+	} else if strings.HasPrefix(path, "/beads/") && strings.Count(path, "/") == 3 {
+		// Inside a mount's bead directory - show property files
+		// e.g., /beads/proj2/bd-abc/json
+		dirs = append(dirs, plan9.Dir{
+			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(path+"json")}, Mode: 0444, Name: "json",
+			Uid: "q", Gid: "q", Muid: "q",
+		})
+		dirs = append(dirs, plan9.Dir{
+			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(path+"status")}, Mode: 0444, Name: "status",
+			Uid: "q", Gid: "q", Muid: "q",
+		})
+		dirs = append(dirs, plan9.Dir{
+			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(path+"title")}, Mode: 0444, Name: "title",
+			Uid: "q", Gid: "q", Muid: "q",
+		})
+		dirs = append(dirs, plan9.Dir{
+			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(path+"description")}, Mode: 0444, Name: "description",
+			Uid: "q", Gid: "q", Muid: "q",
+		})
+		dirs = append(dirs, plan9.Dir{
+			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(path+"assignee")}, Mode: 0444, Name: "assignee",
 			Uid: "q", Gid: "q", Muid: "q",
 		})
 	} else if path == "/user" {
