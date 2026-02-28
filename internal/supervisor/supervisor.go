@@ -27,6 +27,11 @@ func New(s *session.Manager, b *p9.BeadsFS, m *mailbox.Manager, e *eventbus.Bus)
 }
 
 func (s *Supervisor) assignWork() {
+	// Skip if beads not available
+	if s.beads == nil {
+		return
+	}
+	
 	// Get all claimable tasks from all projects
 	ready, err := s.beads.Read("ready")
 	if err != nil || len(ready) == 0 {

@@ -159,15 +159,6 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 	}
 	layers = append(layers, roleLayer)
 
-	// Add task layers
-	for _, taskName := range opts.Tasks {
-		taskLayer, err := sandbox.LoadTask(taskName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load task %q: %w", taskName, err)
-		}
-		layers = append(layers, taskLayer)
-	}
-
 	// Merge layers into final config
 	general := sandbox.GeneralConfig{
 		BestEffort: false,

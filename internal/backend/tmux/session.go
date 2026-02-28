@@ -670,7 +670,6 @@ func (s *Session) Restart(ctx context.Context) error {
 	backendName := s.backendName
 	backendCommand := s.backendCommand
 	role := s.role
-	tasks := s.tasks
 	hadCrash := s.hadCrash
 	model := s.model
 	modelResolver := s.modelResolver
@@ -719,14 +718,6 @@ func (s *Session) Restart(ctx context.Context) error {
 		return fmt.Errorf("failed to load role %q: %w", role, err)
 	}
 	layers = append(layers, roleLayer)
-
-	for _, taskName := range tasks {
-		taskLayer, err := sandbox.LoadTask(taskName)
-		if err != nil {
-			return fmt.Errorf("failed to load task %q: %w", taskName, err)
-		}
-		layers = append(layers, taskLayer)
-	}
 
 	general := sandbox.GeneralConfig{BestEffort: false, LogLevel: "error"}
 	advanced := sandbox.AdvancedConfig{LDD: false, AddExec: true}

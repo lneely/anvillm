@@ -24,7 +24,6 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
-	bd "github.com/steveyegge/beads"
 	"go.uber.org/zap"
 
 	"9fans.net/go/plan9"
@@ -150,7 +149,7 @@ type fid struct {
 }
 
 // NewServer creates and starts the 9P server.
-func NewServer(mgr *session.Manager, beadsStore bd.Storage) (*Server, error) {
+func NewServer(mgr *session.Manager, beadsFS *BeadsFS) (*Server, error) {
 	ns := client.Namespace()
 	if ns == "" {
 		return nil, fmt.Errorf("no namespace")
@@ -171,12 +170,6 @@ func NewServer(mgr *session.Manager, beadsStore bd.Storage) (*Server, error) {
 	listener, err := net.Listen("unix", sockPath)
 	if err != nil {
 		return nil, err
-	}
-
-	// Create BeadsFS (shared across all namespaces)
-	var beadsFS *BeadsFS
-	if beadsStore != nil {
-		beadsFS = NewBeadsFS(beadsStore, context.Background())
 	}
 
 	// Load tools from anvilmcp

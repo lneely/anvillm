@@ -211,8 +211,9 @@ func start(daemonize bool) {
 		}
 	}()
 
-	// Start 9P server
-	srv, err := p9.NewServer(mgr, nil)
+	// Start 9P server with empty beads filesystem (mounts created on-demand)
+	beadsFS := p9.NewBeadsFS(nil, context.Background())
+	srv, err := p9.NewServer(mgr, beadsFS)
 	if err != nil {
 		logging.Logger().Fatal("failed to start 9P server", zap.Error(err))
 	}
