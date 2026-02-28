@@ -25,27 +25,29 @@ mount_beads.sh "$MY_CWD"
 
 ## Commands
 
-All beads commands listed in this skill must be run via `execute_code` tool:
+All beads commands listed in this skill must be run via `execute_code` tool.
 
-- Claim bead: `claim_bead.sh bd-abc [$AGENT_ID]`
-- Complete bead: `complete_bead.sh bd-abc`
-- Fail bead: `fail_bead.sh bd-abc "reason"`
-- Create bead: `create_bead.sh "title" "desc" [parent]`
-- Update bead: `update_bead.sh bd-abc <field> <value>`
-- Add dependency: `add_dependency.sh <child> <parent>`
-- Comment on bead: `comment_bead.sh bd-abc "text"`
-- Label bead: `label_bead.sh bd-abc <label>`
-- Delete bead: `delete_bead.sh bd-abc`
+**CRITICAL:** All commands require `<mount>` as first argument. Exceptions: `list_mounts.sh`, `mount_beads.sh`, `umount_beads.sh`.
+
+- Claim bead: `claim_bead.sh <mount> bd-abc [$AGENT_ID]`
+- Complete bead: `complete_bead.sh <mount> bd-abc`
+- Fail bead: `fail_bead.sh <mount> bd-abc "reason"`
+- Create bead: `create_bead.sh <mount> "title" "desc" [parent]`
+- Update bead: `update_bead.sh <mount> bd-abc <field> <value>`
+- Add dependency: `add_dependency.sh <mount> <child> <parent>`
+- Comment on bead: `comment_bead.sh <mount> bd-abc "text"`
+- Label bead: `label_bead.sh <mount> bd-abc <label>`
+- Delete bead: `delete_bead.sh <mount> bd-abc`
 
 **Note:** Delete does not cascade. To delete a parent and all children, delete children first, then parent.
 
 ## Queries
 
-- List ready beads: `list_ready_beads.sh`
-- Read bead: `read_bead.sh <id> json`
-- List children: `read_bead.sh children <id>`
-- Search beads: `read_bead.sh search <term>`
-- View history: `read_bead.sh <id> events`
+- List mounts: `list_mounts.sh`
+- List ready beads: `list_ready_beads.sh <mount>`
+- List all beads: `list_beads.sh <mount>`
+- Read bead: `read_bead.sh <mount> <id> <property>`
+- Read bead JSON: `read_bead.sh <mount> <id> json`
 
 ## Workflow
 

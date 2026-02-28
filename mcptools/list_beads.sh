@@ -1,6 +1,7 @@
 #!/bin/bash
 # capabilities: beads, tasks
 # description: List all beads across all mounted projects (JSON array)
+# Usage: list_beads.sh <mount>
 set -euo pipefail
 
 if cat /etc/shadow >/dev/null 2>&1; then
@@ -8,4 +9,9 @@ if cat /etc/shadow >/dev/null 2>&1; then
   exit 1
 fi
 
-9p read agent/beads/list 2>/dev/null || echo "[]"
+if [ $# -lt 1 ]; then
+    echo "usage: list_beads.sh <mount>" >&2
+    exit 1
+fi
+
+9p read "agent/beads/$1/list" 2>/dev/null || echo "[]"

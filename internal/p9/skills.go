@@ -101,6 +101,7 @@ func parseSkillFrontMatter(skillDir string) (*SkillMeta, error) {
 
 // listAllSkills scans all skills directories and returns metadata
 func (s *SkillsFS) listAllSkills() ([]*SkillMeta, error) {
+	seen := make(map[string]bool)
 	var skills []*SkillMeta
 
 	for _, dir := range s.skillsDirs {
@@ -113,6 +114,9 @@ func (s *SkillsFS) listAllSkills() ([]*SkillMeta, error) {
 			if !entry.IsDir() {
 				continue
 			}
+			if seen[entry.Name()] {
+				continue
+			}
 			skillDir := filepath.Join(dir, entry.Name())
 			if _, err := os.Stat(filepath.Join(skillDir, "SKILL.md")); err != nil {
 				continue
@@ -121,6 +125,7 @@ func (s *SkillsFS) listAllSkills() ([]*SkillMeta, error) {
 			if err != nil {
 				continue
 			}
+			seen[entry.Name()] = true
 			skills = append(skills, meta)
 		}
 	}

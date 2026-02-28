@@ -1,6 +1,7 @@
 #!/bin/bash
 # capabilities: beads, tasks
 # description: List ready/claimable beads (JSON array)
+# Usage: list_ready_beads.sh <mount>
 set -euo pipefail
 
 if cat /etc/shadow >/dev/null 2>&1; then
@@ -8,4 +9,9 @@ if cat /etc/shadow >/dev/null 2>&1; then
   exit 1
 fi
 
-9p read agent/beads/ready 2>/dev/null || echo "[]"
+if [ $# -lt 1 ]; then
+    echo "usage: list_ready_beads.sh <mount>" >&2
+    exit 1
+fi
+
+9p read "agent/beads/$1/ready" 2>/dev/null || echo "[]"

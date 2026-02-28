@@ -1,12 +1,14 @@
 #!/bin/bash
 # capabilities: beads, tasks, jira
-# description: Import Jira ticket hierarchy into beads: jira-to-beads PROJ-12345
+# description: Import Jira ticket hierarchy into beads
+# Usage: jira_to_beads.sh <mount> <ticket-key>
 set -euo pipefail
 
-ticket="${1:?Usage: jira-to-beads TICKET-KEY}"
+mount="${1:?Usage: jira_to_beads.sh <mount> <ticket-key>}"
+ticket="${2:?Usage: jira_to_beads.sh <mount> <ticket-key>}"
 
 # Check if already imported
-if 9p read agent/beads/list | jq -e ".[] | select(.title | contains(\"$ticket\"))" >/dev/null 2>&1; then
+if 9p read "agent/beads/$mount/list" | jq -e ".[] | select(.title | contains(\"$ticket\"))" >/dev/null 2>&1; then
     echo "Ticket $ticket already imported" >&2
     exit 0
 fi
@@ -43,14 +45,14 @@ create_bead() {
     
     # Create bead
     if [[ -n "$parent_bead" ]]; then
-        echo "new \"$title\" \"$description\" $parent_bead" | 9p write agent/beads/ctl
+        echo "new \"$title\" \"$description\" $parent_bead" | 9p write "agent/beads/$mount/ctl"
     else
-        echo "new \"$title\" \"$description\"" | 9p write agent/beads/ctl
+        echo "new \"$title\" \"$description\"" | 9p write "agent/beads/$mount/ctl"
     fi
     
     # Get created bead ID
     local bead_id
-    bead_id=$(9p read agent/beads/list | jq -r ".[] | select(.title | contains(\"$key\")) | .id" | head -1)
+    bead_id=$(9p read "agent/beads/$mount/list" | jq -r ".[] | select(.title | contains(\"$key\")) | .id" | head -1)
     
     # Process children
     local children

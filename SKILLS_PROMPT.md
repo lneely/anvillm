@@ -36,4 +36,6 @@ Code:
 bash <(9p read agent/tools/<capability>/<tool-name>.sh) [args...]
 ```
 
+**IMPORTANT**: All bead tools require `<mount>` as first arg (e.g., `label_bead.sh anvillm anv-123 claimable`, `read_bead.sh anvillm anv-123 json`). Only exceptions: `mount_beads.sh` (takes cwd), `umount_beads.sh` (takes name), `list_mounts.sh` (no args).
+
 **Trust the tool output. Never use raw 9p commands as verification or fallback.**

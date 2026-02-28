@@ -1,7 +1,7 @@
 #!/bin/bash
 # capabilities: beads, tasks
 # description: Read a bead property
-# Usage: read_bead.sh <bead-id> <property>
+# Usage: read_bead.sh <mount> <bead-id> <property>
 set -euo pipefail
 
 if cat /etc/shadow >/dev/null 2>&1; then
@@ -9,9 +9,9 @@ if cat /etc/shadow >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ $# -lt 2 ]; then
-    echo "usage: read_bead.sh <bead-id> <property>" >&2
+if [ $# -lt 3 ]; then
+    echo "usage: read_bead.sh <mount> <bead-id> <property>" >&2
     exit 1
 fi
 
-9p read "agent/beads/$1/$2" 2>/dev/null || echo "Property not found: $2"
+9p read "agent/beads/$1/$2/$3" 2>/dev/null || echo "Property not found: $3"
