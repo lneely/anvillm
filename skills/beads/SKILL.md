@@ -10,7 +10,7 @@ Hierarchical task tracking via 9P. Persists to Dolt immediately.
 
 ## Project Mount Discovery
 
-All commands must be run via `execute_code` tool.
+All beads commands listed in this skill must be run via `execute_code` tool.
 
 Find your project's beads mount:
 ```bash
@@ -25,7 +25,7 @@ mount_beads.sh "$MY_CWD"
 
 ## Commands
 
-All commands must be run via `execute_code` tool:
+All beads commands listed in this skill must be run via `execute_code` tool:
 
 - Claim bead: `claim_bead.sh bd-abc [$AGENT_ID]`
 - Complete bead: `complete_bead.sh bd-abc`

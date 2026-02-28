@@ -9,7 +9,7 @@ when_to_load: Load when you need to send messages to other agents, respond to th
 
 ## Commands
 
-All commands must be run via `execute_code` tool:
+All commands listed in this skill must be run via `execute_code` tool:
 
 - Discover agents: `list_sessions.sh`
 - Send message: `send_message.sh FROM TO TYPE SUBJECT BODY`

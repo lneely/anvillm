@@ -32,7 +32,8 @@ build:V:
 	mkdir -p $HOME/.config/anvillm/claude/agents
 	mkdir -p $HOME/.config/anvillm/claude/hooks
 	cp kiro-cli/agent/* $HOME/.kiro/agents/
-	cp kiro-cli/SKILLS_PROMPT.md $HOME/.kiro/
+	cp SKILLS_PROMPT.md $HOME/.kiro/
+	mkdir -p $HOME/.config/anvillm/claude/agents/
 	cp claude/agent/* $HOME/.config/anvillm/claude/agents/
 	cp claude/hooks/* $HOME/.config/anvillm/claude/hooks/
 	chmod +x $HOME/.config/anvillm/claude/hooks/*.sh
