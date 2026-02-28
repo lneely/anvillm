@@ -14,4 +14,4 @@ if [ $# -lt 2 ]; then
     exit 1
 fi
 
-echo "undep $*" | 9p write agent/beads/ctl
+echo "undep $*" | 9p write agent/beads/list

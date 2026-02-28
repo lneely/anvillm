@@ -14,4 +14,4 @@ if [ $# -lt 3 ]; then
     exit 1
 fi
 
-echo "update $*" | 9p write agent/beads/ctl
+echo "update $*" | 9p write agent/beads/list

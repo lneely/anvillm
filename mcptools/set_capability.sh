@@ -14,4 +14,4 @@ if [ $# -lt 2 ]; then
     exit 1
 fi
 
-echo "set-capability $*" | 9p write agent/beads/ctl
+echo "set-capability $*" | 9p write agent/beads/list

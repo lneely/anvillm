@@ -14,4 +14,4 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-echo "delete $1" | 9p write agent/beads/ctl
+echo "delete $1" | 9p write agent/beads/list

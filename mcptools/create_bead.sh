@@ -14,4 +14,11 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-echo "new $*" | 9p write agent/beads/ctl
+# Find the first mounted project
+MOUNT=$(9p ls agent/beads | grep -v '^ctl$' | grep -v '^mtab$' | grep -v '^ready$' | head -1)
+if [ -z "$MOUNT" ]; then
+    echo "Error: No beads projects mounted" >&2
+    exit 1
+fi
+
+echo "new \"$1\" \"${2:-}\" ${3:-} ${4:-} ${5:-}" | 9p write agent/beads/$MOUNT/ctl
