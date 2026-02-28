@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads
+# capabilities: beads, tasks
 # description: List ready/claimable beads (JSON array)
 set -euo pipefail
 

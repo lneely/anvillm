@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads
+# capabilities: beads, tasks
 # description: Create a new bead
 # Usage: create_bead.sh <title> [description] [parent-id] [--no-lint] [capability=low|standard|high]
 set -euo pipefail

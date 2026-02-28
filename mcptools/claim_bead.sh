@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads
+# capabilities: beads, tasks
 # description: Claim a bead for work
 # Usage: claim_bead.sh <bead-id> [assignee]
 set -euo pipefail

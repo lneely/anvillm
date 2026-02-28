@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads
+# capabilities: beads, tasks
 # description: Complete a bead
 # Usage: complete_bead.sh <bead-id>
 set -euo pipefail

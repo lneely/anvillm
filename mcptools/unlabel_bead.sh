@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads
+# capabilities: beads, tasks
 # description: Remove a label from a bead
 # Usage: unlabel_bead.sh <bead-id> <label>
 set -euo pipefail

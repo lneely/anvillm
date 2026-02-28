@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads
+# capabilities: beads, tasks
 # description: Add a comment to a bead
 # Usage: comment_bead.sh <bead-id> <text>
 set -euo pipefail

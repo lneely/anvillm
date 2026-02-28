@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads
+# capabilities: beads, tasks
 # description: Add a label to a bead
 # Usage: label_bead.sh <bead-id> <label>
 set -euo pipefail

@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads
+# capabilities: beads, tasks
 # description: Unmount a beads project
 # Usage: umount_beads.sh <name>
 set -euo pipefail

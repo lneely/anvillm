@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads
+# capabilities: beads, tasks
 # description: List all beads across all mounted projects (JSON array)
 set -euo pipefail
 

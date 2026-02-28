@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads
+# capabilities: beads, tasks
 # description: Fail a bead with reason
 # Usage: fail_bead.sh <bead-id> <reason>
 set -euo pipefail

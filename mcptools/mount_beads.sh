@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads
+# capabilities: beads, tasks
 # description: Mount a beads project
 # Usage: mount_beads.sh <cwd> [name]
 set -euo pipefail
