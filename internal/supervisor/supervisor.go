@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"anvillm/internal/eventbus"
@@ -71,15 +72,14 @@ func (s *Supervisor) assignWork() {
 		}
 		botCwd := sess.Metadata().Cwd
 		
-		// Find a claimable task in this bot's project (matching cwd or subdirectory)
+		// Only assign if session CWD is exactly or under task mountpoint
 		for _, bead := range claimable {
 			taskCwd, ok := bead["cwd"].(string)
 			if !ok {
 				continue
 			}
 			
-			rel, err := filepath.Rel(taskCwd, botCwd)
-			if err != nil || (rel != "." && filepath.IsAbs(rel)) {
+			if botCwd != taskCwd && !strings.HasPrefix(botCwd, taskCwd+"/") {
 				continue
 			}
 			
