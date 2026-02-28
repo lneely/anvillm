@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: tasks, jira
+# capabilities: beads, tasks, jira
 # description: Import Jira ticket hierarchy into beads: jira-to-beads PROJ-12345
 set -euo pipefail
 
