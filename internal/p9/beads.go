@@ -213,8 +213,6 @@ func (b *BeadsFS) Read(path string) ([]byte, error) {
 	}
 	
 	switch {
-	case len(parts) == 1 && parts[0] == "list":
-		return b.readList()
 	case len(parts) == 1 && parts[0] == "mtab":
 		return b.readMtab()
 	case len(parts) == 1 && parts[0] == "ready":
@@ -226,36 +224,6 @@ func (b *BeadsFS) Read(path string) ([]byte, error) {
 			return b.readReadyAggregate()
 		}
 		return b.readReady()
-	case len(parts) == 1 && parts[0] == "pending":
-		return b.readPending()
-	case len(parts) == 1 && parts[0] == "stats":
-		return b.readStats()
-	case len(parts) == 1 && parts[0] == "blocked":
-		return b.readBlocked()
-	case len(parts) == 1 && parts[0] == "stale":
-		return b.readStale()
-	case len(parts) == 1 && parts[0] == "query":
-		return b.readQuery()
-	case len(parts) == 1 && parts[0] == "config":
-		return b.readAllConfig()
-	case len(parts) == 2 && parts[0] == "search":
-		return b.readSearch(parts[1])
-	case len(parts) == 2 && parts[0] == "by-ref":
-		return b.readByExternalRef(parts[1])
-	case len(parts) == 2 && parts[0] == "config":
-		return b.readConfig(parts[1])
-	case len(parts) == 2 && parts[0] == "batch":
-		return b.readBatch(parts[1])
-	case len(parts) == 2 && parts[0] == "label":
-		return b.readByLabel(parts[1])
-	case len(parts) == 2 && parts[0] == "children":
-		return b.readChildren(parts[1])
-	case len(parts) == 2:
-		return b.readBeadProperty(parts[0], parts[1])
-	case len(parts) == 3 && parts[2] == "dependencies-meta":
-		return b.readDependenciesMeta(parts[1])
-	case len(parts) == 3 && parts[2] == "dependents-meta":
-		return b.readDependentsMeta(parts[1])
 	default:
 		return nil, fmt.Errorf("invalid path: %s", path)
 	}
@@ -316,12 +284,16 @@ func (b *BeadsFS) Write(path string, data []byte, sessionID string) error {
 		return fmt.Errorf("invalid path: %s", path)
 	}
 	
-	if len(parts) == 1 && parts[0] == "query" {
-		return b.executeQuery(data)
-	}
-	
 	if len(parts) != 1 || parts[0] != "ctl" {
 		return fmt.Errorf("write not allowed: %s", path)
+	}
+	
+	// If mounts exist, require mountpoint to be specified
+	b.mountsMu.RLock()
+	hasMounts := len(b.mounts) > 0
+	b.mountsMu.RUnlock()
+	if hasMounts {
+		return fmt.Errorf("mountpoint required: use <mountname>/ctl instead of ctl")
 	}
 	
 	return b.executeCtl(string(data))

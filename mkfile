@@ -17,9 +17,9 @@ build:V:
 	chmod 0755 $INSTALL_PATH/anvillm-hook
 	cp scripts/9p-read-inbox $INSTALL_PATH/9p-read-inbox
 	chmod 0755 $INSTALL_PATH/9p-read-inbox
-	mkdir -p $INSTALL_PATH/Workflows
-	cp bot-templates/* $INSTALL_PATH/Workflows
-	chmod 0755 $INSTALL_PATH/Workflows/*
+	mkdir -p $INSTALL_PATH/Bots
+	cp bot-templates/* $INSTALL_PATH/Bots
+	chmod 0755 $INSTALL_PATH/Bots/*
 	mkdir -p $HOME/.config/anvillm
 	cp -rf cfg/* $HOME/.config/anvillm/
 	mkdir -p $HOME/.config/anvillm/skills

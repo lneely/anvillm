@@ -157,7 +157,13 @@ func executeCode(code, language string, timeout int) (string, error) {
 	// Get namespace for 9p access
 	namespace := os.Getenv("NAMESPACE")
 	if namespace == "" {
-		namespace = fmt.Sprintf("/tmp/ns.%s.:0", os.Getenv("USER"))
+		// Try to get from namespace command
+		if nsCmd, err := exec.Command("namespace").Output(); err == nil {
+			namespace = strings.TrimSpace(string(nsCmd))
+		}
+		if namespace == "" {
+			namespace = fmt.Sprintf("/tmp/ns.%s.:0", os.Getenv("USER"))
+		}
 	}
 
 	// Get AGENT_ID if set
@@ -182,8 +188,10 @@ func executeCode(code, language string, timeout int) (string, error) {
 			{"--rox", "/bin"},
 			{"--ro", "/etc/alternatives"},
 			{"--ro", "/etc/ld.so.cache"},
+			{"--ro", "/etc/passwd"},
 			{"--rw", "/dev/null"},
 			{"--ro", "/dev/urandom"},
+			{"--rw", "/tmp"},
 		}
 		
 		for _, sp := range systemPaths {
@@ -221,6 +229,9 @@ func executeCode(code, language string, timeout int) (string, error) {
 			"--env", "PATH",
 			"--env", "HOME",
 			"--env", "PLAN9",
+			"--env", "DISPLAY",
+			"--env", "WAYLAND_DISPLAY",
+			"--env", "USER",
 		)
 		if agentID != "" {
 			args = append(args, "--env", "AGENT_ID")

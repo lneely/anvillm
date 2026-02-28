@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 
 	"9fans.net/go/plan9"
@@ -164,13 +165,16 @@ func (t *ToolsFS) generateHelp() (string, error) {
 
 	var lines []string
 	for _, tool := range tools {
-		caps := strings.Join(tool.Capabilities, ",")
-		if caps == "" {
-			caps = "uncategorized"
+		caps := tool.Capabilities
+		if len(caps) == 0 {
+			caps = []string{"uncategorized"}
 		}
-		line := fmt.Sprintf("%s/%s\t%s", caps, tool.Name, tool.Description)
-		lines = append(lines, line)
+		for _, cap := range caps {
+			line := fmt.Sprintf("%s/%s\t%s", cap, tool.Name, tool.Description)
+			lines = append(lines, line)
+		}
 	}
+	sort.Strings(lines)
 	return strings.Join(lines, "\n") + "\n", nil
 }
 

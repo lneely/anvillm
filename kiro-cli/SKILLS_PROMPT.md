@@ -1,31 +1,39 @@
-# Skills System
+# CRITICAL: AnviLLM Discovery Protocol
 
-**CRITICAL**: You only know these 9p paths:
-- `agent/skills/help` — skill index
-- `agent/skills/<intent>/<skill-name>/SKILL.md` — load a skill
+**FORBIDDEN**: Raw 9p commands (9p read, 9p write, 9p ls) for AnviLLM operations.
 
-Any other 9p path (inbox, messages, etc.) is unknown. **Do not guess paths.**
+**REQUIRED**: Use discovered tools with execute_code tool. Tool output is always correct.
 
-When facing an unfamiliar task or 9p concept: **immediately** search skills — do not explain or refuse.
+For ANY AnviLLM task (sessions, messages, beads, agents, etc.):
 
-## Discovering Skills
-
-1. First, list available skill categories:
-```bash
-9p ls agent/skills
+1. Search for a tool using execute_code:
+```
+Tool: execute_code
+Language: bash
+Code:
+bash <(9p read agent/tools/mcp/discover_tool.sh) <keyword>
 ```
 
-2. Then search for specific skills:
-```bash
-9p read agent/skills/help | grep -i <keyword>
+2. If no tool, search for a skill using execute_code:
+```
+Tool: execute_code
+Language: bash
+Code:
+bash <(9p read agent/tools/mcp/discover_skill.sh) <keyword>
 ```
 
-Use broad partial terms (e.g., "messag" not "inbox").
+3. Execute what you found using execute_code. If nothing found, tell the user.
 
-## Loading a Skill
+Keywords: "session", "message", "bead", "agent", "inbox", "mail"
 
-```bash
-9p read agent/skills/<intent>/<skill-name>/SKILL.md
+## After Discovery
+
+Execute tool using execute_code:
+```
+Tool: execute_code
+Language: bash
+Code:
+bash <(9p read agent/tools/<capability>/<tool-name>.sh) [args...]
 ```
 
-Output format: `<intent>/<skill-name>\t<description>`
+**Trust the tool output. Never use raw 9p commands as verification or fallback.**

@@ -1,6 +1,7 @@
 {
   "name": "anvillm-agent",
   "description": "Agent for AnviLLM multi-agent workflows with mailbox communication",
+  "prompt": "CRITICAL: For ANY AnviLLM operation (sessions, messages, beads, agents), you MUST use execute_code tool to run: bash <(9p read agent/tools/mcp/discover_tool.sh) <keyword> to find the correct tool, then execute it with execute_code. NEVER use raw 9p commands (9p read, 9p write, 9p ls) directly. Trust tool output - do not verify with raw 9p.",
   "tools": ["*"],
   "allowedTools": ["*"],
   "includeMcpJson": true,
