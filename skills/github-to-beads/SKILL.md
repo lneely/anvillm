@@ -10,6 +10,8 @@ Import GitHub issues into beads.
 
 ## Usage
 
+All commands must be run via `execute_code` tool.
+
 ```bash
 github_to_beads.sh OWNER/REPO ISSUE_NUMBER
 ```

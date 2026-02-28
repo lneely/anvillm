@@ -10,6 +10,8 @@ Hierarchical task tracking via 9P. Persists to Dolt immediately.
 
 ## Project Mount Discovery
 
+All commands must be run via `execute_code` tool.
+
 Find your project's beads mount:
 ```bash
 MY_CWD=$(pwd)

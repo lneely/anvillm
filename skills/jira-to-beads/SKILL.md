@@ -10,6 +10,8 @@ Import Jira ticket hierarchies into beads.
 
 ## Usage
 
+All commands must be run via `execute_code` tool.
+
 ```bash
 jira_to_beads.sh PROJ-12345
 ```
