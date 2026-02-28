@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"9fans.net/go/plan9/client"
-	bd "github.com/steveyegge/beads"
 	"go.uber.org/zap"
 )
 
@@ -212,24 +211,8 @@ func start(daemonize bool) {
 		}
 	}()
 
-	// Create shared beads store (namespace-agnostic, persistent on disk)
-	beadsDir := os.Getenv("ANVILLM_BEADS_PATH")
-	if beadsDir == "" {
-		beadsDir = filepath.Join(os.Getenv("HOME"), ".beads")
-	}
-	logging.Logger().Debug("initializing beads store", zap.String("path", beadsDir))
-	beadsStore, err := bd.OpenFromConfig(context.Background(), beadsDir)
-	if err != nil {
-		logging.Logger().Warn("failed to initialize beads store", zap.Error(err))
-		beadsStore = nil // Continue without beads support
-	}
-	if beadsStore != nil {
-		defer beadsStore.Close()
-		logging.Logger().Info("beads store initialized", zap.String("path", beadsDir))
-	}
-
 	// Start 9P server
-	srv, err := p9.NewServer(mgr, beadsStore)
+	srv, err := p9.NewServer(mgr, nil)
 	if err != nil {
 		logging.Logger().Fatal("failed to start 9P server", zap.Error(err))
 	}
