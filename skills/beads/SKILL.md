@@ -13,35 +13,35 @@ Hierarchical task tracking via 9P. Persists to Dolt immediately.
 Find your project's beads mount:
 ```bash
 MY_CWD=$(pwd)
-MOUNT=$(9p read agent/beads/mtab | grep "$MY_CWD" | awk '{print $1}')
-BEADS_PATH="agent/beads/$MOUNT"
+MOUNT=$(list_mounts.sh | grep "$MY_CWD" | awk '{print $1}')
 ```
 
-Use `$BEADS_PATH` for all operations below instead of `agent/beads`.
+If no mount exists, create one:
+```bash
+mount_beads.sh "$MY_CWD"
+```
 
 ## Commands
 
-All via `9p write $BEADS_PATH/ctl`:
-- `claim bd-abc $AGENT_ID` - claim and start
-- `complete bd-abc` - finish
-- `fail bd-abc "reason"` - fail with reason
-- `new "title" "desc" [parent]` - create (child if parent given)
-- `update bd-abc <field> <value>` - modify field
-- `dep <child> <parent>` - add blocker
-- `comment bd-abc "text"` - leave context
-- `label bd-abc <label>` - tag
-- `delete bd-abc` - delete (does NOT cascade to children)
+- `claim_bead.sh bd-abc [$AGENT_ID]` - claim and start
+- `complete_bead.sh bd-abc` - finish
+- `fail_bead.sh bd-abc "reason"` - fail with reason
+- `create_bead.sh "title" "desc" [parent]` - create (child if parent given)
+- `update_bead.sh bd-abc <field> <value>` - modify field
+- `add_dependency.sh <child> <parent>` - add blocker
+- `comment_bead.sh bd-abc "text"` - leave context
+- `label_bead.sh bd-abc <label>` - tag
+- `delete_bead.sh bd-abc` - delete (does NOT cascade to children)
 
 **Note:** Delete does not cascade. To delete a parent and all children, delete children first, then parent.
 
 ## Queries
 
-All via `9p read`:
-- `$BEADS_PATH/ready` - unblocked work
-- `$BEADS_PATH/<id>/json` - single bead
-- `$BEADS_PATH/children/<id>` - child beads
-- `$BEADS_PATH/search/<term>` - search
-- `$BEADS_PATH/<id>/events` - history
+- `list_ready_beads.sh` - unblocked work
+- `read_bead.sh <id> json` - single bead
+- `read_bead.sh children <id>` - child beads
+- `read_bead.sh search <term>` - search
+- `read_bead.sh <id> events` - history
 
 ## Workflow
 
