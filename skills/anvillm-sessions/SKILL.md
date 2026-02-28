@@ -12,9 +12,9 @@ Create and control agent sessions.
 
 All commands must be run via `execute_code` tool:
 
-- `list_sessions.sh` - List all active sessions (JSON)
-- `create_session.sh <backend> <cwd> [role=<role>] [tasks=<task1,task2>] [model=<model>]` - Create new session
-- `control_session.sh <session-id> <command>` - Control session (stop|restart|kill|refresh)
+- List sessions: `list_sessions.sh`
+- Create session: `create_session.sh <backend> <cwd> [role=<role>] [tasks=<task1,task2>] [model=<model>]`
+- Control session: `control_session.sh <session-id> <command>`
 
 ## Backends
 
