@@ -9,6 +9,7 @@ import (
 	"anvillm/internal/mailbox"
 	"anvillm/internal/session"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -466,9 +467,18 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 				qid = plan9.Qid{Type: QTFile, Path: qidBeadsReady}
 				newPath = "/beads/ready"
 			default:
-				// Bead ID directory
-				qid = plan9.Qid{Type: QTDir, Path: qidBeadsBase + hashID(name)}
-				newPath = "/beads/" + name
+				// Mount directory - verify it exists
+				if s.beads != nil {
+					mounts := s.beads.ListMounts()
+					if _, isMount := mounts[name]; isMount {
+						qid = plan9.Qid{Type: QTDir, Path: qidBeadsBase + hashID(name)}
+						newPath = "/beads/" + name
+					} else {
+						return errFcall(fc, "not found")
+					}
+				} else {
+					return errFcall(fc, "not found")
+				}
 			}
 		} else if path == "/tools" {
 			// Inside tools directory - list capabilities + help
@@ -516,24 +526,26 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			qid = plan9.Qid{Type: QTFile, Path: qidSkillsBase + hashID(path+name)}
 			newPath = path + "/" + name
 		} else if strings.HasPrefix(path, "/beads/") && strings.Count(path, "/") == 2 {
-			// Inside a bead directory OR mount directory
-			beadID := strings.TrimPrefix(path, "/beads/")
-			// Check if it's a mount
+			// Inside a mount directory
+			mountName := strings.TrimPrefix(path, "/beads/")
 			if s.beads != nil {
 				mounts := s.beads.ListMounts()
-				if _, isMount := mounts[beadID]; isMount {
-					// It's a mount directory - name is a file or subdirectory
-					qid = plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(beadID+name)}
-					newPath = path + "/" + name
+				if _, isMount := mounts[mountName]; isMount {
+					// Check if name is a control file or bead ID
+					switch name {
+					case "cwd", "ctl", "list", "ready", "pending", "stats", "blocked", "stale", "query", "config":
+						qid = plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+name)}
+						newPath = path + "/" + name
+					default:
+						// Bead ID directory
+						qid = plan9.Qid{Type: QTDir, Path: qidBeadsBase + hashID(mountName+name)}
+						newPath = path + "/" + name
+					}
 				} else {
-					// It's a bead directory - property files
-					qid = plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(beadID+name)}
-					newPath = path + "/" + name
+					return errFcall(fc, "not found")
 				}
 			} else {
-				// No beads, treat as bead directory
-				qid = plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(beadID+name)}
-				newPath = path + "/" + name
+				return errFcall(fc, "not found")
 			}
 		} else if strings.HasPrefix(path, "/beads/") && strings.Count(path, "/") == 3 {
 			// Inside a mount's bead directory - property files
@@ -1188,11 +1200,25 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"config")}, Mode: 0444, Name: "config",
 					Uid: "q", Gid: "q", Muid: "q",
 				})
+				// Add bead directories
+				data, err := s.beads.Read(mountName + "/list")
+				if err == nil {
+					var issues []struct{ ID string `json:"id"` }
+					if json.Unmarshal(data, &issues) == nil {
+						for _, issue := range issues {
+							dirs = append(dirs, plan9.Dir{
+								Qid: plan9.Qid{Type: QTDir, Path: qidBeadsBase + hashID(mountName+issue.ID)}, Mode: 0555 | plan9.DMDIR, Name: issue.ID,
+								Uid: "q", Gid: "q", Muid: "q",
+							})
+						}
+					}
+				}
 			}
 		}
 	} else if strings.HasPrefix(path, "/beads/") && strings.Count(path, "/") == 3 {
 		// Inside a mount's bead directory - show property files
-		// e.g., /beads/proj2/bd-abc/json
+		// e.g., /beads/anvillm/anv-77c/json
+		// Do NOT show the bead ID itself as a subdirectory
 		dirs = append(dirs, plan9.Dir{
 			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(path+"json")}, Mode: 0444, Name: "json",
 			Uid: "q", Gid: "q", Muid: "q",
