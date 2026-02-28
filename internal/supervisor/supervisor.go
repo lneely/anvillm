@@ -71,10 +71,15 @@ func (s *Supervisor) assignWork() {
 		}
 		botCwd := sess.Metadata().Cwd
 		
-		// Find a claimable task in this bot's project (matching cwd)
+		// Find a claimable task in this bot's project (matching cwd or subdirectory)
 		for _, bead := range claimable {
 			taskCwd, ok := bead["cwd"].(string)
-			if !ok || taskCwd != botCwd {
+			if !ok {
+				continue
+			}
+			
+			rel, err := filepath.Rel(taskCwd, botCwd)
+			if err != nil || (rel != "." && filepath.IsAbs(rel)) {
 				continue
 			}
 			
