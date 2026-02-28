@@ -1,7 +1,7 @@
 #!/bin/bash
 # capabilities: beads
 # description: Mark a bead as pending review
-# Usage: mark_pending_review.sh <bead-id> [assignee]
+# Usage: mark_pending_review.sh <mount> <bead-id> [assignee]
 set -euo pipefail
 
 if cat /etc/shadow >/dev/null 2>&1; then
@@ -9,9 +9,17 @@ if cat /etc/shadow >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ $# -lt 1 ]; then
-    echo "usage: mark_pending_review.sh <bead-id> [assignee]" >&2
+if [ $# -lt 2 ]; then
+    echo "usage: mark_pending_review.sh <mount> <bead-id> [assignee]" >&2
     exit 1
 fi
 
-echo "pending-review $*" | 9p write agent/beads/list
+MOUNT="$1"
+BEAD_ID="$2"
+ASSIGNEE="${3:-}"
+
+if [ -n "$ASSIGNEE" ]; then
+    echo "pending-review $BEAD_ID $ASSIGNEE" | 9p write agent/beads/$MOUNT/ctl
+else
+    echo "pending-review $BEAD_ID" | 9p write agent/beads/$MOUNT/ctl
+fi

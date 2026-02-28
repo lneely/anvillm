@@ -1,7 +1,7 @@
 #!/bin/bash
 # capabilities: beads, tasks
 # description: Remove a label from a bead
-# Usage: unlabel_bead.sh <bead-id> <label>
+# Usage: unlabel_bead.sh <mount> <bead-id> <label>
 set -euo pipefail
 
 if cat /etc/shadow >/dev/null 2>&1; then
@@ -9,9 +9,9 @@ if cat /etc/shadow >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ $# -lt 2 ]; then
-    echo "usage: unlabel_bead.sh <bead-id> <label>" >&2
+if [ $# -lt 3 ]; then
+    echo "usage: unlabel_bead.sh <mount> <bead-id> <label>" >&2
     exit 1
 fi
 
-echo "unlabel $*" | 9p write agent/beads/list
+echo "unlabel $2 $3" | 9p write agent/beads/$1/ctl

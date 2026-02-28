@@ -1,7 +1,7 @@
 #!/bin/bash
 # capabilities: beads, tasks
 # description: Create a new bead
-# Usage: create_bead.sh <title> [description] [parent-id] [--no-lint] [capability=low|standard|high]
+# Usage: create_bead.sh <mount> <title> [description] [parent-id] [--no-lint] [capability=low|standard|high]
 set -euo pipefail
 
 if cat /etc/shadow >/dev/null 2>&1; then
@@ -9,16 +9,16 @@ if cat /etc/shadow >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ $# -lt 1 ]; then
-    echo "usage: create_bead.sh <title> [description] [parent-id] [--no-lint] [capability=low|standard|high]" >&2
+if [ $# -lt 2 ]; then
+    echo "usage: create_bead.sh <mount> <title> [description] [parent-id] [--no-lint] [capability=low|standard|high]" >&2
     exit 1
 fi
 
-# Find the first mounted project
-MOUNT=$(9p ls agent/beads | grep -v '^ctl$' | grep -v '^mtab$' | grep -v '^ready$' | head -1)
-if [ -z "$MOUNT" ]; then
-    echo "Error: No beads projects mounted" >&2
-    exit 1
-fi
+MOUNT="$1"
+TITLE="$2"
+DESC="${3:-}"
+PARENT="${4:-}"
+NOLINT="${5:-}"
+CAP="${6:-}"
 
-echo "new \"$1\" \"${2:-}\" ${3:-} ${4:-} ${5:-}" | 9p write agent/beads/$MOUNT/ctl
+printf "new '%s' '%s' %s %s %s\n" "$TITLE" "$DESC" "$PARENT" "$NOLINT" "$CAP" | 9p write agent/beads/$MOUNT/ctl

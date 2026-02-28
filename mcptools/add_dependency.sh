@@ -1,7 +1,7 @@
 #!/bin/bash
 # capabilities: beads
 # description: Add a dependency (child depends on parent)
-# Usage: add_dependency.sh <child-id> <parent-id>
+# Usage: add_dependency.sh <mount> <child-id> <parent-id>
 set -euo pipefail
 
 if cat /etc/shadow >/dev/null 2>&1; then
@@ -9,9 +9,9 @@ if cat /etc/shadow >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ $# -lt 2 ]; then
-    echo "usage: add_dependency.sh <child-id> <parent-id>" >&2
+if [ $# -lt 3 ]; then
+    echo "usage: add_dependency.sh <mount> <child-id> <parent-id>" >&2
     exit 1
 fi
 
-echo "dep $*" | 9p write agent/beads/list
+echo "dep $2 $3" | 9p write agent/beads/$1/ctl

@@ -1,7 +1,7 @@
 #!/bin/bash
 # capabilities: beads, tasks
 # description: Add a label to a bead
-# Usage: label_bead.sh <bead-id> <label>
+# Usage: label_bead.sh <mount> <bead-id> <label>
 set -euo pipefail
 
 if cat /etc/shadow >/dev/null 2>&1; then
@@ -9,9 +9,9 @@ if cat /etc/shadow >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ $# -lt 2 ]; then
-    echo "usage: label_bead.sh <bead-id> <label>" >&2
+if [ $# -lt 3 ]; then
+    echo "usage: label_bead.sh <mount> <bead-id> <label>" >&2
     exit 1
 fi
 
-echo "label $*" | 9p write agent/beads/list
+echo "label $2 $3" | 9p write agent/beads/$1/ctl

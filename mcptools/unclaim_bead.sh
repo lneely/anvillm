@@ -1,7 +1,7 @@
 #!/bin/bash
 # capabilities: beads, tasks
 # description: Unclaim a bead (reset to open)
-# Usage: unclaim_bead.sh <bead-id>
+# Usage: unclaim_bead.sh <mount> <bead-id>
 set -euo pipefail
 
 if cat /etc/shadow >/dev/null 2>&1; then
@@ -9,9 +9,9 @@ if cat /etc/shadow >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ $# -lt 1 ]; then
-    echo "usage: unclaim_bead.sh <bead-id>" >&2
+if [ $# -lt 2 ]; then
+    echo "usage: unclaim_bead.sh <mount> <bead-id>" >&2
     exit 1
 fi
 
-echo "unclaim $1" | 9p write agent/beads/list
+echo "unclaim $2" | 9p write agent/beads/$1/ctl
