@@ -29,6 +29,9 @@ var (
 	promptInput *tview.InputField
 	contextView *tview.TextView
 	pages       *tview.Pages
+
+	// Current beads mount
+	currentMount = "default"
 )
 
 type SessionInfo struct {
@@ -141,6 +144,9 @@ func setupUI() {
 				return nil
 			case 'b':
 				showBeads()
+				return nil
+			case 'm':
+				showMountManager()
 				return nil
 			case 'd':
 				showDaemonStatus()
@@ -272,7 +278,7 @@ func refreshSessions() {
 		sessionList.SetCell(row, 6, tview.NewTableCell(" "+sess.Cwd+" ").SetExpansion(3))
 	}
 
-	updateStatus(fmt.Sprintf("Sessions: %d | [yellow]s[white]:start [yellow]space[white]:prompt [yellow]c[white]:context [yellow]i[white]:inbox [yellow]a[white]:archive [yellow]b[white]:beads [yellow]t[white]:attach [yellow]T[white]:stop [yellow]R[white]:restart [yellow]K[white]:kill [yellow]A[white]:alias [yellow]r[white]:refresh [yellow]?[white]:help [yellow]q[white]:quit", len(sessions)))
+	updateStatus(fmt.Sprintf("Sessions: %d | [yellow]s[white]:start [yellow]space[white]:prompt [yellow]c[white]:context [yellow]i[white]:inbox [yellow]a[white]:archive [yellow]b[white]:beads [yellow]m[white]:mounts [yellow]t[white]:attach [yellow]T[white]:stop [yellow]R[white]:restart [yellow]K[white]:kill [yellow]A[white]:alias [yellow]r[white]:refresh [yellow]?[white]:help [yellow]q[white]:quit", len(sessions)))
 }
 
 func listSessions() ([]*SessionInfo, error) {
@@ -554,7 +560,7 @@ func wrapBeadIDs(text string) string {
 	re := regexp.MustCompile(`\bbd-[a-z0-9]+(?:\.[0-9]+)?\b`)
 	return re.ReplaceAllStringFunc(text, func(id string) string {
 		// Read bead to get title
-		beadPath := filepath.Join("beads", id, "json")
+		beadPath := filepath.Join("beads", currentMount, id, "json")
 		data, err := readFile(beadPath)
 		if err != nil {
 			return id // Return unwrapped if can't read
@@ -1219,7 +1225,7 @@ func showBeads() {
 
 func showBeadsFiltered(searchQuery string) {
 	// Read ready beads
-	beadsData, err := readFile("beads/ready")
+	beadsData, err := readFile(filepath.Join("beads", currentMount, "ready"))
 	if err != nil {
 		updateStatus(fmt.Sprintf("[red]Error reading beads: %v", err))
 		return
@@ -1863,4 +1869,112 @@ func createModalDynamic(p tview.Primitive, widthProportion, heightProportion int
 			AddItem(p, 0, heightProportion, true).
 			AddItem(nil, 0, 1, false), 0, widthProportion, true).
 		AddItem(nil, 0, 1, false)
+}
+
+func showMountManager() {
+	// Read mtab
+	mtabData, err := readFile("beads/mtab")
+	if err != nil {
+		updateStatus(fmt.Sprintf("[red]Error reading mtab: %v", err))
+		return
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(mtabData)), "\n")
+	mounts := make(map[string]string) // mount -> cwd
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) == 2 {
+			mounts[parts[0]] = parts[1]
+		}
+	}
+
+	list := tview.NewList().ShowSecondaryText(true)
+	list.SetSelectedBackgroundColor(tcell.ColorWhite)
+	list.SetSelectedTextColor(tcell.ColorBlack)
+
+	for mount, cwd := range mounts {
+		m := mount
+		list.AddItem(
+			fmt.Sprintf("[%s] %s", m, cwd),
+			"Press Enter to select, 'u' to unmount",
+			0,
+			func() {
+				currentMount = m
+				updateStatus(fmt.Sprintf("Selected mount: %s", m))
+				pages.RemovePage("mounts")
+			},
+		)
+	}
+
+	list.AddItem(
+		"[+] Mount new project",
+		"Press Enter to mount",
+		0,
+		func() {
+			showMountDialog()
+		},
+	)
+
+	list.SetBorder(true).SetTitle(fmt.Sprintf(" Beads Mounts (current: %s) ", currentMount))
+	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Rune() == 'q' || event.Key() == tcell.KeyEscape {
+			pages.RemovePage("mounts")
+			return nil
+		}
+		if event.Rune() == 'u' {
+			idx := list.GetCurrentItem()
+			if idx < len(mounts) {
+				// Get mount name from list
+				mountNames := make([]string, 0, len(mounts))
+				for m := range mounts {
+					mountNames = append(mountNames, m)
+				}
+				if idx < len(mountNames) {
+					mount := mountNames[idx]
+					if err := writeFile("beads/ctl", []byte(fmt.Sprintf("umount %s", mount))); err != nil {
+						updateStatus(fmt.Sprintf("[red]Error unmounting: %v", err))
+					} else {
+						updateStatus(fmt.Sprintf("Unmounted %s", mount))
+						pages.RemovePage("mounts")
+					}
+				}
+			}
+			return nil
+		}
+		return event
+	})
+
+	pages.AddPage("mounts", createModal(list, 80, 20), true, true)
+}
+
+func showMountDialog() {
+	form := tview.NewForm()
+	form.AddInputField("Project path", "", 50, nil, nil)
+	form.AddInputField("Mount name", "", 30, nil, nil)
+	form.AddButton("Mount", func() {
+		cwd := form.GetFormItem(0).(*tview.InputField).GetText()
+		name := form.GetFormItem(1).(*tview.InputField).GetText()
+		if cwd == "" || name == "" {
+			updateStatus("[red]Both fields required")
+			return
+		}
+		cmd := fmt.Sprintf("mount %s %s", cwd, name)
+		if err := writeFile("beads/ctl", []byte(cmd)); err != nil {
+			updateStatus(fmt.Sprintf("[red]Error mounting: %v", err))
+		} else {
+			currentMount = name
+			updateStatus(fmt.Sprintf("Mounted %s at %s", name, cwd))
+			pages.RemovePage("mount-dialog")
+			pages.RemovePage("mounts")
+		}
+	})
+	form.AddButton("Cancel", func() {
+		pages.RemovePage("mount-dialog")
+	})
+
+	form.SetBorder(true).SetTitle(" Mount Project ")
+	pages.AddPage("mount-dialog", createModal(form, 60, 10), true, true)
 }

@@ -121,6 +121,12 @@ func (b *BeadsFS) Mount(name, cwd string) error {
 	if _, exists := b.mounts[name]; exists {
 		return fmt.Errorf("mount %s exists", name)
 	}
+	// Check if cwd exists
+	if _, err := os.Stat(cwd); os.IsNotExist(err) {
+		return fmt.Errorf("directory does not exist: %s", cwd)
+	} else if err != nil {
+		return fmt.Errorf("failed to stat directory: %w", err)
+	}
 	// Use cwd as db path, replacing / with -
 	cwdHyphenated := strings.ReplaceAll(cwd, "/", "-")
 	dbPath := filepath.Join(os.Getenv("HOME"), ".beads", cwdHyphenated)
@@ -138,17 +144,33 @@ func (b *BeadsFS) Mount(name, cwd string) error {
 }
 
 // Umount removes a project-specific beads instance.
-func (b *BeadsFS) Umount(name string) error {
+// Accepts either mount name or cwd path. If cwd matches multiple mounts, unmounts first match.
+func (b *BeadsFS) Umount(nameOrCwd string) error {
 	b.mountsMu.Lock()
 	defer b.mountsMu.Unlock()
-	m, ok := b.mounts[name]
+	
+	// Try as mount name first
+	m, ok := b.mounts[nameOrCwd]
+	mountName := nameOrCwd
 	if !ok {
-		return fmt.Errorf("mount %s not found", name)
+		// Try as cwd - unmount first match
+		for name, mount := range b.mounts {
+			if mount.cwd == nameOrCwd {
+				m = mount
+				mountName = name
+				ok = true
+				break
+			}
+		}
+	}
+	
+	if !ok {
+		return fmt.Errorf("mount %s not found", nameOrCwd)
 	}
 	if err := m.store.Close(); err != nil {
 		return fmt.Errorf("failed to close store: %w", err)
 	}
-	delete(b.mounts, name)
+	delete(b.mounts, mountName)
 	return nil
 }
 
@@ -752,10 +774,15 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 		return store.SetConfig(b.ctx, "issue_prefix", prefix)
 		
 	case "mount":
-		if len(args) < 2 {
-			return fmt.Errorf("usage: mount <cwd> <name>")
+		if len(args) < 1 {
+			return fmt.Errorf("usage: mount <cwd> [name]")
 		}
-		return b.Mount(args[1], args[0])
+		cwd := args[0]
+		name := filepath.Base(cwd)
+		if len(args) >= 2 {
+			name = args[1]
+		}
+		return b.Mount(name, cwd)
 	case "umount":
 		if len(args) < 1 {
 			return fmt.Errorf("usage: umount <name>")
@@ -887,19 +914,19 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 		updates := map[string]any{
 			args[1]: args[2],
 		}
-		return b.store.UpdateIssue(b.ctx, args[0], updates, actor)
+		return store.UpdateIssue(b.ctx, args[0], updates, actor)
 
 	case "delete", "rm":
 		if len(args) < 1 {
 			return fmt.Errorf("usage: delete <bead-id>")
 		}
-		return b.store.DeleteIssue(b.ctx, args[0])
+		return store.DeleteIssue(b.ctx, args[0])
 
 	case "comment":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: comment <bead-id> 'text'")
 		}
-		_, err := b.store.AddIssueComment(b.ctx, args[0], actor, args[1])
+		_, err := store.AddIssueComment(b.ctx, args[0], actor, args[1])
 		return err
 
 	case "label":
@@ -927,13 +954,13 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 			return fmt.Errorf("invalid capability level %q: must be low, standard, or high", level)
 		}
 		// Remove any existing capability labels first.
-		existing, err := b.store.GetLabels(b.ctx, beadID)
+		existing, err := store.GetLabels(b.ctx, beadID)
 		if err != nil {
 			return err
 		}
 		for _, lbl := range existing {
 			if level, ok := strings.CutPrefix(lbl, capabilityPrefix); ok && level != "" {
-				_ = b.store.RemoveLabel(b.ctx, beadID, lbl, actor)
+				_ = store.RemoveLabel(b.ctx, beadID, lbl, actor)
 			}
 		}
 		return store.AddLabel(b.ctx, beadID, capabilityPrefix+level, actor)
@@ -946,7 +973,7 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 		if err := json.Unmarshal([]byte(args[0]), &issues); err != nil {
 			return fmt.Errorf("invalid JSON: %w", err)
 		}
-		return b.store.CreateIssues(b.ctx, issues, actor)
+		return store.CreateIssues(b.ctx, issues, actor)
 
 	// Approval gate commands.
 	// Bots should call these after sending an APPROVAL_REQUEST or REVIEW_REQUEST
@@ -972,7 +999,7 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 			"status":   StatusPendingApproval,
 			"assignee": assignee,
 		}
-		return b.store.UpdateIssue(b.ctx, args[0], updates, actor)
+		return store.UpdateIssue(b.ctx, args[0], updates, actor)
 
 	case "pending-review":
 		// Atomically set status=pending_review and assignee (defaults to "user").
@@ -993,7 +1020,7 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 			"status":   StatusPendingReview,
 			"assignee": assignee,
 		}
-		return b.store.UpdateIssue(b.ctx, args[0], updates, actor)
+		return store.UpdateIssue(b.ctx, args[0], updates, actor)
 
 	case "resume":
 		// Atomically set status=in_progress and assignee after human approval/review.
@@ -1011,7 +1038,7 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 			"status":   bd.StatusInProgress,
 			"assignee": assignee,
 		}
-		return b.store.UpdateIssue(b.ctx, args[0], updates, actor)
+		return store.UpdateIssue(b.ctx, args[0], updates, actor)
 
 	case "unclaim":
 		// Atomically clear assignee and reset status to open.
@@ -1023,7 +1050,7 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 			"assignee": "",
 			"status":   bd.StatusOpen,
 		}
-		return b.store.UpdateIssue(b.ctx, args[0], updates, actor)
+		return store.UpdateIssue(b.ctx, args[0], updates, actor)
 
 	default:
 		return fmt.Errorf("unknown command: %s (supported: init, new, update, delete, claim, unclaim, complete, fail, dep, undep, pending-approval, pending-review, resume, label, unlabel, set-capability)", command)

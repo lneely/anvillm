@@ -177,6 +177,8 @@ func startCmd(daemonize bool) {
 	mux.HandleFunc("/api/inbox/reply", handleInboxReply)
 	mux.HandleFunc("/api/inbox/archive", handleInboxArchive)
 	mux.HandleFunc("/api/archive", handleArchive)
+	mux.HandleFunc("/api/beads/mtab", handleBeadsMtab)
+	mux.HandleFunc("/api/beads/mount", handleBeadsMount)
 	mux.HandleFunc("/api/beads", handleBeads)
 	mux.HandleFunc("/api/beads/ready", handleBeadsReady)
 	mux.HandleFunc("/api/beads/ctl", handleBeadsCtl)
@@ -932,6 +934,11 @@ func handleBeads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mount := r.URL.Query().Get("mount")
+	if mount == "" {
+		mount = "default"
+	}
+
 	fs, err := connect()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -939,7 +946,7 @@ func handleBeads(w http.ResponseWriter, r *http.Request) {
 	}
 	defer fs.Close()
 
-	fid, err := fs.Open("beads/list", plan9.OREAD)
+	fid, err := fs.Open(filepath.Join("beads", mount, "list"), plan9.OREAD)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -956,7 +963,7 @@ func handleBeads(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
+func handleBeadsMtab(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -969,7 +976,129 @@ func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
 	}
 	defer fs.Close()
 
-	fid, err := fs.Open("beads/ready", plan9.OREAD)
+	fid, err := fs.Open("beads/mtab", plan9.OREAD)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer fid.Close()
+
+	data, err := io.ReadAll(fid)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Parse mtab format: mount\tcwd per line
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	mounts := make([]map[string]string, 0)
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) == 2 {
+			mounts = append(mounts, map[string]string{
+				"mount": parts[0],
+				"cwd":   parts[1],
+			})
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(mounts)
+}
+
+func handleBeadsMount(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "POST" {
+		// Mount
+		var req struct {
+			Cwd  string `json:"cwd"`
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		fs, err := connect()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		defer fs.Close()
+
+		fid, err := fs.Open("beads/ctl", plan9.OWRITE)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer fid.Close()
+
+		cmd := fmt.Sprintf("mount %s %s", req.Cwd, req.Name)
+		if _, err := fid.Write([]byte(cmd)); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	} else if r.Method == "DELETE" {
+		// Unmount
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		fs, err := connect()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		defer fs.Close()
+
+		fid, err := fs.Open("beads/ctl", plan9.OWRITE)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer fid.Close()
+
+		cmd := fmt.Sprintf("umount %s", req.Name)
+		if _, err := fid.Write([]byte(cmd)); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	} else {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	mount := r.URL.Query().Get("mount")
+	if mount == "" {
+		mount = "default"
+	}
+
+	fs, err := connect()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer fs.Close()
+
+	fid, err := fs.Open(filepath.Join("beads", mount, "ready"), plan9.OREAD)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -992,6 +1121,11 @@ func handleBeadsCtl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mount := r.URL.Query().Get("mount")
+	if mount == "" {
+		mount = "default"
+	}
+
 	var req struct {
 		Command string `json:"command"`
 	}
@@ -1008,7 +1142,7 @@ func handleBeadsCtl(w http.ResponseWriter, r *http.Request) {
 	}
 	defer fs.Close()
 
-	fid, err := fs.Open("beads/ctl", plan9.OWRITE)
+	fid, err := fs.Open(filepath.Join("beads", mount, "ctl"), plan9.OWRITE)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1030,6 +1164,11 @@ func handleBeadDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mount := r.URL.Query().Get("mount")
+	if mount == "" {
+		mount = "default"
+	}
+
 	id := strings.TrimPrefix(r.URL.Path, "/api/beads/")
 	if id == "" {
 		http.Error(w, "Invalid bead ID", http.StatusBadRequest)
@@ -1043,7 +1182,7 @@ func handleBeadDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	defer fs.Close()
 
-	fid, err := fs.Open(filepath.Join("beads", id, "json"), plan9.OREAD)
+	fid, err := fs.Open(filepath.Join("beads", mount, id, "json"), plan9.OREAD)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

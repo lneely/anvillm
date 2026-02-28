@@ -57,6 +57,9 @@
 (defvar anvillm-agent-path "agent"
   "9P filesystem path for AnviLLM agent.")
 
+(defvar anvillm-current-mount "default"
+  "Current beads mount point.")
+
 ;;; 9P Filesystem Interface
 
 (defun anvillm--9p-read (path)
@@ -278,7 +281,7 @@ Format: id backend state alias model cwd (whitespace-separated; often tabs)."
       (let* ((beads (condition-case nil
                         (let* ((json-object-type 'plist)
                                (json-array-type 'list)
-                               (beads-data (anvillm--9p-read (concat anvillm-agent-path "/beads/list")))
+                               (beads-data (anvillm--9p-read (concat anvillm-agent-path "/beads/" anvillm-current-mount "/list")))
                                (beads (json-read-from-string beads-data)))
                           (mapcar (lambda (b) (plist-get b :id)) beads))
                       (error nil)))
@@ -1576,6 +1579,61 @@ closed - Completed
             (quit-window t))
         (error
          (message "Failed to send prompt: %s" (error-message-string err)))))))
+
+(defun anvillm-mount-project ()
+  "Mount a project directory as a beads mount."
+  (interactive)
+  (let* ((cwd (read-directory-name "Project directory: "))
+         (name (read-string "Mount name: " (file-name-nondirectory (directory-file-name cwd)))))
+    (when (and (> (length cwd) 0) (> (length name) 0))
+      (condition-case err
+          (progn
+            (anvillm--9p-write (concat anvillm-agent-path "/beads/ctl")
+                              (format "mount %s %s" cwd name))
+            (setq anvillm-current-mount name)
+            (message "Mounted %s at %s" name cwd))
+        (error
+         (message "Failed to mount: %s" (error-message-string err)))))))
+
+(defun anvillm-unmount-project ()
+  "Unmount a beads mount."
+  (interactive)
+  (let* ((mtab-data (condition-case nil
+                        (anvillm--9p-read (concat anvillm-agent-path "/beads/mtab"))
+                      (error "")))
+         (lines (split-string (string-trim mtab-data) "\n"))
+         (mounts (delq nil (mapcar (lambda (line)
+                                    (when (> (length line) 0)
+                                      (car (split-string line "\t"))))
+                                  lines)))
+         (mount (completing-read "Unmount: " mounts nil t)))
+    (when (> (length mount) 0)
+      (condition-case err
+          (progn
+            (anvillm--9p-write (concat anvillm-agent-path "/beads/ctl")
+                              (format "umount %s" mount))
+            (message "Unmounted %s" mount))
+        (error
+         (message "Failed to unmount: %s" (error-message-string err)))))))
+
+(defun anvillm-select-mount ()
+  "Select the current beads mount."
+  (interactive)
+  (let* ((mtab-data (condition-case nil
+                        (anvillm--9p-read (concat anvillm-agent-path "/beads/mtab"))
+                      (error "")))
+         (lines (split-string (string-trim mtab-data) "\n"))
+         (mounts (delq nil (mapcar (lambda (line)
+                                    (when (> (length line) 0)
+                                      (let ((parts (split-string line "\t")))
+                                        (cons (format "%s (%s)" (car parts) (cadr parts))
+                                              (car parts)))))
+                                  lines)))
+         (selection (completing-read "Select mount: " mounts nil t))
+         (mount (cdr (assoc selection mounts))))
+    (when mount
+      (setq anvillm-current-mount mount)
+      (message "Selected mount: %s" mount))))
 
 (provide 'anvillm)
 
