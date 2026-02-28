@@ -11,7 +11,7 @@ when_to_load: Load when you need to send messages to other agents, respond to th
 
 All commands must be run via `execute_code` tool:
 
-- List agents: `list_sessions.sh`
+- Discover agents: `list_sessions.sh`
 - Send message: `send_message.sh FROM TO TYPE SUBJECT BODY`
 - Check inbox: `read_inbox.sh AGENT_ID`
 
