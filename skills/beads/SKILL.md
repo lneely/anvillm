@@ -25,25 +25,27 @@ mount_beads.sh "$MY_CWD"
 
 ## Commands
 
-- `claim_bead.sh bd-abc [$AGENT_ID]` - claim and start
-- `complete_bead.sh bd-abc` - finish
-- `fail_bead.sh bd-abc "reason"` - fail with reason
-- `create_bead.sh "title" "desc" [parent]` - create (child if parent given)
-- `update_bead.sh bd-abc <field> <value>` - modify field
-- `add_dependency.sh <child> <parent>` - add blocker
-- `comment_bead.sh bd-abc "text"` - leave context
-- `label_bead.sh bd-abc <label>` - tag
-- `delete_bead.sh bd-abc` - delete (does NOT cascade to children)
+All commands must be run via `execute_code` tool:
+
+- Claim bead: `claim_bead.sh bd-abc [$AGENT_ID]`
+- Complete bead: `complete_bead.sh bd-abc`
+- Fail bead: `fail_bead.sh bd-abc "reason"`
+- Create bead: `create_bead.sh "title" "desc" [parent]`
+- Update bead: `update_bead.sh bd-abc <field> <value>`
+- Add dependency: `add_dependency.sh <child> <parent>`
+- Comment on bead: `comment_bead.sh bd-abc "text"`
+- Label bead: `label_bead.sh bd-abc <label>`
+- Delete bead: `delete_bead.sh bd-abc`
 
 **Note:** Delete does not cascade. To delete a parent and all children, delete children first, then parent.
 
 ## Queries
 
-- `list_ready_beads.sh` - unblocked work
-- `read_bead.sh <id> json` - single bead
-- `read_bead.sh children <id>` - child beads
-- `read_bead.sh search <term>` - search
-- `read_bead.sh <id> events` - history
+- List ready beads: `list_ready_beads.sh`
+- Read bead: `read_bead.sh <id> json`
+- List children: `read_bead.sh children <id>`
+- Search beads: `read_bead.sh search <term>`
+- View history: `read_bead.sh <id> events`
 
 ## Workflow
 
