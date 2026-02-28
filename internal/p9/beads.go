@@ -288,14 +288,6 @@ func (b *BeadsFS) Write(path string, data []byte, sessionID string) error {
 		return fmt.Errorf("write not allowed: %s", path)
 	}
 	
-	// If mounts exist, require mountpoint to be specified
-	b.mountsMu.RLock()
-	hasMounts := len(b.mounts) > 0
-	b.mountsMu.RUnlock()
-	if hasMounts {
-		return fmt.Errorf("mountpoint required: use <mountname>/ctl instead of ctl")
-	}
-	
 	return b.executeCtl(string(data))
 }
 
