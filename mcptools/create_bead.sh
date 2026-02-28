@@ -15,10 +15,20 @@ if [ $# -lt 2 ]; then
 fi
 
 MOUNT="$1"
-TITLE="$2"
-DESC="${3:-}"
-PARENT="${4:-}"
-NOLINT="${5:-}"
-CAP="${6:-}"
+shift
+TITLE="$1"
+shift
+DESC="${1:-}"
+[ $# -gt 0 ] && shift
+PARENT="${1:-}"
+[ $# -gt 0 ] && shift
+NOLINT="${1:-}"
+[ $# -gt 0 ] && shift
+CAP="${1:-}"
 
-printf "new '%s' '%s' %s %s %s\n" "$TITLE" "$DESC" "$PARENT" "$NOLINT" "$CAP" | 9p write agent/beads/$MOUNT/ctl
+CMD="new '$TITLE' '$DESC'"
+[ -n "$PARENT" ] && CMD="$CMD $PARENT"
+[ -n "$NOLINT" ] && CMD="$CMD $NOLINT"
+[ -n "$CAP" ] && CMD="$CMD $CAP"
+
+echo "$CMD" | 9p write agent/beads/$MOUNT/ctl
