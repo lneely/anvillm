@@ -31,7 +31,7 @@ type Session struct {
 	winID       int      // Acme window ID (0 if not applicable)
 	pid         int
 	state       string
-	context     string // prepended to every prompt
+	context     string // injected into first prompt only (consumed on first Send)
 	createdAt   time.Time
 
 	fifoPath string
@@ -224,14 +224,14 @@ func (s *Session) GetPid() int {
 	return s.pid
 }
 
-// SetContext sets the context prefix for all prompts
+// SetContext sets the startup context injected into the first prompt only
 func (s *Session) SetContext(ctx string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.context = ctx
 }
 
-// GetContext gets the context prefix
+// GetContext gets the startup context (empty after first Send)
 func (s *Session) GetContext() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -445,9 +445,10 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	// Instruction to send response via mailbox (triggers idle transition)
 	outInstruction := fmt.Sprintf("When done, send your response using the send_message tool:\n  from: %s\n  to: [sender's agent_id, or \"user\"]\n  type: [PROMPT_RESPONSE, REVIEW_RESPONSE, QUERY_RESPONSE, or APPROVAL_RESPONSE]\n  subject: [brief description of what you did]\n  body: YOUR_SUMMARY_HERE\n", s.id)
 
-	// Append context and out-instruction after prompt (skip for slash commands)
+	// Prepend context to first prompt only, then clear it (one-shot injection)
 	if s.context != "" && !strings.HasPrefix(prompt, "/") {
 		prompt = s.context + "\n\n" + prompt + "\n\n" + outInstruction
+		s.context = ""
 	} else if !strings.HasPrefix(prompt, "/") {
 		prompt = prompt + "\n\n" + outInstruction
 	}
