@@ -1,0 +1,4 @@
+{
+  "categories": ["ui", "api", "data-model", "infra", "testing", "refactor", "docs", "security", "performance", "research"],
+  "other_threshold": 5
+}
