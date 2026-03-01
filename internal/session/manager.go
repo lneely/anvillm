@@ -261,7 +261,7 @@ func (m *Manager) processMailboxes() {
 		}
 		
 		idleDuration := tmuxSess.IdleDuration()
-		if idleDuration < 15*time.Second {
+		if idleDuration < 5*time.Second {
 			continue
 		}
 		
