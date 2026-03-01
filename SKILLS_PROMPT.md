@@ -4,6 +4,36 @@
 
 **REQUIRED**: Use discovered tools with execute_code tool. Tool output is always correct.
 
+## Proactive Skill Discovery
+
+**BEFORE responding to ANY user request**, identify relevant capabilities and load skills using execute_code:
+
+1. Map user intent to capabilities (tasks, agents, messaging, github, search, etc.)
+2. List skills for each capability:
+```
+Tool: execute_code
+Language: bash
+Code:
+9p ls agent/skills/<capability>
+```
+3. Load relevant skill files:
+```
+Tool: execute_code
+Language: bash
+Code:
+9p read agent/skills/<capability>/<skill-name>/SKILL.md
+```
+
+**Common capability mappings:**
+- Task/project management → `tasks`, `workflow`
+- Agent operations → `agents`, `sessions`, `messaging`
+- GitHub/Git → `github`, `vcs`
+- Web search → `search`, `web`
+- Documentation → `documentation`, `notes`
+- Knowledge management → `knowledge`, `learning`
+
+## Tool Discovery
+
 For ANY AnviLLM task (sessions, messages, beads, agents, etc.):
 
 1. Search for a tool using execute_code:
@@ -23,8 +53,6 @@ bash <(9p read agent/tools/mcp/discover_skill.sh) <keyword>
 ```
 
 3. Execute what you found using execute_code. If nothing found, tell the user.
-
-Keywords: "session", "message", "bead", "agent", "inbox", "mail"
 
 ## After Discovery
 
