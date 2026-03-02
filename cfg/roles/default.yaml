@@ -42,8 +42,6 @@ filesystem:
     - "{HOME}/.gradle"
     - "/var/run/docker.sock"
     - "{HOME}/.docker"
-    - "{HOME}/.npm"
-    - "{HOME}/.yarn"
     - "{HOME}/.pnpm-store"
     - "{XDG_CONFIG_HOME}/yarn"
     - "{HOME}/.yarnrc.yml"
@@ -82,6 +80,9 @@ filesystem:
     - "{HOME}/prj"
     - "{HOME}/.nvm"
     - "{HOME}/.please"
+    - "{HOME}/.npm"
+    - "{HOME}/.mcp-auth"
+    - "{HOME}/.yarn"
 env:
   - AGENT_SKILLS_PATH
   - NAMESPACE
