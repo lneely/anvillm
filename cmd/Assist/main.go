@@ -600,6 +600,9 @@ func refreshList(w *acme.Win) {
 		w.Addr(",")
 		w.Write("data", []byte(buf.String()))
 		w.Ctl("clean")
+		w.Addr("0")
+		w.Ctl("dot=addr")
+		w.Ctl("show")
 		return
 	}
 
@@ -610,6 +613,9 @@ func refreshList(w *acme.Win) {
 		w.Addr(",")
 		w.Write("data", []byte(buf.String()))
 		w.Ctl("clean")
+		w.Addr("0")
+		w.Ctl("dot=addr")
+		w.Ctl("show")
 		return
 	}
 
@@ -627,6 +633,9 @@ func refreshList(w *acme.Win) {
 	w.Addr(",")
 	w.Write("data", []byte(buf.String()))
 	w.Ctl("clean")
+	w.Addr("0")
+	w.Ctl("dot=addr")
+	w.Ctl("show")
 }
 
 // sessionEdit represents a single inline action parsed from the sessions window body.
@@ -1041,6 +1050,9 @@ func refreshDaemonWindow(w *acme.Win) {
 	w.Addr(",")
 	w.Write("data", []byte(buf.String()))
 	w.Ctl("clean")
+	w.Addr("0")
+	w.Ctl("dot=addr")
+	w.Ctl("show")
 }
 
 func startDaemon(w *acme.Win) {
@@ -1208,6 +1220,9 @@ func refreshMailboxWindow(w *acme.Win, folder, title string) {
 	w.Addr(",")
 	w.Write("data", []byte(buf.String()))
 	w.Ctl("clean")
+	w.Addr("0")
+	w.Ctl("dot=addr")
+	w.Ctl("show")
 }
 
 func shortUUID(id string) string {
@@ -2390,6 +2405,9 @@ func refreshViewBeadWindow(w *acme.Win, beadID string, mount string) {
 	w.Addr(",")
 	w.Write("data", []byte(buf.String()))
 	w.Ctl("clean")
+	w.Addr("0")
+	w.Ctl("dot=addr")
+	w.Ctl("show")
 }
 
 func getBead(beadID string, mount string) (*Bead, error) {
