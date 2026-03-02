@@ -11,6 +11,8 @@ build:V:
 	go build -o $INSTALL_PATH/anvilmcp ./cmd/anvilmcp
 	cp scripts/Alog $INSTALL_PATH/Alog
 	chmod 0755 $INSTALL_PATH/Alog
+	cp scripts/anvillm-notify $INSTALL_PATH/anvillm-notify
+	chmod 0755 $INSTALL_PATH/anvillm-notify
 	cp scripts/anvillm-skills $INSTALL_PATH/anvillm-skills
 	chmod 0755 $INSTALL_PATH/anvillm-skills
 	cp scripts/anvillm-hook $INSTALL_PATH/anvillm-hook

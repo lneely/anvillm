@@ -1,17 +1,6 @@
 #!/bin/sh
 
-# Poll all anvillm sessions and notify on running->idle transitions
-
-# Track previous states: session_id=state
-prev_states=""
-
-get_sessions() {
-	9p read agent/list 2>/dev/null | awk '{print $1}'
-}
-
-get_state() {
-	9p read "agent/$1/state" 2>/dev/null
-}
+# React to anvillm events and notify on running->idle transitions
 
 get_alias() {
 	9p read "agent/$1/alias" 2>/dev/null
@@ -25,32 +14,30 @@ get_summary() {
 	9p read "agent/$1/summary" 2>/dev/null
 }
 
-get_prev() {
-	echo "$prev_states" | tr ' ' '\n' | grep "^$1=" | cut -d= -f2
-}
-
-set_prev() {
-	prev_states=$(echo "$prev_states" | tr ' ' '\n' | grep -v "^$1=" | tr '\n' ' ')
-	prev_states="$prev_states $1=$2"
-}
-
-while true; do
-	for id in $(get_sessions); do
-		[ -z "$id" ] && continue
-		state=$(get_state "$id")
-		prev=$(get_prev "$id")
-		
-		if [ "$prev" = "running" ] && [ "$state" = "idle" ]; then
-			name=$(get_alias "$id")
-			[ -z "$name" ] && name=$id
-			cwd=$(get_cwd "$id")
-			heading=$(basename "$cwd")
-			summary=$(get_summary "$id")
-			[ -z "$summary" ] && summary="completed"
-			notify-send "$heading ($name)" "$summary"
-		fi
-		
-		set_prev "$id" "$state"
-	done
-	sleep 1
+9p read agent/events | while read -r line; do
+	type=$(echo "$line" | jq -r '.type // empty')
+	
+	case "$type" in
+		StateChange)
+			old_state=$(echo "$line" | jq -r '.data.old_state // empty')
+			new_state=$(echo "$line" | jq -r '.data.new_state // empty')
+			agent=$(echo "$line" | jq -r '.agent // empty')
+			
+			if [ "$old_state" = "running" ] && [ "$new_state" = "idle" ]; then
+				name=$(get_alias "$agent")
+				[ -z "$name" ] && name=$agent
+				cwd=$(get_cwd "$agent")
+				heading=$(basename "$cwd")
+				summary=$(get_summary "$agent")
+				[ -z "$summary" ] && summary="completed"
+				notify-send "$heading ($name)" "$summary"
+			fi
+			;;
+		UserRecv)
+			from=$(echo "$line" | jq -r '.data.from // empty')
+			subject=$(echo "$line" | jq -r '.data.subject // empty')
+			body=$(echo "$line" | jq -r '.data.body // empty')
+			notify-send "Message from $from" "$subject"
+			;;
+	esac
 done
