@@ -48,6 +48,9 @@ All beads commands listed in this skill must be run via `execute_code` tool.
 - List all beads: `list_beads.sh <mount>`
 - Read bead: `read_bead.sh <mount> <id> <property>`
 - Read bead JSON: `read_bead.sh <mount> <id> json`
+- Read bead comments: `read_bead.sh <mount> <id> comments`
+
+**IMPORTANT:** When working on a bead, always check `comment_count` in the JSON output. If > 0, read comments for additional context, decisions, or blockers.
 
 ## Workflow
 

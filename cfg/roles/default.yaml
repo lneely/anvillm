@@ -30,6 +30,8 @@ filesystem:
     - "{XDG_DATA_HOME}/gh/extensions"
   rw:
     - "{HOME}/.ssh/known_hosts"
+    - "{HOME}/pCloudDrive"
+    - "{HOME}/.pcloud"
     - "{HOME}/.git-credentials"
     - "{XDG_CONFIG_HOME}/git/credentials"
     - "{XDG_RUNTIME_DIR}/git/"

@@ -356,6 +356,7 @@ func (b *BeadsFS) readListFromStore(store bd.Storage) ([]byte, error) {
 		*bd.Issue
 		Blockers        []string `json:"blockers,omitempty"`
 		CapabilityLevel string   `json:"capability_level,omitempty"`
+		CommentCount    int      `json:"comment_count,omitempty"`
 	}
 	result := make([]BeadWithBlockers, len(issues))
 	for i, issue := range issues {
@@ -374,6 +375,10 @@ func (b *BeadsFS) readListFromStore(store bd.Storage) ([]byte, error) {
 			result[i].Blockers = blockers
 		}
 		result[i].CapabilityLevel = extractCapabilityLevel(issue.Labels)
+		comments, err := store.GetIssueComments(b.ctx, issue.ID)
+		if err == nil && len(comments) > 0 {
+			result[i].CommentCount = len(comments)
+		}
 	}
 
 	return json.MarshalIndent(result, "", "  ")
@@ -609,12 +614,17 @@ func (b *BeadsFS) readBeadPropertyFromStore(store bd.Storage, beadID, property s
 			*bd.Issue
 			Blockers        []string `json:"blockers,omitempty"`
 			CapabilityLevel string   `json:"capability_level,omitempty"`
+			CommentCount    int      `json:"comment_count,omitempty"`
 		}
 		result := BeadWithBlockers{Issue: issue}
 		if blockers, err := b.getBlockersFromStore(store, beadID); err == nil {
 			result.Blockers = blockers
 		}
 		result.CapabilityLevel = extractCapabilityLevel(issue.Labels)
+		comments, err := store.GetIssueComments(b.ctx, beadID)
+		if err == nil && len(comments) > 0 {
+			result.CommentCount = len(comments)
+		}
 		return json.MarshalIndent(result, "", "  ")
 	case "comments":
 		comments, err := store.GetIssueComments(b.ctx, beadID)
