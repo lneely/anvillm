@@ -17,6 +17,8 @@ filesystem:
     - "/run/systemd"
     - "/var/log/journal"
     - "/etc/systemd"
+    - "/proc"
+    - "/sys"
     - "{HOME}/.jenkins"
     - "{HOME}/.psqlrc"
     - "{HOME}/.pgpass"
@@ -28,6 +30,7 @@ filesystem:
     - "{HOME}/.mylogin.cnf"
     - "{XDG_CONFIG_HOME}/gh"
     - "{XDG_DATA_HOME}/gh/extensions"
+    - "/dev"
   rw:
     - "{HOME}/.ssh/known_hosts"
     - "{HOME}/pCloudDrive"
@@ -66,6 +69,10 @@ filesystem:
     - "{HOME}/.config/emacs"
     - "/etc"
     - "/usr/local/etc"
+    - "/dev/urandom"
+    - "/dev/random"
+    - "/dev/null"
+    - "/dev/fuse"
   rox:
     - "{HOME}/go/bin"
     - "{HOME}/env"
@@ -99,5 +106,6 @@ env:
   - BITBUCKET_ACCESS_TOKEN
   - BITBUCKET_TOKEN
   - BITBUCKET_USERNAME
+  - PCLOUD_USER
 network:
   unrestricted: true

@@ -15,6 +15,8 @@ All commands must be run via `execute_code` tool:
 - List sessions: `list_sessions.sh`
 - Create session: `create_session.sh <backend> <cwd> [role=<role>] [tasks=<task1,task2>] [model=<model>]`
 - Control session: `control_session.sh <session-id> <command>`
+- Spawn agent: `spawn_agent.sh <agent-id> [cwd-path] [initial-context-prompt]`
+- Kill agent: `kill_agent.sh [cwd-path]`
 
 ## Backends
 

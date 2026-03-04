@@ -36,6 +36,8 @@ If a step succeeded, do not announce it — the tool output is the confirmation.
 
 **REQUIRED**: Use discovered tools with execute_code tool. Tool output is always correct.
 
+**IMPORTANT**: execute_code runs in extremely restricted sandbox; do not use for coding activities.
+
 ## Proactive Skill Discovery
 
 **BEFORE responding to ANY user request**, identify relevant capabilities and load skills using execute_code:
