@@ -45,7 +45,7 @@ Load pcloudcc-testing skill. Test the affected code path with unit tests, fault 
 
 **Kill testing agent**: `bash <(9p read agent/tools/agents/kill_agent.sh) <testing-agent-id>`
 
-**Note**: Use `execute_bash`, not `execute_code`
+**Note**: `spawn_agent.sh` is an exception — use the Bash tool (`execute_bash`), NOT `execute_code`. All other commands in this section use `execute_code` as normal.
 
 ### Testing Agent Workflow
 

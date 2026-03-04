@@ -15,8 +15,8 @@ import (
 // ToolsFS provides 9P filesystem access to agent tools organized by capability level.
 // Tools are shell scripts with YAML front-matter defining their interface.
 type ToolsFS struct {
-	tools    []Tool
-	toolsDir string
+	tools     []Tool
+	toolsDirs []string
 }
 
 // Tool represents an agent tool with its MCP-compatible schema.
@@ -55,10 +55,28 @@ type ToolMeta struct {
 }
 
 func NewToolsFS(tools []Tool) *ToolsFS {
-	homeDir, _ := os.UserHomeDir()
+	var dirs []string
+
+	// Check ANVILLM_TOOLS_DIR first (colon-separated)
+	if envDirs := os.Getenv("ANVILLM_TOOLS_DIR"); envDirs != "" {
+		dirs = strings.Split(envDirs, ":")
+	} else {
+		// Default: Claude, Kiro, AnviLLM config directories
+		homeDir, _ := os.UserHomeDir()
+		var defaults []string
+		if claudeDir := os.Getenv("CLAUDE_CONFIG_DIR"); claudeDir != "" {
+			defaults = append(defaults, filepath.Join(claudeDir, "mcptools"))
+		}
+		defaults = append(defaults,
+			filepath.Join(homeDir, ".kiro/mcptools"),
+			filepath.Join(homeDir, ".config/anvillm/mcptools"),
+		)
+		dirs = defaults
+	}
+
 	return &ToolsFS{
-		tools:    tools,
-		toolsDir: filepath.Join(homeDir, ".config/anvillm/mcptools"),
+		tools:     tools,
+		toolsDirs: dirs,
 	}
 }
 
@@ -98,23 +116,31 @@ func parseFrontMatter(path string) (*ToolMeta, error) {
 	return meta, nil
 }
 
-// listAllTools scans toolsDir and returns metadata for all .sh files
+// listAllTools scans all tools directories and returns metadata for all .sh files
 func (t *ToolsFS) listAllTools() ([]*ToolMeta, error) {
-	entries, err := os.ReadDir(t.toolsDir)
-	if err != nil {
-		return nil, err
-	}
-
+	seen := make(map[string]bool)
 	var tools []*ToolMeta
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sh") {
-			continue
-		}
-		meta, err := parseFrontMatter(filepath.Join(t.toolsDir, entry.Name()))
+
+	for _, dir := range t.toolsDirs {
+		entries, err := os.ReadDir(dir)
 		if err != nil {
 			continue
 		}
-		tools = append(tools, meta)
+
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sh") {
+				continue
+			}
+			if seen[entry.Name()] {
+				continue
+			}
+			meta, err := parseFrontMatter(filepath.Join(dir, entry.Name()))
+			if err != nil {
+				continue
+			}
+			seen[entry.Name()] = true
+			tools = append(tools, meta)
+		}
 	}
 	return tools, nil
 }
@@ -266,9 +292,16 @@ func (t *ToolsFS) Read(path string) ([]byte, error) {
 
 	for _, tool := range tools {
 		if tool.Name == filename {
-			// Verify path stays within toolsDir
-			relPath, err := filepath.Rel(t.toolsDir, tool.Path)
-			if err != nil || strings.HasPrefix(relPath, "..") {
+			// Verify path stays within one of the tools directories
+			valid := false
+			for _, dir := range t.toolsDirs {
+				relPath, err := filepath.Rel(dir, tool.Path)
+				if err == nil && !strings.HasPrefix(relPath, "..") {
+					valid = true
+					break
+				}
+			}
+			if !valid {
 				return nil, fmt.Errorf("invalid tool path")
 			}
 			return os.ReadFile(tool.Path)
