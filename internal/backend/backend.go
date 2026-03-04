@@ -15,10 +15,9 @@ var (
 
 // SessionOptions contains options for creating a session
 type SessionOptions struct {
-	CWD   string
-	Role  string
-	Tasks []string
-	Model string // Optional model override (empty = backend default)
+	CWD     string
+	Sandbox string
+	Model   string // Optional model override (empty = backend default)
 }
 
 // Backend represents any chat backend (CLI tool via PTY, or direct API)
@@ -74,11 +73,8 @@ type Session interface {
 	// SetAlias sets a user-friendly alias for the session
 	SetAlias(alias string)
 	
-	// Role returns the session role (empty if not specified)
-	Role() string
-
-	// Tasks returns the session tasks (empty if not specified)
-	Tasks() []string
+	// Sandbox returns the session sandbox config (empty if not specified)
+	Sandbox() string
 
 	// Model returns the active model override (empty = backend default)
 	Model() string

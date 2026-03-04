@@ -176,8 +176,8 @@ func Save(cfg *Config) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// DefaultRole is the role used when none is specified
-const DefaultRole = "default"
+// DefaultSandbox is the sandbox config used when none is specified
+const DefaultSandbox = "default"
 
 // validateName checks if a role/task name is safe for use in file paths
 func validateName(name string) error {
@@ -344,18 +344,18 @@ func LoadBackend(name string) (LayeredConfig, error) {
 	return cfg, nil
 }
 
-// LoadRole loads role-specific config
-func LoadRole(name string) (LayeredConfig, error) {
+// LoadSandbox loads sandbox-specific config
+func LoadSandbox(name string) (LayeredConfig, error) {
 	if err := validateName(name); err != nil {
-		return LayeredConfig{}, fmt.Errorf("invalid role name: %w", err)
+		return LayeredConfig{}, fmt.Errorf("invalid sandbox name: %w", err)
 	}
 
 	home, _ := os.UserHomeDir()
-	path := filepath.Join(home, ".config", "anvillm", "roles", name+".yaml")
+	path := filepath.Join(home, ".config", "anvillm", "sandbox", name+".yaml")
 
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return LayeredConfig{}, fmt.Errorf("role %q not found (looked in %s)", name, path)
+		return LayeredConfig{}, fmt.Errorf("sandbox %q not found (looked in %s)", name, path)
 	}
 	if err != nil {
 		return LayeredConfig{}, err

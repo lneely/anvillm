@@ -105,15 +105,14 @@ const (
 	fileAlias
 	fileBackend
 	fileContext
-	fileRole
-	fileTasks
+	fileSandbox
 	fileTmux
 	fileMail
 	fileModel
 	fileCount
 )
 
-var fileNames = []string{"ctl", "state", "pid", "cwd", "alias", "backend", "context", "role", "tasks", "tmux", "mail", "model"}
+var fileNames = []string{"ctl", "state", "pid", "cwd", "alias", "backend", "context", "sandbox", "tmux", "mail", "model"}
 
 // Directory names in session
 var dirNames = []string{"inbox", "outbox", "completed"}
@@ -700,7 +699,7 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 	if path == "/ctl" {
 		args := strings.Fields(input)
 		if len(args) < 2 || args[0] != "new" {
-			return errFcall(fc, "usage: new <backend> <cwd> [role=<role>] [tasks=<task1,task2>]")
+			return errFcall(fc, "usage: new <backend> <cwd> [sandbox=<sandbox>] [model=<model>]")
 		}
 
 		backendName := args[1]
@@ -708,20 +707,15 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		if err != nil {
 			return errFcall(fc, fmt.Sprintf("failed to get working directory: %v", err))
 		}
-		var role string
-		var tasks []string
+		var sbx string
 		var model string
 
 		// Parse remaining arguments: first non-key=value is cwd, rest are options
 		cwdSet := false
 		for i := 2; i < len(args); i++ {
 			arg := args[i]
-			if r, ok := strings.CutPrefix(arg, "role="); ok {
-				role = r
-			} else if t, ok := strings.CutPrefix(arg, "tasks="); ok {
-				if t != "" {
-					tasks = strings.Split(t, ",")
-				}
+			if s, ok := strings.CutPrefix(arg, "sandbox="); ok {
+				sbx = s
 			} else if m, ok := strings.CutPrefix(arg, "model="); ok {
 				model = m
 			} else if !cwdSet {
@@ -753,10 +747,9 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		}
 
 		opts := backend.SessionOptions{
-			CWD:   cleanPath,
-			Role:  role,
-			Tasks: tasks,
-			Model: model,
+			CWD:     cleanPath,
+			Sandbox: sbx,
+			Model:   model,
 		}
 		_, err = s.mgr.New(opts, backendName)
 		if err != nil {
@@ -1550,10 +1543,8 @@ func (s *Server) getSessionFile(sess backend.Session, idx int) string {
 			return tmuxSess.GetContext()
 		}
 		return ""
-	case fileRole:
-		return sess.Role()
-	case fileTasks:
-		return strings.Join(sess.Tasks(), ",")
+	case fileSandbox:
+		return sess.Sandbox()
 	case fileTmux:
 		tmuxSession, hasSession := meta.Extra["tmux_session"]
 		tmuxWindow, hasWindow := meta.Extra["tmux_window"]

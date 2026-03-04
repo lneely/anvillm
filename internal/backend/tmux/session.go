@@ -26,9 +26,8 @@ type Session struct {
 	windowName  string // window name within tmux session (same as id)
 	cwd         string
 	alias       string
-	role        string   // session role (e.g., "developer", "reviewer")
-	tasks       []string // session tasks (e.g., ["git", "docker"])
-	winID       int      // Acme window ID (0 if not applicable)
+	sandbox     string // sandbox config (e.g., "default", "restricted")
+	winID       int    // Acme window ID (0 if not applicable)
 	pid         int
 	state       string
 	context     string // injected into first prompt only (consumed on first Send)
@@ -189,18 +188,11 @@ func (s *Session) Commands() backend.CommandHandler {
 	return s.commands
 }
 
-// Role returns the session role
-func (s *Session) Role() string {
+// Sandbox returns the session sandbox config
+func (s *Session) Sandbox() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.role
-}
-
-// Tasks returns the session tasks
-func (s *Session) Tasks() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.tasks
+	return s.sandbox
 }
 
 // Model returns the active model override (empty = backend default)
@@ -670,7 +662,7 @@ func (s *Session) Restart(ctx context.Context) error {
 	environment := s.environment
 	backendName := s.backendName
 	backendCommand := s.backendCommand
-	role := s.role
+	sbx := s.sandbox
 	hadCrash := s.hadCrash
 	model := s.model
 	modelResolver := s.modelResolver
@@ -711,14 +703,14 @@ func (s *Session) Restart(ctx context.Context) error {
 	}
 	layers = append(layers, backendLayer)
 
-	if role == "" {
-		role = sandbox.DefaultRole
+	if sbx == "" {
+		sbx = sandbox.DefaultSandbox
 	}
-	roleLayer, err := sandbox.LoadRole(role)
+	sbxLayer, err := sandbox.LoadSandbox(sbx)
 	if err != nil {
-		return fmt.Errorf("failed to load role %q: %w", role, err)
+		return fmt.Errorf("failed to load sandbox %q: %w", sbx, err)
 	}
-	layers = append(layers, roleLayer)
+	layers = append(layers, sbxLayer)
 
 	general := sandbox.GeneralConfig{BestEffort: false, LogLevel: "error"}
 	advanced := sandbox.AdvancedConfig{LDD: false, AddExec: true}

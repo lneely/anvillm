@@ -125,7 +125,7 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 	id := generateID()
 	windowName := id // Use session ID as window name
 
-	debug.Log("[session %s] creating window in tmux session %s (role=%s, tasks=%v)", id, b.tmuxSession, opts.Role, opts.Tasks)
+	debug.Log("[session %s] creating window in tmux session %s (sandbox=%s)", id, b.tmuxSession, opts.Sandbox)
 
 	// Build layered sandbox configuration
 	// Start with global.yaml as base
@@ -148,16 +148,16 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 	}
 	layers = append(layers, backendLayer)
 
-	// Add role layer if specified, otherwise use "default" role
-	role := opts.Role
-	if role == "" {
-		role = sandbox.DefaultRole
+	// Add sandbox layer if specified, otherwise use "default"
+	sbx := opts.Sandbox
+	if sbx == "" {
+		sbx = sandbox.DefaultSandbox
 	}
-	roleLayer, err := sandbox.LoadRole(role)
+	sbxLayer, err := sandbox.LoadSandbox(sbx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load role %q: %w", role, err)
+		return nil, fmt.Errorf("failed to load sandbox %q: %w", sbx, err)
 	}
-	layers = append(layers, roleLayer)
+	layers = append(layers, sbxLayer)
 
 	// Merge layers into final config
 	general := sandbox.GeneralConfig{
@@ -348,8 +348,7 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 		tmuxSession:    b.tmuxSession,
 		windowName:     windowName,
 		cwd:            opts.CWD,
-		role:           role,
-		tasks:          opts.Tasks,
+		sandbox:        sbx,
 		model:          opts.Model,
 		modelResolver:  b.cfg.ModelResolver,
 		pid:            pid,

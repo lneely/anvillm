@@ -13,7 +13,7 @@ Create and control agent sessions.
 All commands must be run via `execute_code` tool:
 
 - List sessions: `list_sessions.sh`
-- Create session: `create_session.sh <backend> <cwd> [role=<role>] [tasks=<task1,task2>] [model=<model>]`
+- Create session: `create_session.sh <backend> <cwd> [sandbox=<sandbox>] [model=<model>]`
 - Control session: `control_session.sh <session-id> <command>`
 - Spawn agent: `spawn_agent.sh <agent-id> [cwd-path] [initial-context-prompt]`
 - Kill agent: `kill_agent.sh [cwd-path]`
@@ -26,7 +26,7 @@ All commands must be run via `execute_code` tool:
 
 ## Session Lifecycle
 
-1. Create: `create_session.sh kiro-cli /path/to/project role=developer`
+1. Create: `create_session.sh kiro-cli /path/to/project sandbox=default`
 2. Monitor: `list_sessions.sh` (check state field)
 3. Control: `control_session.sh <id> stop|restart|kill|refresh`
 

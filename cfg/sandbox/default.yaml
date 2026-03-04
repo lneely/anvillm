@@ -107,5 +107,7 @@ env:
   - BITBUCKET_TOKEN
   - BITBUCKET_USERNAME
   - PCLOUD_USER
+  - EDITOR
+  - GIT_SEQUENCE_EDITOR
 network:
   unrestricted: true
