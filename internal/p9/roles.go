@@ -68,6 +68,7 @@ func parseRoleFrontMatter(rolePath string, derivedFocusAreas []string) (*RoleMet
 	scanner := bufio.NewScanner(f)
 	inFrontMatter := false
 	hasFrontMatterFocusAreas := false
+	hasDescription := false
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -95,9 +96,15 @@ func parseRoleFrontMatter(rolePath string, derivedFocusAreas []string) (*RoleMet
 			}
 		} else if desc, ok := strings.CutPrefix(line, "description:"); ok {
 			meta.Description = strings.TrimSpace(desc)
+			hasDescription = true
 		} else if name, ok := strings.CutPrefix(line, "name:"); ok {
 			meta.DisplayName = strings.TrimSpace(name)
 		}
+	}
+
+	// If missing description, exclude from list
+	if !hasDescription {
+		return nil, fmt.Errorf("missing description")
 	}
 
 	// If no frontmatter focus-areas and no derived, add "uncategorized"
@@ -210,7 +217,7 @@ func (r *RolesFS) listRolesInFocusArea(focusArea string) ([]*RoleMeta, error) {
 	return result, nil
 }
 
-// generateHelp creates aggregated index: focus-area/role-name\tdescription
+// generateHelp creates aggregated index: focus-area/role-filename.md\tDisplayName\tDescription
 func (r *RolesFS) generateHelp() (string, error) {
 	roles, err := r.listAllRoles()
 	if err != nil {
@@ -224,7 +231,7 @@ func (r *RolesFS) generateHelp() (string, error) {
 			displayName = role.Name
 		}
 		for _, fa := range role.FocusAreas {
-			line := fmt.Sprintf("%s/%s\t%s", fa, displayName, role.Description)
+			line := fmt.Sprintf("%s/%s.md\t%s\t%s", fa, role.Name, displayName, role.Description)
 			lines = append(lines, line)
 		}
 	}

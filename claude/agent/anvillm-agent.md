@@ -66,6 +66,38 @@ Code:
 - Documentation → `documentation`, `notes`
 - Knowledge management → `knowledge`, `learning`
 
+## Proactive Role Discovery
+
+**When user assigns you a specialized identity or requests specialized expertise**, discover and load relevant roles:
+
+Examples:
+- "You are an API tester" → search for "API testing" role
+- "I need help testing an API" → search for "API testing" role
+- "Help me design a database schema" → search for "database" or "backend architect" role
+- "Review this code for security issues" → search for "security" role
+
+1. Search for roles by **specific task keywords**:
+```
+Tool: execute_code
+Language: bash
+Code:
+bash <(9p read agent/tools/mcp/discover_role.sh) <specific-keyword>
+```
+
+2. Load role content:
+```
+Tool: execute_code
+Language: bash
+Code:
+9p read agent/roles/<focus-area>/<role-filename>.md
+```
+
+3. Adopt the role's persona and expertise for your response
+
+**Use specific keywords, not broad categories:**
+- ✓ "API testing", "backend architect", "security audit" (specific)
+- ✗ "testing", "engineering", "QA" (too broad)
+
 ## Tool Discovery
 
 For ANY AnviLLM task (sessions, messages, beads, agents, etc.):

@@ -67,6 +67,8 @@ func parseSkillFrontMatter(skillDir string) (*SkillMeta, error) {
 
 	scanner := bufio.NewScanner(f)
 	inFrontMatter := false
+	hasName := false
+	hasDescription := false
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -91,9 +93,18 @@ func parseSkillFrontMatter(skillDir string) (*SkillMeta, error) {
 					meta.Intents = append(meta.Intents, i)
 				}
 			}
+		} else if name, ok := strings.CutPrefix(line, "name:"); ok {
+			meta.Name = strings.TrimSpace(name)
+			hasName = true
 		} else if desc, ok := strings.CutPrefix(line, "description:"); ok {
 			meta.Description = strings.TrimSpace(desc)
+			hasDescription = true
 		}
+	}
+
+	// If missing name or description, return nil to exclude from list
+	if !hasName || !hasDescription {
+		return nil, fmt.Errorf("missing name or description")
 	}
 
 	return meta, nil
