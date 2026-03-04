@@ -13,4 +13,4 @@ fi
 
 keyword="$1"
 
-9p read agent/skills/help 2>/dev/null | grep -i "$keyword" || echo "No skills found matching: $keyword"
+9p read agent/skills/help 2>/dev/null | grep -i "$keyword" | sort -u || echo "No skills found matching: $keyword"
