@@ -438,15 +438,10 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 
 	logging.Logger().Debug("sending prompt to session", zap.String("session", s.id), zap.Int("prompt_length", len(prompt)))
 
-	// Instruction to send response via mailbox (triggers idle transition)
-	outInstruction := fmt.Sprintf("When done, send your response using the send_message tool:\n  from: %s\n  to: [sender's agent_id, or \"user\"]\n  type: [PROMPT_RESPONSE, REVIEW_RESPONSE, QUERY_RESPONSE, or APPROVAL_RESPONSE]\n  subject: [brief description of what you did]\n  body: YOUR_SUMMARY_HERE\n", s.id)
-
 	// Prepend context to first prompt only
 	if s.context != "" && !s.initialPromptSent && !strings.HasPrefix(prompt, "/") {
-		prompt = s.context + "\n\n" + prompt + "\n\n" + outInstruction
+		prompt = s.context + "\n\n" + prompt
 		s.initialPromptSent = true
-	} else if !strings.HasPrefix(prompt, "/") {
-		prompt = prompt + "\n\n" + outInstruction
 	}
 
 	// Reset stopCh for this request

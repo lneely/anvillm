@@ -8,8 +8,8 @@ description: Manage tasks using the beads 9P interface. Use when creating, updat
 
 ## Project Mount Discovery
 
-1. Find your project's beads mount: `MOUNT=$(list_mounts.sh | grep "$(pwd)" | awk '{print $1}')`
-2. If no mount exists, create one and use it: `mount_beads.sh "$(pwd)"`. The mount will be named for the base directory of $(pwd).
+1. Find your project's beads mount: `MOUNT=$(bash <(9p read agent/tools/beads/list_mounts.sh) | grep "$(pwd)" | awk '{print $1}')`
+2. If no mount exists, create one and use it: `bash <(9p read agent/tools/beads/mount_beads.sh) "$(pwd)"`. The mount will be named for the base directory of $(pwd).
 
 ## Tools
 
@@ -18,20 +18,20 @@ description: Manage tasks using the beads 9P interface. Use when creating, updat
 **IMPORTANT:** All tools require `<mount>` as first argument. Exceptions: `list_mounts.sh`, `mount_beads.sh`, `umount_beads.sh`.
 
 - List mounts: `bash <(9p read tools/beads/list_mounts.sh)`
-- List ready beads: `bash <(9p read tools/beads/list_ready_beads.sh <mount>)`
-- List all beads: `bash <(9p read tools/beads/list_beads.sh <mount>)`
-- Read bead: `bash <(9p read tools/beads/read_bead.sh <mount> <id> <property>)`
-- Read bead JSON: `bash <(9p read tools/beads/read_bead.sh <mount> <id> json)`
-- Read bead comments: `bash <(9p read tools/beads/read_bead.sh <mount> <id> comments)`
-- Claim bead: `bash <(9p read tools/beads/claim_bead.sh <mount> bd-abc [$AGENT_ID])`
-- Complete bead: `bash <(9p read tools/beads/complete_bead.sh <mount> bd-abc)`
-- Fail bead: `bash <(9p read tools/beads/fail_bead.sh <mount> bd-abc "reason")`
-- Create bead: `bash <(9p read tools/beads/create_bead.sh <mount> "title" "desc" [parent])`
-- Update bead: `bash <(9p read tools/beads/update_bead.sh <mount> bd-abc <field> <value>)`
-- Add dependency: `bash <(9p read tools/beads/add_dependency.sh <mount> <child> <parent>)`
-- Comment on bead: `bash <(9p read tools/beads/comment_bead.sh <mount> bd-abc "text")`
-- Label bead: `bash <(9p read tools/beads/label_bead.sh <mount> bd-abc <label>)`
-- Delete bead: `bash <(9p read tools/beads/delete_bead.sh <mount> bd-abc)`
+- List ready beads: `bash <(9p read tools/beads/list_ready_beads.sh) <mount>`
+- List all beads: `bash <(9p read tools/beads/list_beads.sh) <mount>`
+- Read bead: `bash <(9p read tools/beads/read_bead.sh) <mount> <id> <property>`
+- Read bead JSON: `bash <(9p read tools/beads/read_bead.sh) <mount> <id> json`
+- Read bead comments: `bash <(9p read tools/beads/read_bead.sh) <mount> <id> comments`
+- Claim bead: `bash <(9p read tools/beads/claim_bead.sh) <mount> bd-abc [$AGENT_ID]`
+- Complete bead: `bash <(9p read tools/beads/complete_bead.sh) <mount> bd-abc`
+- Fail bead: `bash <(9p read tools/beads/fail_bead.sh) <mount> bd-abc "reason"`
+- Create bead: `bash <(9p read tools/beads/create_bead.sh) <mount> "title" "desc" [parent]`
+- Update bead: `bash <(9p read tools/beads/update_bead.sh) <mount> bd-abc <field> <value>`
+- Add dependency: `bash <(9p read tools/beads/add_dependency.sh) <mount> <child> <parent>`
+- Comment on bead: `bash <(9p read tools/beads/comment_bead.sh) <mount> bd-abc "text"`
+- Label bead: `bash <(9p read tools/beads/label_bead.sh) <mount> bd-abc <label>`
+- Delete bead: `bash <(9p read tools/beads/delete_bead.sh) <mount> bd-abc`
 
 **Note:** Delete does not cascade. To delete a parent and all children, delete children first, then parent.
 

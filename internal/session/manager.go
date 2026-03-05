@@ -8,7 +8,6 @@ import (
 	"anvillm/internal/logging"
 	"anvillm/internal/mailbox"
 	"context"
-	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -272,7 +271,7 @@ func (m *Manager) processMailboxes() {
 		
 		// Prompt agent to check inbox
 		ctx := context.Background()
-		_, err := sess.Send(ctx, fmt.Sprintf("You have a new message. Read it using read_inbox (agent_id=%s) and respond appropriately.", sess.ID()))
+		_, err := sess.Send(ctx, "You have new messages, check your inbox and respond appropriately.")
 		if err != nil {
 			logging.Logger().Error("failed to prompt agent", zap.String("session", sess.ID()), zap.Error(err))
 		}
