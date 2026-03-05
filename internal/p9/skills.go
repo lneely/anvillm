@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 
 	"9fans.net/go/plan9"
@@ -196,18 +197,17 @@ func (s *SkillsFS) generateHelp() (string, error) {
 		return "", err
 	}
 
+	seen := make(map[string]bool)
 	var lines []string
 	for _, skill := range skills {
-		for _, intent := range skill.Intents {
-			line := fmt.Sprintf("%s/%s\t%s", intent, skill.Name, skill.Description)
-			lines = append(lines, line)
+		key := skill.Name + "\t" + skill.Description
+		if seen[key] {
+			continue
 		}
-		// Skills without intents go under "uncategorized"
-		if len(skill.Intents) == 0 {
-			line := fmt.Sprintf("uncategorized/%s\t%s", skill.Name, skill.Description)
-			lines = append(lines, line)
-		}
+		seen[key] = true
+		lines = append(lines, key)
 	}
+	sort.Strings(lines)
 	return strings.Join(lines, "\n") + "\n", nil
 }
 

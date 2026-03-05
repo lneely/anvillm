@@ -189,16 +189,15 @@ func (t *ToolsFS) generateHelp() (string, error) {
 		return "", err
 	}
 
+	seen := make(map[string]bool)
 	var lines []string
 	for _, tool := range tools {
-		caps := tool.Capabilities
-		if len(caps) == 0 {
-			caps = []string{"uncategorized"}
+		key := tool.Name + "\t" + tool.Description
+		if seen[key] {
+			continue
 		}
-		for _, cap := range caps {
-			line := fmt.Sprintf("%s/%s\t%s", cap, tool.Name, tool.Description)
-			lines = append(lines, line)
-		}
+		seen[key] = true
+		lines = append(lines, key)
 	}
 	sort.Strings(lines)
 	return strings.Join(lines, "\n") + "\n", nil

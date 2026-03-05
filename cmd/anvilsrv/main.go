@@ -6,6 +6,7 @@ import (
 	"anvillm/internal/backend/tmux"
 	"anvillm/internal/backends"
 	"anvillm/internal/logging"
+	"anvillm/internal/maildir"
 	"anvillm/internal/p9"
 	"anvillm/internal/session"
 	"anvillm/internal/supervisor"
@@ -221,6 +222,11 @@ func start(daemonize bool) {
 
 	// Wire up event bus to session manager
 	mgr.SetEventBus(srv.Events())
+
+	// Start maildir writer for message persistence
+	mailDir := filepath.Join(os.Getenv("HOME"), ".local", "share", "anvillm", "mail")
+	mdWriter := maildir.New(mailDir, srv.Events())
+	defer mdWriter.Close()
 
 	// Start supervisor
 	ctx := context.Background()

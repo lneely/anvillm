@@ -30,8 +30,9 @@ type Session struct {
 	winID       int    // Acme window ID (0 if not applicable)
 	pid         int
 	state       string
-	context     string // injected into first prompt only (consumed on first Send)
-	createdAt   time.Time
+	context            string // injected into first prompt only
+	initialPromptSent  bool   // true after context was sent; reset on clear/compact/stop/restart
+	createdAt          time.Time
 
 	fifoPath string
 	fifo     *os.File
@@ -440,10 +441,10 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	// Instruction to send response via mailbox (triggers idle transition)
 	outInstruction := fmt.Sprintf("When done, send your response using the send_message tool:\n  from: %s\n  to: [sender's agent_id, or \"user\"]\n  type: [PROMPT_RESPONSE, REVIEW_RESPONSE, QUERY_RESPONSE, or APPROVAL_RESPONSE]\n  subject: [brief description of what you did]\n  body: YOUR_SUMMARY_HERE\n", s.id)
 
-	// Prepend context to first prompt only, then clear it (one-shot injection)
-	if s.context != "" && !strings.HasPrefix(prompt, "/") {
+	// Prepend context to first prompt only
+	if s.context != "" && !s.initialPromptSent && !strings.HasPrefix(prompt, "/") {
 		prompt = s.context + "\n\n" + prompt + "\n\n" + outInstruction
-		s.context = ""
+		s.initialPromptSent = true
 	} else if !strings.HasPrefix(prompt, "/") {
 		prompt = prompt + "\n\n" + outInstruction
 	}
@@ -504,6 +505,7 @@ func (s *Session) Clear() error {
 	s.mu.Lock()
 	target := s.target()
 	handler := s.clearHandler
+	s.initialPromptSent = false
 	s.mu.Unlock()
 
 	if handler != nil {
@@ -531,6 +533,7 @@ func (s *Session) Compact() error {
 	s.mu.Lock()
 	target := s.target()
 	handler := s.compactHandler
+	s.initialPromptSent = false
 	s.mu.Unlock()
 
 	if handler != nil {
@@ -651,6 +654,7 @@ func (s *Session) Stop(ctx context.Context) error {
 	}
 	s.transitioning = true
 	s.intentionallyStopped = true // Mark as intentional stop
+	s.initialPromptSent = false   // Reset so context is re-sent on next prompt
 
 	// stopInternal returns with lock held, so defer just clears flag and unlocks
 	defer func() {
@@ -685,6 +689,7 @@ func (s *Session) Restart(ctx context.Context) error {
 	}
 	s.transitioning = true
 	s.intentionallyStopped = false // Clear intentional stop flag on restart
+	s.initialPromptSent = false    // Reset so context is re-sent on next prompt
 	s.mu.Unlock()
 
 	// Clear transitioning flag on exit (any error or success path)

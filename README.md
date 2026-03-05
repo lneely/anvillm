@@ -6,8 +6,8 @@ LLM orchestrator using 9P — scriptable, multi-backend, crash-resilient
 
 ![Architecture](docs/diagrams/architecture.svg?v=2)
 
-**Core:** anvilsrv (9P daemon), anvilmcp (MCP server), anvilwebgw (API proxy)  
-**Clients:** Assist (Acme), anvillm.el (Emacs), anvillm (TUI), anvilweb (web)  
+**Core:** anvilsrv (9P daemon), anvilmcp (MCP server), anvilwebgw (API proxy)
+**Clients:** Assist (Acme), anvillm.el (Emacs), anvillm (TUI), anvilweb (web)
 **Benefits:** Shared sessions, crash recovery, scriptable via 9P, cross-backend agent communication
 
 ## Why 9P?
@@ -148,7 +148,7 @@ filesystem: {rw: ["{CWD}", "{HOME}/.npm"]}
 
 **Templates:** `{CWD}`, `{HOME}`, `{TMPDIR}`, `{XDG_*}` (see Configuration)
 
-**Kernel requirements:** 5.13+ (Landlock v1), 6.7+ (v4), 6.10+ (v5 network)  
+**Kernel requirements:** 5.13+ (Landlock v1), 6.7+ (v4), 6.10+ (v5 network)
 Set `best_effort: true` for unsandboxed fallback (⚠️ if no Landlock support)
 
 **Session lifecycle:**
