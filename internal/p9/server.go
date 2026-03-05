@@ -853,7 +853,13 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			}
 		case "compact":
 			if tmuxSess, ok := sess.(*tmux.Session); ok {
-				if err := tmuxSess.SendRaw("/compact"); err != nil {
+				if err := tmuxSess.Compact(); err != nil {
+					return errFcall(fc, err.Error())
+				}
+			}
+		case "resume":
+			if tmuxSess, ok := sess.(*tmux.Session); ok {
+				if err := tmuxSess.Resume(); err != nil {
 					return errFcall(fc, err.Error())
 				}
 			}

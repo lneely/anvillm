@@ -49,6 +49,16 @@ type ModelResolver func(cmd []string, model string) []string
 // Returns nil on success.
 type ClearHandler func(target string) error
 
+// ResumeHandler handles the resume command for a specific backend.
+// It receives the tmux target and should send the appropriate keys.
+// Returns nil on success.
+type ResumeHandler func(target string) error
+
+// CompactHandler handles the /compact command for a specific backend.
+// It receives the tmux target and should send the appropriate keys.
+// Returns nil on success.
+type CompactHandler func(target string) error
+
 // Config holds tmux backend configuration
 type Config struct {
 	Name           string
@@ -62,6 +72,8 @@ type Config struct {
 	NsSuffix       string         // Optional: namespace suffix (e.g., "0" for :0)
 	ModelResolver  ModelResolver  // Optional: modifies command to include model selection
 	ClearHandler   ClearHandler   // Optional: backend-specific /clear handling
+	ResumeHandler  ResumeHandler  // Optional: backend-specific resume handling
+	CompactHandler CompactHandler // Optional: backend-specific /compact handling
 }
 
 // Backend implements backend.Backend for tmux-based CLI tools
@@ -358,6 +370,8 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 		model:          opts.Model,
 		modelResolver:  b.cfg.ModelResolver,
 		clearHandler:   b.cfg.ClearHandler,
+		resumeHandler:  b.cfg.ResumeHandler,
+		compactHandler: b.cfg.CompactHandler,
 		pid:            pid,
 		state:          "starting",
 		createdAt:      time.Now(),

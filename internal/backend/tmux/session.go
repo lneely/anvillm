@@ -42,6 +42,8 @@ type Session struct {
 	model          string        // Active model override (empty = backend default)
 	modelResolver  ModelResolver // Optional: modifies command to include model selection
 	clearHandler   ClearHandler  // Optional: backend-specific /clear handling
+	resumeHandler  ResumeHandler // Optional: backend-specific resume handling
+	compactHandler CompactHandler // Optional: backend-specific /compact handling
 
 	commands       backend.CommandHandler
 	startupHandler StartupHandler
@@ -509,6 +511,32 @@ func (s *Session) Clear() error {
 	}
 	// Default: just send /clear + Enter
 	return sendKeys(target, "/clear", "C-m")
+}
+
+// Resume resumes the most recent conversation using backend-specific handling.
+func (s *Session) Resume() error {
+	s.mu.Lock()
+	target := s.target()
+	handler := s.resumeHandler
+	s.mu.Unlock()
+
+	if handler != nil {
+		return handler(target)
+	}
+	return fmt.Errorf("resume not implemented for this backend")
+}
+
+// Compact sends the /compact command using backend-specific handling.
+func (s *Session) Compact() error {
+	s.mu.Lock()
+	target := s.target()
+	handler := s.compactHandler
+	s.mu.Unlock()
+
+	if handler != nil {
+		return handler(target)
+	}
+	return fmt.Errorf("compact not implemented for this backend")
 }
 
 // stopInternal performs the actual stop operation.

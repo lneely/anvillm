@@ -820,7 +820,7 @@ func openPromptWindow(sess *SessionInfo) (*acme.Win, error) {
 		return nil, err
 	}
 	w.Name(name)
-	w.Write("tag", []byte("Send Compact Clear "))
+	w.Write("tag", []byte("Send Compact Clear Resume "))
 	w.Ctl("clean")
 
 	// Track window ID client-side
@@ -865,6 +865,10 @@ func handlePromptWindow(w *acme.Win, sess *SessionInfo) {
 			case "Clear":
 				if err := controlSession(sess.ID, "clear"); err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to clear: %v\n", err)
+				}
+			case "Resume":
+				if err := controlSession(sess.ID, "resume"); err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to resume: %v\n", err)
 				}
 			default:
 				w.WriteEvent(e)

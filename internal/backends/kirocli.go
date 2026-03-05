@@ -34,6 +34,8 @@ func NewKiroCLI(nsSuffix string) backend.Backend {
 		StartupTime:    30 * time.Second,
 		StateInspector: &kiroStateInspector{},
 		ClearHandler:   kiroClearHandler,
+		ResumeHandler:  kiroResumeHandler,
+		CompactHandler: kiroCompactHandler,
 		NsSuffix:       nsSuffix,
 	})
 }
@@ -45,6 +47,20 @@ func kiroClearHandler(target string) error {
 	}
 	time.Sleep(250 * time.Millisecond)
 	return tmux.SendKeysTo(target, "y", "C-m")
+}
+
+// kiroResumeHandler sends /chat resume and confirms selection for kiro-cli
+func kiroResumeHandler(target string) error {
+	if err := tmux.SendKeysTo(target, "/chat resume", "C-m"); err != nil {
+		return err
+	}
+	time.Sleep(250 * time.Millisecond)
+	return tmux.SendKeysTo(target, "C-m")
+}
+
+// kiroCompactHandler sends /compact for kiro-cli
+func kiroCompactHandler(target string) error {
+	return tmux.SendKeysTo(target, "/compact", "C-m")
 }
 
 // kiroStateInspector implements StateInspector for kiro-cli

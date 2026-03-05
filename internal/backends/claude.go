@@ -46,8 +46,20 @@ func newClaudeWithCommand(command []string, nsSuffix string) backend.Backend {
 		Commands:       &claudeCommands{},
 		StartupHandler: &claudeStartupHandler{},
 		StateInspector: &claudeStateInspector{},
+		ClearHandler:   claudeClearHandler,
+		CompactHandler: claudeCompactHandler,
 		NsSuffix:       nsSuffix,
 	})
+}
+
+// claudeClearHandler sends /clear for claude
+func claudeClearHandler(target string) error {
+	return tmux.SendKeysTo(target, "/clear", "C-m")
+}
+
+// claudeCompactHandler sends /compact for claude
+func claudeCompactHandler(target string) error {
+	return tmux.SendKeysTo(target, "/compact", "C-m")
 }
 
 // claudeStateInspector implements StateInspector for claude CLI
