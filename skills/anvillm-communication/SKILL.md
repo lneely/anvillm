@@ -1,29 +1,42 @@
 ---
 name: anvillm-communication
-intent: messaging, agents
+intent: messaging, agents, inbox
 description: Agent discovery and messaging via the mailbox system.
 when_to_load: Load when you need to send messages to other agents, respond to the user, discover peer agents, check your inbox, or coordinate with other agents in a workflow.
 ---
 
-# Anvillm Communication
+# Anvillm Communication Skill
 
-## Commands
+## Tools
 
-All commands listed in this skill must be run via `execute_code` tool:
+**IMPORTANT:** All anvillm-communication tools must be run via `execute_code` tool.
 
-- Discover agents: `list_sessions.sh`
-- Send message: `send_message.sh FROM TO TYPE SUBJECT BODY`
-- Check inbox: `read_inbox.sh AGENT_ID`
+- Discover agents: `bash <(9p read agent/tools/agents/list_sessions.sh | grep "$(pwd)")`
+- Send message: `bash <(9p read agent/tools/messaging/send_message.sh FROM TO TYPE SUBJECT BODY)`
+- Check inbox: `bash <(9p read agent/tools/messaging/read_inbox.sh AGENT_ID)`
 
-## Use Cases
+## Rules
 
-| Goal | TO | TYPE | BODY format |
-|------|----|------|-------------|
-| Reply to user | user | PROMPT_RESPONSE | `Status: completed\|failed\|blocked\nBeads: bd-xxx\nErrors: none` |
-| Ask user question | user | QUERY_REQUEST | one-line question |
-| Request user approval | user | APPROVAL_REQUEST | `Action: ...\nRisk: ...` |
-| Request user review | user | REVIEW_REQUEST | `Bead: bd-xxx\nDiff: ...\nQuestion: ...` |
-| Send work to agent | agent_id | PROMPT_REQUEST | task description |
-| Answer agent question | agent_id | QUERY_RESPONSE | one-line answer |
+0. Read the $AGENT_ID environment variable to get your agent ID
 
-Response types mirror request types: PROMPT→PROMPT, QUERY→QUERY, REVIEW→REVIEW, APPROVAL→APPROVAL.
+### Discovering Agents
+
+1. You communicate only with "user", or other agents working in the same $(pwd) as yourself
+
+### Sending Messages
+
+1. FROM is your agent ID
+2. TO is the agent ID of the receiving bot, or "user"
+3. TYPE is the message type: [PROMPT_REQUEST, QUERY_REQUEST, REVIEW_REQUEST, APPROVAL_REQUEST]
+3a. Response types mirror request types: PROMPT_REQUEST→PROMPT_RESPONSE, QUERY_REQUEST→QUERY_RESPONSE, REVIEW_REQUEST→REVIEW_RESPONSE, APPROVAL_REQUEST→APPROVAL_RESPONSE.
+4. SUBJECT is a brief description of what you did
+4a. Response subjects are the subject of the original message prefixed by "Re: "
+5. BODY is a detailed summary of what you did, including actions performed, files changed, diffs, etc.
+
+### Receiving Messages
+
+1. Check your inbox
+2. Follow the instructions in the message
+3. Respond to the sender appropriately (see Sending Messages)
+
+

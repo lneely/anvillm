@@ -1,6 +1,6 @@
 ---
 name: denote
-intent: notes, documentation
+intent: notes, documentation, knowledge
 description: Denote file format conventions for timestamped notes. Use when creating, naming, or linking structured note files in the ~/doc/ hierarchy.
 ---
 
@@ -17,7 +17,7 @@ YYYYMMDDThhmmss--title-in-lowercase-alphanumeric__tag1_tag2_tagN.ext
 Components:
 - **Timestamp**: `date +%Y%m%dT%H%M%S` — ISO 8601 compact, seconds precision
 - **Title**: lowercase, alphanumeric characters and hyphens only (no spaces, no underscores)
-- **Tags**: lowercase alphanumeric, underscore-separated, after double-underscore, no hyphens in individual tags
+- **Tags**: lowercase alphanumeric, underscore-separated, after double-underscore. **CRITICAL**: Never use hyphens, underscores, or special characters in tag frontmatter!
 
 Examples:
 - `20260128T133522--example-flow__ref.md`
