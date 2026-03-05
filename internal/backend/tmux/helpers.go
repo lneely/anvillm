@@ -63,6 +63,11 @@ func sendKeys(target string, keys ...string) error {
 	return err
 }
 
+// SendKeysTo is an exported wrapper for sendKeys, for use by backend-specific handlers.
+func SendKeysTo(target string, keys ...string) error {
+	return sendKeys(target, keys...)
+}
+
 // sendLiteral sends literal text to a tmux target (doesn't interpret special chars)
 func sendLiteral(target, text string) error {
 	_, err := tmuxCmd("send-keys", "-t", target, "-l", text)

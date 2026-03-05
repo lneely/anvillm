@@ -820,7 +820,7 @@ func openPromptWindow(sess *SessionInfo) (*acme.Win, error) {
 		return nil, err
 	}
 	w.Name(name)
-	w.Write("tag", []byte("Send "))
+	w.Write("tag", []byte("Send Compact Clear "))
 	w.Ctl("clean")
 
 	// Track window ID client-side
@@ -842,19 +842,32 @@ func handlePromptWindow(w *acme.Win, sess *SessionInfo) {
 
 	for e := range w.EventChan() {
 		cmd := string(e.Text)
-		if (e.C2 == 'x' || e.C2 == 'X') && cmd == "Send" {
-			body, err := w.ReadAll("body")
-			if err != nil {
-				continue
-			}
-			prompt := strings.TrimSpace(string(body))
-			if prompt != "" {
-				if err := sendPrompt(sess.ID, prompt); err != nil {
-					fmt.Fprintf(os.Stderr, "Failed to send: %v\n", err)
+		if e.C2 == 'x' || e.C2 == 'X' {
+			switch cmd {
+			case "Send":
+				body, err := w.ReadAll("body")
+				if err != nil {
 					continue
 				}
-				w.Ctl("delete")
-				return
+				prompt := strings.TrimSpace(string(body))
+				if prompt != "" {
+					if err := sendPrompt(sess.ID, prompt); err != nil {
+						fmt.Fprintf(os.Stderr, "Failed to send: %v\n", err)
+						continue
+					}
+					w.Ctl("delete")
+					return
+				}
+			case "Compact":
+				if err := controlSession(sess.ID, "compact"); err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to compact: %v\n", err)
+				}
+			case "Clear":
+				if err := controlSession(sess.ID, "clear"); err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to clear: %v\n", err)
+				}
+			default:
+				w.WriteEvent(e)
 			}
 		} else {
 			w.WriteEvent(e)

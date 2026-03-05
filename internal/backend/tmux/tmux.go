@@ -44,6 +44,11 @@ type StateInspector interface {
 // For positional CLIs: replace the relevant positional argument
 type ModelResolver func(cmd []string, model string) []string
 
+// ClearHandler handles the /clear command for a specific backend.
+// It receives the tmux target and should send the appropriate keys.
+// Returns nil on success.
+type ClearHandler func(target string) error
+
 // Config holds tmux backend configuration
 type Config struct {
 	Name           string
@@ -56,6 +61,7 @@ type Config struct {
 	StateInspector StateInspector // Optional: for process tree inspection
 	NsSuffix       string         // Optional: namespace suffix (e.g., "0" for :0)
 	ModelResolver  ModelResolver  // Optional: modifies command to include model selection
+	ClearHandler   ClearHandler   // Optional: backend-specific /clear handling
 }
 
 // Backend implements backend.Backend for tmux-based CLI tools
@@ -351,6 +357,7 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 		sandbox:        sbx,
 		model:          opts.Model,
 		modelResolver:  b.cfg.ModelResolver,
+		clearHandler:   b.cfg.ClearHandler,
 		pid:            pid,
 		state:          "starting",
 		createdAt:      time.Now(),

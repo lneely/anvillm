@@ -845,6 +845,18 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			if err := sess.Refresh(ctx); err != nil {
 				return errFcall(fc, err.Error())
 			}
+		case "clear":
+			if tmuxSess, ok := sess.(*tmux.Session); ok {
+				if err := tmuxSess.Clear(); err != nil {
+					return errFcall(fc, err.Error())
+				}
+			}
+		case "compact":
+			if tmuxSess, ok := sess.(*tmux.Session); ok {
+				if err := tmuxSess.SendRaw("/compact"); err != nil {
+					return errFcall(fc, err.Error())
+				}
+			}
 		case "complete":
 			if len(args) < 2 {
 				return errFcall(fc, "usage: complete <msg-id>")

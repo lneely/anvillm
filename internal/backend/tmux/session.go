@@ -41,6 +41,7 @@ type Session struct {
 
 	model          string        // Active model override (empty = backend default)
 	modelResolver  ModelResolver // Optional: modifies command to include model selection
+	clearHandler   ClearHandler  // Optional: backend-specific /clear handling
 
 	commands       backend.CommandHandler
 	startupHandler StartupHandler
@@ -485,6 +486,29 @@ func (s *Session) SendStream(ctx context.Context, prompt string) (io.ReadCloser,
 		return nil, err
 	}
 	return io.NopCloser(strings.NewReader(response)), nil
+}
+
+// SendRaw sends literal text followed by Enter to the tmux session.
+// Used for slash commands like /clear and /compact.
+func (s *Session) SendRaw(text string) error {
+	s.mu.Lock()
+	target := s.target()
+	s.mu.Unlock()
+	return sendKeys(target, text, "C-m")
+}
+
+// Clear sends the /clear command using backend-specific handling if available.
+func (s *Session) Clear() error {
+	s.mu.Lock()
+	target := s.target()
+	handler := s.clearHandler
+	s.mu.Unlock()
+
+	if handler != nil {
+		return handler(target)
+	}
+	// Default: just send /clear + Enter
+	return sendKeys(target, "/clear", "C-m")
 }
 
 // stopInternal performs the actual stop operation.

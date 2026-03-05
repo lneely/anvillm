@@ -33,8 +33,18 @@ func NewKiroCLI(nsSuffix string) backend.Backend {
 		},
 		StartupTime:    30 * time.Second,
 		StateInspector: &kiroStateInspector{},
+		ClearHandler:   kiroClearHandler,
 		NsSuffix:       nsSuffix,
 	})
+}
+
+// kiroClearHandler sends /clear and confirms the "y" prompt for kiro-cli
+func kiroClearHandler(target string) error {
+	if err := tmux.SendKeysTo(target, "/clear", "C-m"); err != nil {
+		return err
+	}
+	time.Sleep(250 * time.Millisecond)
+	return tmux.SendKeysTo(target, "y", "C-m")
 }
 
 // kiroStateInspector implements StateInspector for kiro-cli
