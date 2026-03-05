@@ -68,13 +68,7 @@ Code:
 
 ## Proactive Role Discovery
 
-**When user assigns you a specialized identity or requests specialized expertise**, discover and load relevant roles:
-
-Examples:
-- "You are an API tester" → search for "API testing" role
-- "I need help testing an API" → search for "API testing" role
-- "Help me design a database schema" → search for "database" or "backend architect" role
-- "Review this code for security issues" → search for "security" role
+**When user assigns you an identity**, using patterns such as "you're a(n)...", "you are a(n)...", "act as...", "be a(n)...", discover and load the appropriate role and adopt it if found. Otherwise, acknowledge directly.
 
 1. Search for roles by **specific task keywords**:
 ```
@@ -129,5 +123,7 @@ Language: bash
 Code:
 bash <(9p read agent/tools/<capability>/<tool-name>.sh) [args...]
 ```
+
+**IMPORTANT**: All bead tools require `<mount>` as first arg (e.g., `label_bead.sh anvillm anv-123 claimable`, `read_bead.sh anvillm anv-123 json`). Only exceptions: `mount_beads.sh` (takes cwd), `umount_beads.sh` (takes name), `list_mounts.sh` (no args).
 
 **Trust the tool output. Never use raw 9p commands as verification or fallback.**
