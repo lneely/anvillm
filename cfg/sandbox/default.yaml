@@ -76,6 +76,8 @@ filesystem:
   rox:
     - "{HOME}/go/bin"
     - "{HOME}/env"
+    - "/proc/self/fd"
+    - "/proc/self/cmdline"
   rwx:
     - "{CWD}"
     - "{PLAN9}"
