@@ -422,7 +422,37 @@ func isBeadID(text string) bool {
 	return matched
 }
 
+func getMountForSession(sessionID string) string {
+	sess, err := getSession(sessionID)
+	if err != nil || sess.Cwd == "" {
+		return ""
+	}
+	data, err := readFile("beads/mtab")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		parts := strings.Split(line, "\t")
+		if len(parts) == 2 {
+			mountName, mountCwd := parts[0], parts[1]
+			if sess.Cwd == mountCwd || strings.HasPrefix(sess.Cwd, mountCwd+"/") {
+				return mountName
+			}
+		}
+	}
+	return ""
+}
+
 func sendPrompt(id, prompt string) error {
+	mount := ""
+	trimmedPrompt := strings.TrimSpace(prompt)
+	if isBeadID(trimmedPrompt) {
+		mount = getMountForSession(id)
+	}
+	return sendPromptWithMount(id, prompt, mount)
+}
+
+func sendPromptWithMount(id, prompt, mount string) error {
 	if !isConnected() {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
@@ -430,7 +460,11 @@ func sendPrompt(id, prompt string) error {
 	// Check if prompt is a bead ID and construct execution prompt
 	trimmedPrompt := strings.TrimSpace(prompt)
 	if isBeadID(trimmedPrompt) {
-		prompt = fmt.Sprintf("Load the beads skill, and work on bead %s.", trimmedPrompt)
+		if mount != "" {
+			prompt = fmt.Sprintf("Load the beads skill, and work on bead %s, mount=%s.", trimmedPrompt, mount)
+		} else {
+			prompt = fmt.Sprintf("Load the beads skill, and work on bead %s.", trimmedPrompt)
+		}
 	}
 
 	// Create message JSON

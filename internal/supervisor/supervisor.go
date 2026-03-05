@@ -89,13 +89,14 @@ func (s *Supervisor) assignWork() {
 			}
 			
 			beadID := bead["id"].(string)
+			mountName := filepath.Base(taskCwd)
 			
 			// Skip if already assigned
 			if _, assigned := s.assigned[beadID]; assigned {
 				continue
 			}
 			
-			msg := mailbox.NewMessage("supervisor", botID, mailbox.MessageTypePromptRequest, "work", "Work on bead "+beadID+".")
+			msg := mailbox.NewMessage("supervisor", botID, mailbox.MessageTypePromptRequest, "work", "Work on bead "+beadID+", mount="+mountName+".")
 			s.mailbox.DeliverToInbox(botID, msg)
 			s.lastAssigned[botID] = time.Now().Unix()
 			s.assigned[beadID] = botID

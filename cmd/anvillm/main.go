@@ -1749,7 +1749,7 @@ func showAssignBeadConfirm(bead map[string]interface{}) {
 	form.SetButtonTextColor(tcell.ColorBlack)
 	form.AddButton("Yes", func() {
 		// Send prompt to work on the bead
-		prompt := fmt.Sprintf("Work on bead %s", beadID)
+		prompt := fmt.Sprintf("Work on bead %s, mount=%s", beadID, currentMount)
 		if err := sendPrompt(sess.ID, prompt); err != nil {
 			updateStatus(fmt.Sprintf("[red]Error sending prompt: %v", err))
 		} else {
