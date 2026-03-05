@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads, tasks
+# capabilities: beads
 # description: Delete a bead
 # Usage: delete_bead.sh <mount> <bead-id>
 set -euo pipefail

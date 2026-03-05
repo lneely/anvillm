@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads, tasks
+# capabilities: beads
 # description: Sync a mounted beads project
 # Usage: sync_beads.sh <mount>
 set -euo pipefail

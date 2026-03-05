@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: mcp
+# capabilities: discovery
 # description: Discover available roles by focus area and keyword
 set -euo pipefail
 

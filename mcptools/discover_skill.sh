@@ -1,9 +1,9 @@
 #!/bin/bash
-# capabilities: mcp
-# description: Discover available skills by intent and keyword
+# capabilities: discovery
+# description: Discover available skills by keyword
 set -euo pipefail
 
-if [ $# -lt 1 ]; then
+if [ $# -ne 1 ]; then
   echo "Usage: discover_skill <keyword>" >&2
   exit 1
 fi

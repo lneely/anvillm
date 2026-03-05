@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads, tasks
+# capabilities: beads
 # description: List ready/claimable beads (JSON array)
 # Usage: list_ready_beads.sh <mount>
 set -euo pipefail

@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads, tasks
+# capabilities: beads
 # description: Batch create beads from JSON array
 # Usage: batch_create_beads.sh <mount> <json-array>
 set -euo pipefail

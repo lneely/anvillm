@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads, tasks
+# capabilities: beads
 # description: Unclaim a bead (reset to open)
 # Usage: unclaim_bead.sh <mount> <bead-id>
 set -euo pipefail

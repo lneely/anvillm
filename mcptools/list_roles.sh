@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: roles
+# capabilities: discovery
 # description: List all available roles (JSON array)
 set -euo pipefail
 

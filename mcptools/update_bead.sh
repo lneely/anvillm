@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads, tasks
+# capabilities: beads
 # description: Update a bead field
 # Usage: update_bead.sh <mount> <bead-id> <field> <value>
 set -euo pipefail

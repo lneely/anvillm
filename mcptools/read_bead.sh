@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads, tasks
+# capabilities: beads
 # description: Read a bead property
 # Usage: read_bead.sh <mount> <bead-id> <property>
 set -euo pipefail

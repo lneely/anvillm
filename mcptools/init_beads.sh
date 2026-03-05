@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads, tasks
+# capabilities: beads
 # description: Initialize beads project with issue prefix
 # Usage: init_beads.sh <mount> [prefix]
 set -euo pipefail

@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: skills
+# capabilities: discovery
 # description: List all available skills (JSON array)
 set -euo pipefail
 

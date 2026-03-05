@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# capabilities: web, browser, screenshot
+# capabilities: web
 # description: Capture browser window showing a specific URL: capture_browser.sh [output_path] [url_pattern]
 set -e
 

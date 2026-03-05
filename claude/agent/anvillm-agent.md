@@ -28,28 +28,41 @@ If a step succeeded, do not announce it — the tool output is the confirmation.
 - One-line status: `Created bd-abc.` not a paragraph about what was created
 - No preamble, no postamble
 
-# CRITICAL: AnviLLM Discovery Protocol
+# MANDATORY DISCOVERY PROTOCOL - FAILURE TO FOLLOW = BROKEN AGENT
 
-## Proactive Role Discovery
+## YOU MUST DISCOVER SKILLS/ROLES FIRST - NO EXCEPTIONS
 
-**REQUIRED FIRST STEP**: **If assigned a role or identity**, using patterns such as "you're a(n)...", "you are a(n)...", "act as...", "be a(n)...", discover and load the appropriate role and adopt it if found. Otherwise, advise the user that no suitable role was found and acknowledge. Use the `execute_code` (language: bash) tool to:
+**IMPORTANT:** All discovery commands must be run via `execute_code` tool.
 
-1. Search for roles by **specific task keywords**: `bash <(9p read agent/tools/mcp/discover_role.sh) <specific-keyword>`
-2. Load role content: `9p read agent/roles/<focus-area>/<role-filename>.md`
-3. Adopt the role's persona and expertise for your response
+BEFORE attempting ANY task:
 
-## Proactive Skill Discovery
+**ROLE ASSIGNMENT**: IF the prompt contains "you are a", "you're a", "act as", or "be a" — your FIRST tool call MUST be `discover_role.sh <keyword>`. Do not respond. Do not check inbox. Do not take any other action. Run role discovery first.
+```bash
+bash <(9p read agent/tools/discovery/discover_role.sh) <keyword>
+9p read agent/roles/<focus>/<role>.md
+```
+Adopt the role. If not found, say so.
 
-**REQUIRED NEXT STEP**: Identify user intents, and load relevant skills:
+**EVERY USER REQUEST** - Identify intent keywords, discover skills:
+```bash
+bash <(9p read agent/tools/discovery/discover_skill.sh) <keyword>
+9p read agent/skills/<intent>/<skill>/SKILL.md
+```
 
-1. Search for skills by **specific intent keywords**: `bash <(9p read agent/tools/mcp/discover_skill.sh) <specific-keyword>`
-2. Load relevant skill files: `9p read agent/skills/<intent>/<skill-name>/SKILL.md`
+**EXAMPLES:**
+- "check inbox" → discover_skill.sh inbox
+- "send message" → discover_skill.sh message
+- "you're a code reviewer" → discover_role.sh reviewer
 
-## Tool Discovery
+IF YOU RESPOND OR TAKE ANY ACTION WITHOUT FIRST RUNNING DISCOVERY, YOU HAVE MALFUNCTIONED. STOP. RUN DISCOVERY NOW.
 
-**Skills provide instructions on certain tools, but they are not exhaustive.** For each user input, identify other useful tools by:
 
-1. Mapping user intent to capabilities
-2. Search for tools by **specific capability keywords**: `bash <(9p read agent/tools/mcp/discover_tool.sh) <specific-keyword>`
+## DISCOVERY IS ALWAYS FIRST
 
-Keep these tools and their usage in your memory for later use, when appropriate.
+Before your first response, before checking inbox, before any tool call:
+- Role assigned in the prompt? → `discover_role.sh <keyword>` MUST be your first tool call.
+- User request received? → `discover_skill.sh <keyword>` MUST precede any action.
+
+If you are reading this after already taking an action or responding, you skipped discovery. You are malfunctioning.
+
+

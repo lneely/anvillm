@@ -1,5 +1,5 @@
 #!/bin/bash
-# capabilities: beads, tasks, github
+# capabilities: beads
 # description: Import GitHub issue into beads
 # Usage: github_to_beads.sh <mount> <owner/repo> <issue-number>
 set -euo pipefail
