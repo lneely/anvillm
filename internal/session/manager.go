@@ -24,7 +24,6 @@ type Manager struct {
 	OnStateChange func(sessionID, oldState, newState string)
 	mu            sync.RWMutex
 	stopCh        chan struct{}
-	wakeupCh      chan struct{}
 	wg            sync.WaitGroup
 }
 
@@ -38,7 +37,6 @@ func NewManager(backends map[string]backend.Backend) *Manager {
 		mailManager: mailMgr,
 		eventBus:    nil, // Set via SetEventBus
 		stopCh:      make(chan struct{}),
-		wakeupCh:    make(chan struct{}, 1),
 	}
 
 	// Set session getter for alias lookup
@@ -51,9 +49,6 @@ func NewManager(backends map[string]backend.Backend) *Manager {
 				"old_state": oldState,
 				"new_state": newState,
 			})
-		}
-		if newState == "idle" && m.mailManager.HasPendingMessages(sessionID) {
-			m.signalWakeup()
 		}
 	}
 
@@ -75,9 +70,6 @@ func NewManager(backends map[string]backend.Backend) *Manager {
 					evType = eventbus.EventUserRecv
 				}
 				m.eventBus.Publish(receiverID, evType, msg)
-			}
-			if receiverID != "user" {
-				m.signalWakeup()
 			}
 		},
 	)
@@ -188,21 +180,13 @@ func (m *Manager) Remove(id string) {
 	}
 }
 
-// signalWakeup sends a non-blocking wakeup to the mail processing loop.
-func (m *Manager) signalWakeup() {
-	select {
-	case m.wakeupCh <- struct{}{}:
-	default:
-	}
-}
-
 // Stop stops the mail processing loop
 func (m *Manager) Stop() {
 	close(m.stopCh)
 	m.wg.Wait()
 }
 
-// mailProcessingLoop processes mailboxes every 5 seconds, or immediately when woken.
+// mailProcessingLoop processes mailboxes every 5 seconds.
 func (m *Manager) mailProcessingLoop() {
 	defer m.wg.Done()
 	defer func() {
@@ -218,17 +202,14 @@ func (m *Manager) mailProcessingLoop() {
 		select {
 		case <-m.stopCh:
 			return
-		case <-m.wakeupCh:
-			m.processMailboxes(true)
 		case <-ticker.C:
-			m.processMailboxes(false)
+			m.processMailboxes()
 		}
 	}
 }
 
 // processMailboxes handles outbox delivery and inbox processing.
-// bypassIdleCheck skips the idleDuration threshold, used when woken by an event.
-func (m *Manager) processMailboxes(bypassIdleCheck bool) {
+func (m *Manager) processMailboxes() {
 	defer func() {
 		if r := recover(); r != nil {
 			logging.Logger().Error("panic in processMailboxes", zap.Any("panic", r))
@@ -282,12 +263,10 @@ func (m *Manager) processMailboxes(bypassIdleCheck bool) {
 			continue
 		}
 		
-		if !bypassIdleCheck {
-			if tmuxSess.IdleDuration() < 5*time.Second {
-				continue
-			}
+		if tmuxSess.IdleDuration() < 5*time.Second {
+			continue
 		}
-		
+
 		// Check if inbox has messages
 		if !m.mailManager.HasPendingMessages(sess.ID()) {
 			continue
