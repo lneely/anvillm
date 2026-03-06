@@ -17,7 +17,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -93,9 +92,9 @@ const (
 	qidCompletedBase = 0x40000000 // session/{id}/completed
 	qidMessageBase   = 0x50000000 // message files
 	qidBeadsBase     = 0x60000000 // beads/{id}/file
-	qidToolsBase     = 0x70000000 // tools/{capability}/{tool}
-	qidSkillsBase    = 0x80000000 // skills/{intent}/{skill}
-	qidRolesBase     = 0x90000000 // roles/{focus-area}/{role}
+	qidToolsBase     = 0x70000000 // tools/{tool}
+	qidSkillsBase    = 0x80000000 // skills/{skill}
+	qidRolesBase     = 0x90000000 // roles/{role}
 )
 
 // File indices within a session directory
@@ -519,22 +518,24 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 				return errFcall(fc, "not found")
 			}
 		} else if path == "/roles" {
-			// Inside roles directory - list focus areas
+			// Flat role files: <name>.md
 			if s.roles != nil {
-				focusAreas, _ := s.roles.listFocusAreas()
-				if slices.Contains(focusAreas, name) {
-					qid = plan9.Qid{Type: QTDir, Path: qidRolesBase + hashID(name)}
-					newPath = "/roles/" + name
-				} else {
+				roles, _ := s.roles.listAllRoles()
+				found := false
+				for _, role := range roles {
+					if name == role.Name+".md" {
+						qid = plan9.Qid{Type: QTFile, Path: qidRolesBase + hashID(name)}
+						newPath = "/roles/" + name
+						found = true
+						break
+					}
+				}
+				if !found {
 					return errFcall(fc, "not found")
 				}
 			} else {
 				return errFcall(fc, "not found")
 			}
-		} else if strings.HasPrefix(path, "/roles/") && strings.Count(path, "/") == 2 {
-			// Inside roles/<focus-area> - role files
-			qid = plan9.Qid{Type: QTFile, Path: qidRolesBase + hashID(path+name)}
-			newPath = path + "/" + name
 		} else if strings.HasPrefix(path, "/beads/") && strings.Count(path, "/") == 2 {
 			// Inside a mount directory
 			mountName := strings.TrimPrefix(path, "/beads/")
@@ -1134,23 +1135,11 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 		}
 	} else if path == "/roles" {
 		if s.roles != nil {
-			// Add focus area directories
-			focusAreas, _ := s.roles.listFocusAreas()
-			for _, fa := range focusAreas {
-				dirs = append(dirs, plan9.Dir{
-					Qid:  plan9.Qid{Type: QTDir, Path: qidRolesBase + hashID(fa)},
-					Mode: plan9.DMDIR | 0555, Name: fa, Uid: "q", Gid: "q", Muid: "q",
-				})
-			}
-		}
-	} else if strings.HasPrefix(path, "/roles/") && strings.Count(path, "/") == 2 {
-		// Inside roles/<focus-area> - list role files
-		focusArea := strings.TrimPrefix(path, "/roles/")
-		if s.roles != nil {
-			roles, _ := s.roles.listRolesInFocusArea(focusArea)
+			// Flat: list <name>.md files
+			roles, _ := s.roles.listAllRoles()
 			for _, role := range roles {
 				dirs = append(dirs, plan9.Dir{
-					Qid:  plan9.Qid{Type: QTFile, Path: qidRolesBase + hashID(path+role.Name)},
+					Qid:  plan9.Qid{Type: QTFile, Path: qidRolesBase + hashID(role.Name + ".md")},
 					Mode: 0444, Name: role.Name + ".md", Uid: "q", Gid: "q", Muid: "q",
 				})
 			}

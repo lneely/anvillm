@@ -5,23 +5,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
+	"sort"
 	"strings"
 
 	"9fans.net/go/plan9"
 )
 
-// RolesFS provides 9P filesystem access to agent roles organized by focus areas.
-// Roles are markdown files with YAML front-matter defining specialized agent personas.
+// RolesFS provides a flat virtual filesystem for roles.
+// Roles are discovered from configured directories and exposed as <name>.md files.
+// The listing is the union of all roles directories, sorted by name.
 type RolesFS struct {
 	rolesDirs []string
 }
 
 // RoleMeta holds parsed YAML front-matter from role markdown files.
 type RoleMeta struct {
-	Name        string   // Physical filename (without .md)
-	DisplayName string   // Name from frontmatter (for discovery)
-	FocusAreas  []string
+	Name        string
 	Description string
 	Path        string // file path
 }
@@ -51,8 +50,8 @@ func NewRolesFS() *RolesFS {
 	return &RolesFS{rolesDirs: dirs}
 }
 
-// parseRoleFrontMatter extracts focus-areas and description from role markdown YAML front-matter
-func parseRoleFrontMatter(rolePath string, derivedFocusAreas []string) (*RoleMeta, error) {
+// parseRoleFrontMatter extracts description from role markdown YAML front-matter.
+func parseRoleFrontMatter(rolePath string) (*RoleMeta, error) {
 	f, err := os.Open(rolePath)
 	if err != nil {
 		return nil, err
@@ -60,14 +59,12 @@ func parseRoleFrontMatter(rolePath string, derivedFocusAreas []string) (*RoleMet
 	defer f.Close()
 
 	meta := &RoleMeta{
-		Name:       strings.TrimSuffix(filepath.Base(rolePath), ".md"),
-		Path:       rolePath,
-		FocusAreas: derivedFocusAreas,
+		Name: strings.TrimSuffix(filepath.Base(rolePath), ".md"),
+		Path: rolePath,
 	}
 
 	scanner := bufio.NewScanner(f)
 	inFrontMatter := false
-	hasFrontMatterFocusAreas := false
 	hasDescription := false
 
 	for scanner.Scan() {
@@ -86,19 +83,9 @@ func parseRoleFrontMatter(rolePath string, derivedFocusAreas []string) (*RoleMet
 			continue
 		}
 
-		if focusAreas, ok := strings.CutPrefix(line, "focus-areas:"); ok {
-			hasFrontMatterFocusAreas = true
-			for fa := range strings.SplitSeq(focusAreas, ",") {
-				fa = strings.TrimSpace(fa)
-				if fa != "" && !slices.Contains(meta.FocusAreas, fa) {
-					meta.FocusAreas = append(meta.FocusAreas, fa)
-				}
-			}
-		} else if desc, ok := strings.CutPrefix(line, "description:"); ok {
+		if desc, ok := strings.CutPrefix(line, "description:"); ok {
 			meta.Description = strings.TrimSpace(desc)
 			hasDescription = true
-		} else if name, ok := strings.CutPrefix(line, "name:"); ok {
-			meta.DisplayName = strings.TrimSpace(name)
 		}
 	}
 
@@ -107,146 +94,52 @@ func parseRoleFrontMatter(rolePath string, derivedFocusAreas []string) (*RoleMet
 		return nil, fmt.Errorf("missing description")
 	}
 
-	// If no frontmatter focus-areas and no derived, add "uncategorized"
-	if !hasFrontMatterFocusAreas && len(derivedFocusAreas) == 0 {
-		meta.FocusAreas = []string{"uncategorized"}
-	}
-
 	return meta, nil
 }
 
-// scanRolesDir recursively scans a directory for role markdown files
-func (r *RolesFS) scanRolesDir(baseDir string, currentPath string, derivedFocusAreas []string) ([]*RoleMeta, error) {
+// listAllRoles scans all roles directories and returns deduplicated metadata,
+// with the first occurrence (by rolesDirs order) winning on name collision.
+func (r *RolesFS) listAllRoles() ([]*RoleMeta, error) {
+	seen := make(map[string]bool)
 	var roles []*RoleMeta
 
-	entries, err := os.ReadDir(currentPath)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, entry := range entries {
-		fullPath := filepath.Join(currentPath, entry.Name())
-
-		if entry.IsDir() {
-			// Derive focus area from directory structure
-			newDerived := append([]string{}, derivedFocusAreas...)
-			newDerived = append(newDerived, entry.Name())
-			subRoles, err := r.scanRolesDir(baseDir, fullPath, newDerived)
-			if err != nil {
-				continue
-			}
-			roles = append(roles, subRoles...)
-		} else if strings.HasSuffix(entry.Name(), ".md") {
-			meta, err := parseRoleFrontMatter(fullPath, derivedFocusAreas)
-			if err != nil {
-				continue
-			}
-			roles = append(roles, meta)
-		}
-	}
-
-	return roles, nil
-}
-
-// listAllRoles scans all roles directories and returns metadata
-func (r *RolesFS) listAllRoles() ([]*RoleMeta, error) {
-	seen := make(map[string]*RoleMeta)
-
 	for _, dir := range r.rolesDirs {
-		roles, err := r.scanRolesDir(dir, dir, nil)
+		entries, err := os.ReadDir(dir)
 		if err != nil {
 			continue
 		}
 
-		for _, role := range roles {
-			// Use physical filename (role.Name) as unique key
-			// Merge: keep first occurrence, union focus areas
-			if existing, exists := seen[role.Name]; exists {
-				for _, fa := range role.FocusAreas {
-					if !slices.Contains(existing.FocusAreas, fa) {
-						existing.FocusAreas = append(existing.FocusAreas, fa)
-					}
-				}
-			} else {
-				seen[role.Name] = role
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+				continue
 			}
+			name := strings.TrimSuffix(entry.Name(), ".md")
+			if seen[name] {
+				continue
+			}
+			rolePath := filepath.Join(dir, entry.Name())
+			meta, err := parseRoleFrontMatter(rolePath)
+			if err != nil {
+				continue
+			}
+			seen[name] = true
+			roles = append(roles, meta)
 		}
 	}
 
-	var result []*RoleMeta
-	for _, role := range seen {
-		result = append(result, role)
-	}
-	return result, nil
+	sort.Slice(roles, func(i, j int) bool { return roles[i].Name < roles[j].Name })
+	return roles, nil
 }
 
-// listFocusAreas returns unique focus area names from all roles
-func (r *RolesFS) listFocusAreas() ([]string, error) {
-	roles, err := r.listAllRoles()
-	if err != nil {
-		return nil, err
-	}
-
-	focusSet := make(map[string]bool)
-	for _, role := range roles {
-		for _, fa := range role.FocusAreas {
-			focusSet[fa] = true
-		}
-	}
-
-	var focusAreas []string
-	for fa := range focusSet {
-		focusAreas = append(focusAreas, fa)
-	}
-	return focusAreas, nil
-}
-
-// listRolesInFocusArea returns roles that have the given focus area
-func (r *RolesFS) listRolesInFocusArea(focusArea string) ([]*RoleMeta, error) {
-	roles, err := r.listAllRoles()
-	if err != nil {
-		return nil, err
-	}
-
-	var result []*RoleMeta
-	for _, role := range roles {
-		if slices.Contains(role.FocusAreas, focusArea) {
-			result = append(result, role)
-		}
-	}
-	return result, nil
-}
-
-// List returns directory entries for a roles path
+// List returns directory entries for the flat roles root: agent/roles → <name>.md files.
 func (r *RolesFS) List(path string) ([]plan9.Dir, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
-	// /agent/roles - list focus areas
 	if len(parts) == 2 && parts[0] == "agent" && parts[1] == "roles" {
-		focusAreas, err := r.listFocusAreas()
+		roles, err := r.listAllRoles()
 		if err != nil {
 			return nil, err
 		}
-
-		var dirs []plan9.Dir
-		for _, fa := range focusAreas {
-			dirs = append(dirs, plan9.Dir{
-				Name: fa,
-				Qid:  plan9.Qid{Type: plan9.QTDIR},
-				Mode: plan9.DMDIR | 0555,
-			})
-		}
-		return dirs, nil
-	}
-
-	// /agent/roles/<focus-area> - list role files
-	if len(parts) == 3 && parts[0] == "agent" && parts[1] == "roles" {
-		focusArea := parts[2]
-		roles, err := r.listRolesInFocusArea(focusArea)
-		if err != nil {
-			return nil, err
-		}
-
 		var dirs []plan9.Dir
 		for _, role := range roles {
 			dirs = append(dirs, plan9.Dir{
@@ -261,37 +154,34 @@ func (r *RolesFS) List(path string) ([]plan9.Dir, error) {
 	return nil, fmt.Errorf("not found")
 }
 
-// Read returns file content for a roles path
+// Read returns file content for agent/roles/<name>.md.
 func (r *RolesFS) Read(path string) ([]byte, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
-	// /agent/roles/<focus-area>/<role-name>.md
-	if len(parts) != 4 || parts[0] != "agent" || parts[1] != "roles" {
-		return nil, fmt.Errorf("not found")
-	}
-
-	focusArea := parts[2]
-	fileName := parts[3]
-
-	if !strings.HasSuffix(fileName, ".md") {
-		return nil, fmt.Errorf("not a markdown file")
-	}
-
-	roles, err := r.listRolesInFocusArea(focusArea)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, role := range roles {
-		if role.Name == strings.TrimSuffix(fileName, ".md") {
-			return os.ReadFile(role.Path)
+	// agent/roles/<name>.md
+	if len(parts) == 3 && parts[0] == "agent" && parts[1] == "roles" {
+		fileName := parts[2]
+		if !strings.HasSuffix(fileName, ".md") {
+			return nil, fmt.Errorf("not found")
 		}
+		roleName := strings.TrimSuffix(fileName, ".md")
+
+		roles, err := r.listAllRoles()
+		if err != nil {
+			return nil, err
+		}
+		for _, role := range roles {
+			if role.Name == roleName {
+				return os.ReadFile(role.Path)
+			}
+		}
+		return nil, fmt.Errorf("role not found: %s", roleName)
 	}
 
-	return nil, fmt.Errorf("role not found")
+	return nil, fmt.Errorf("not found")
 }
 
-// ReadRole reads a role by name, searching all focus areas
+// ReadRole reads a role by name, searching all roles directories.
 func (r *RolesFS) ReadRole(roleName string) (string, error) {
 	roles, err := r.listAllRoles()
 	if err != nil {

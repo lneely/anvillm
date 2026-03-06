@@ -10,7 +10,7 @@ import (
 	"9fans.net/go/plan9"
 )
 
-// ToolsFS provides 9P filesystem access to agent tools organized by capability level.
+// ToolsFS provides a flat virtual filesystem for agent tools.
 // Tools are shell scripts with YAML front-matter defining their interface.
 type ToolsFS struct {
 	tools     []Tool
