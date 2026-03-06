@@ -102,6 +102,10 @@ func (m *Manager) New(opts backend.SessionOptions, backendName string) (backend.
 	// Wire up state change callback
 	if tmuxSess, ok := sess.(*tmux.Session); ok {
 		tmuxSess.OnStateChange = m.OnStateChange
+		tmuxSess.OnCrashRestart = func(sessionID string) {
+			msg := mailbox.NewMessage("user", sessionID, mailbox.MessageTypePromptRequest, "continue", "Continue working.")
+			m.mailManager.DeliverToInbox(sessionID, msg)
+		}
 		// Emit initial state change event
 		if m.OnStateChange != nil {
 			m.OnStateChange(sess.ID(), "stopped", sess.State())

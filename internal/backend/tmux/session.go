@@ -67,7 +67,8 @@ type Session struct {
 	idleSince time.Time  // Timestamp when session last transitioned to idle
 	
 	// Callbacks
-	OnStateChange func(sessionID, oldState, newState string)
+	OnStateChange   func(sessionID, oldState, newState string)
+	OnCrashRestart  func(sessionID string) // Called after successful crash recovery restart
 
 	mu sync.Mutex
 }
@@ -998,6 +999,8 @@ func (s *Session) Refresh(ctx context.Context) error {
 			// Auto-restart on unexpected crash
 			debug.Log("[session %s] refresh: auto-restarting after unexpected crash", s.id)
 			s.lastRestartAttempt = time.Now()
+			s.initialPromptSent = false
+			onCrashRestart := s.OnCrashRestart
 			s.mu.Unlock()
 			
 			err := s.Restart(ctx)
@@ -1011,6 +1014,11 @@ func (s *Session) Refresh(ctx context.Context) error {
 			}
 			
 			debug.Log("[session %s] refresh: auto-restart successful", s.id)
+			if onCrashRestart != nil {
+				s.mu.Unlock()
+				onCrashRestart(s.id)
+				s.mu.Lock()
+			}
 			return nil
 		}
 	}

@@ -6,15 +6,18 @@ if ! command -v claude &> /dev/null; then
     exit 0
 fi
 
-# Check if anvilmcp is already installed
-if claude mcp get anvilmcp &> /dev/null; then
-    echo "AnviLLM MCP server already installed"
-    exit 0
+# Install anvilmcp MCP server
+if ! claude mcp get anvilmcp &> /dev/null; then
+    claude mcp add --scope user --transport stdio anvilmcp -- anvilmcp
+    echo "anvilmcp installed"
 fi
 
-# Install anvilmcp MCP server using claude CLI (user scope)
-claude mcp add --scope user --transport stdio anvilmcp -- anvilmcp
+# Install superpowers-mcp-server if available
+if command -v superpowers-mcp-server &> /dev/null; then
+    if ! claude mcp get superpowers-mcp-server &> /dev/null; then
+        claude mcp add --scope user --transport stdio superpowers-mcp-server -- superpowers-mcp-server
+        echo "superpowers-mcp-server installed"
+    fi
+fi
 
-echo "AnviLLM MCP server configured in $MCP_FILE"
-echo ""
-echo "Note: Ensure 'anvilmcp' binary is in your PATH and 'anvilsrv' is running."
+echo "MCP servers configured"
