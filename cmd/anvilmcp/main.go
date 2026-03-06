@@ -5,11 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
-
-	"9fans.net/go/plan9/client"
 )
 
 var (
@@ -58,40 +55,6 @@ type Items struct {
 	Type string `json:"type"`
 }
 
-// readTool reads a tool from the 9P tools directory
-func readTool(name string) (string, error) {
-	// Prevent path traversal
-	if strings.Contains(name, "/") || strings.Contains(name, "..") {
-		return "", fmt.Errorf("invalid tool name")
-	}
-
-	ns := fmt.Sprintf("/tmp/ns.%s.:0", os.Getenv("USER"))
-	fsys, err := client.Mount("unix", filepath.Join(ns, "agent"))
-	if err != nil {
-		return "", fmt.Errorf("failed to mount 9P: %v", err)
-	}
-	defer fsys.Close()
-
-	fid, err := fsys.Open("/tools/"+name, 0)
-	if err != nil {
-		return "", fmt.Errorf("tool not found: %s", name)
-	}
-	defer fid.Close()
-
-	var buf []byte
-	tmp := make([]byte, 8192)
-	for {
-		n, err := fid.Read(tmp)
-		if n > 0 {
-			buf = append(buf, tmp[:n]...)
-		}
-		if err != nil || n < len(tmp) {
-			break
-		}
-	}
-	return string(buf), nil
-}
-
 func main() {
 	fmt.Fprintln(os.Stderr, "[anvilmcp] Starting MCP server")
 	scanner := bufio.NewScanner(os.Stdin)
@@ -126,16 +89,17 @@ func main() {
 				"tools": []Tool{
 					{
 						Name:        "execute_code",
-						Description: "Execute code from tool library or inline",
+						Description: "Execute bash via one of three mutually exclusive modes (pipe wins if present):\n1. tool+args — run a named library tool: {tool: 'list_sessions.sh', args: ['foo']}\n2. code+args — run inline bash: {code: 'echo hello'}\n3. pipe — Unix pipeline of stages, stdout→stdin: {pipe: [{tool: 'list_sessions.sh'}, {code: 'grep active'}, {tool: 'format_table.sh', args: ['--compact']}]}\nEach pipe stage is {tool?, args?, code?}. All-tool pipes are trusted (skip validation); any inline code stage triggers validation.",
 						InputSchema: InputSchema{
 							Type: "object",
 							Properties: map[string]Property{
-								"tool":     {Type: "string", Description: "Tool name from agent/tools/ (e.g. 'list_sessions.sh')"},
-								"args":     {Type: "array", Description: "Arguments to pass to tool", Items: &Items{Type: "string"}},
-								"code":     {Type: "string", Description: "Inline code to execute (if tool not specified)"},
+								"tool":     {Type: "string", Description: "Mode 1: named tool from agent/tools/ (e.g. 'list_sessions.sh')"},
+								"args":     {Type: "array", Description: "Positional args ($1 $2 …) for the tool or code", Items: &Items{Type: "string"}},
+								"code":     {Type: "string", Description: "Mode 2: inline bash to execute directly"},
 								"language": {Type: "string", Description: "Programming language", Enum: []string{"bash"}},
 								"timeout":  {Type: "integer", Description: "Timeout in seconds (default: 30). Recommended: 600 for builds, 120 for network ops, 1800 for remote builds"},
-								"sandbox":  {Type: "string", Description: "Sandbox config name (default: default)"},
+								"sandbox":  {Type: "string", Description: "Sandbox config name (default: anvilmcp)"},
+								"pipe":     {Type: "array", Description: "Mode 3: ordered pipeline stages, each {tool?, args?, code?}. Stages run as a single bash -c; stdout of each feeds stdin of the next.", Items: &Items{Type: "object"}},
 							},
 						},
 					},
@@ -175,14 +139,45 @@ func handleToolCall(req MCPRequest) {
 		code, _ := params.Arguments["code"].(string)
 		language, _ := params.Arguments["language"].(string)
 
-		// If tool specified, read from tools library
-		if tool != "" {
+		// Parse pipe steps
+		var pipeSteps []PipeStep
+		if pipeRaw, ok := params.Arguments["pipe"].([]interface{}); ok {
+			for _, stepRaw := range pipeRaw {
+				stepMap, ok := stepRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				step := PipeStep{}
+				step.Tool, _ = stepMap["tool"].(string)
+				step.Code, _ = stepMap["code"].(string)
+				if argsRaw, ok := stepMap["args"].([]interface{}); ok {
+					for _, a := range argsRaw {
+						if s, ok := a.(string); ok {
+							step.Args = append(step.Args, s)
+						}
+					}
+				}
+				pipeSteps = append(pipeSteps, step)
+			}
+		}
+
+		// Resolve execution mode: pipe > tool > inline code
+		trusted := false
+		if len(pipeSteps) > 0 {
+			var err error
+			code, trusted, err = buildPipeline(pipeSteps)
+			if err != nil {
+				sendError(req.ID, -32000, err.Error())
+				return
+			}
+		} else if tool != "" {
 			toolCode, err := readTool(tool)
 			if err != nil {
 				sendError(req.ID, -32000, fmt.Sprintf("failed to read tool %s: %v", tool, err))
 				return
 			}
 			code = toolCode
+			trusted = true
 			// For bash with args, wrap script to receive positional params
 			if len(toolArgs) > 0 {
 				// Escape args for bash using single quotes (prevents all expansion)
@@ -196,7 +191,7 @@ func handleToolCall(req MCPRequest) {
 		}
 
 		if code == "" {
-			sendError(req.ID, -32602, "either 'tool' or 'code' is required")
+			sendError(req.ID, -32602, "either 'tool', 'code', or 'pipe' is required")
 			return
 		}
 
@@ -216,8 +211,6 @@ func handleToolCall(req MCPRequest) {
 		// Acquire execution slot
 		executionSemaphore <- struct{}{}
 		defer func() { <-executionSemaphore }()
-
-		trusted := tool != "" // Tools from 9P are trusted
 		fmt.Fprintf(os.Stderr, "[anvilmcp] Executing %s code (timeout: %ds, sandbox: %s, trusted: %v)\n", language, timeout, sandbox, trusted)
 		result, err := executeCode(code, language, timeout, sandbox, trusted)
 

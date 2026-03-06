@@ -13,8 +13,89 @@ import (
 	"sync"
 	"time"
 
+	"9fans.net/go/plan9/client"
 	"anvillm/internal/sandbox"
 )
+
+// readTool reads a tool from the 9P tools directory.
+func readTool(name string) (string, error) {
+	// Prevent path traversal
+	if strings.Contains(name, "/") || strings.Contains(name, "..") {
+		return "", fmt.Errorf("invalid tool name")
+	}
+
+	ns := fmt.Sprintf("/tmp/ns.%s.:0", os.Getenv("USER"))
+	fsys, err := client.Mount("unix", filepath.Join(ns, "agent"))
+	if err != nil {
+		return "", fmt.Errorf("failed to mount 9P: %v", err)
+	}
+	defer fsys.Close()
+
+	fid, err := fsys.Open("/tools/"+name, 0)
+	if err != nil {
+		return "", fmt.Errorf("tool not found: %s", name)
+	}
+	defer fid.Close()
+
+	var buf []byte
+	tmp := make([]byte, 8192)
+	for {
+		n, err := fid.Read(tmp)
+		if n > 0 {
+			buf = append(buf, tmp[:n]...)
+		}
+		if err != nil || n < len(tmp) {
+			break
+		}
+	}
+	return string(buf), nil
+}
+
+// PipeStep is one stage in a tool pipeline.
+// Exactly one of Tool or Code must be set.
+type PipeStep struct {
+	Tool string // named tool read from 9P (trusted)
+	Code string // inline bash code (untrusted, validated)
+	Args []string
+}
+
+// buildPipeline constructs a single bash pipeline string from the given steps.
+// Each step is wrapped in a subshell: ( set -- args; <code> ) | ...
+// Tool steps are trusted (sourced from 9P); inline code steps are validated
+// individually here so the combined string is always returned as trusted.
+func buildPipeline(steps []PipeStep) (string, bool, error) {
+	if len(steps) == 0 {
+		return "", false, fmt.Errorf("pipe requires at least one step")
+	}
+	parts := make([]string, 0, len(steps))
+	for _, step := range steps {
+		var code string
+		if step.Tool != "" {
+			var err error
+			code, err = readTool(step.Tool)
+			if err != nil {
+				return "", false, fmt.Errorf("pipe step %q: %v", step.Tool, err)
+			}
+		} else if step.Code != "" {
+			if err := validateCode(step.Code); err != nil {
+				return "", false, fmt.Errorf("pipe step code: %v", err)
+			}
+			code = step.Code
+		} else {
+			return "", false, fmt.Errorf("each pipe step requires either 'tool' or 'code'")
+		}
+		if len(step.Args) > 0 {
+			var escaped []string
+			for _, arg := range step.Args {
+				escaped = append(escaped, "'"+strings.ReplaceAll(arg, "'", "'\\''")+"'")
+			}
+			parts = append(parts, fmt.Sprintf("( set -- %s\n%s )", strings.Join(escaped, " "), code))
+		} else {
+			parts = append(parts, fmt.Sprintf("(\n%s\n)", code))
+		}
+	}
+	return strings.Join(parts, " |\n"), true, nil
+}
 
 var dangerousPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`rm\s+(-[a-z]*r[a-z]*\s+)*-[a-z]*f[a-z]*\s*/(home|var|usr|etc|boot|root|bin|sbin|lib|opt|srv)?`), // rm -rf, rm -r -f on sensitive paths

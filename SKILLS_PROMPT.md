@@ -5,11 +5,16 @@
 1. Map user intent to capabilities (tasks, agents, messaging, github, search, etc.)
 2. Discover skills for each capability:
 ```bash
-bash <(9p read agent/tools/discover_skill.sh) <keyword>
+Tool: execute_code
+tool: discover_skill.sh
+args: ["<keyword>"]
 ```
+
 3. Load relevant skill files:
 ```bash
-9p read agent/skills/<capability>/<skill-name>/SKILL.md
+Tool: execute_code
+tool: load_skill.sh
+args: ["<skill-name>"]
 ```
 
 **Common capability mappings:**
