@@ -185,10 +185,11 @@ func handleToolCall(req MCPRequest) {
 			code = toolCode
 			// For bash with args, wrap script to receive positional params
 			if len(toolArgs) > 0 {
-				// Escape args for bash array
+				// Escape args for bash using single quotes (prevents all expansion)
 				var escaped []string
 				for _, arg := range toolArgs {
-					escaped = append(escaped, fmt.Sprintf("%q", arg))
+					// Replace ' with '\'' (end quote, escaped quote, start quote)
+					escaped = append(escaped, "'"+strings.ReplaceAll(arg, "'", "'\\''")+"'")
 				}
 				code = fmt.Sprintf("set -- %s\n%s", strings.Join(escaped, " "), code)
 			}
