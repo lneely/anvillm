@@ -1,0 +1,33 @@
+#!/bin/bash
+# anvilspawn - Spawn a bot with a given role in a given working directory
+# Usage: anvilspawn <backend> <role> <workdir>
+
+set -e
+
+if [ $# -ne 3 ]; then
+    echo "Usage: $0 <backend> <role> <workdir>"
+    echo "  backend: claude, kiro-cli"
+    echo "  role:    developer, solo-developer, reviewer, tester, devops, researcher, taskmgr, author, technical-editor, ..."
+    exit 1
+fi
+
+BACKEND="$1"
+ROLE="$2"
+WORKDIR="$3"
+
+NAMESPACE=$(namespace)
+if [ -z "$NAMESPACE" ]; then
+    echo "Error: No namespace found. Is anvillm running?"
+    exit 1
+fi
+
+AGENT_MOUNT="agent"
+HASH=$(echo -n "$WORKDIR" | md5sum | cut -c1-8)
+ALIAS="$HASH-$ROLE"
+
+echo "new $BACKEND $WORKDIR" | 9p write $AGENT_MOUNT/ctl
+AGENT_ID=$(9p read $AGENT_MOUNT/list | head -1 | awk '{print $1}')
+echo "$ALIAS" | 9p write $AGENT_MOUNT/$AGENT_ID/alias
+echo "$ROLE" | 9p write $AGENT_MOUNT/$AGENT_ID/role
+
+echo "$AGENT_ID (alias: $ALIAS)"
