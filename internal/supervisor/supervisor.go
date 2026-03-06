@@ -43,17 +43,27 @@ func (s *Supervisor) assignWork() {
 		return
 	}
 	
-	// Filter for unassigned tasks
-	unassigned := []map[string]interface{}{}
+	// Filter for claimable, unassigned tasks
+	claimable := []map[string]interface{}{}
 	for _, bead := range beads {
 		// Skip if already assigned
 		if assignee, ok := bead["assignee"].(string); ok && assignee != "" {
 			continue
 		}
-		unassigned = append(unassigned, bead)
+		// Only consider beads labeled claimable
+		labels, ok := bead["labels"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, label := range labels {
+			if labelStr, ok := label.(string); ok && labelStr == "claimable" {
+				claimable = append(claimable, bead)
+				break
+			}
+		}
 	}
 	
-	if len(unassigned) == 0 {
+	if len(claimable) == 0 {
 		return
 	}
 	
@@ -76,7 +86,7 @@ func (s *Supervisor) assignWork() {
 		}
 		
 		// Only assign if session CWD is exactly or under task mountpoint
-		for _, bead := range unassigned {
+		for _, bead := range claimable {
 			taskCwd, ok := bead["cwd"].(string)
 			if !ok {
 				continue
