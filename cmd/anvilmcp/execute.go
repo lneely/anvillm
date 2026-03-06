@@ -85,6 +85,15 @@ func recordValidationFailure() {
 	}
 }
 
+func isPermissionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "permission denied") ||
+		strings.Contains(msg, "no such file or directory")
+}
+
 func validateCode(code string) error {
 	if err := checkRateLimit(); err != nil {
 		return err

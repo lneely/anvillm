@@ -134,6 +134,7 @@ func handleToolCall(req MCPRequest) {
 			timeout = int(t)
 		}
 		sandbox, _ := params.Arguments["sandbox"].(string)
+		sandboxExplicit := sandbox != ""
 		if sandbox == "" {
 			sandbox = "anvilmcp"
 		}
@@ -144,6 +145,12 @@ func handleToolCall(req MCPRequest) {
 
 		fmt.Fprintf(os.Stderr, "[anvilmcp] Executing bash code (timeout: %ds, sandbox: %s)\n", timeout, sandbox)
 		result, err := executeCode(code, language, timeout, sandbox)
+
+		// Fallback to default sandbox on permission errors (only if sandbox wasn't explicit)
+		if err != nil && !sandboxExplicit && isPermissionError(err) {
+			fmt.Fprintf(os.Stderr, "[anvilmcp] Permission error in %s sandbox, falling back to default\n", sandbox)
+			result, err = executeCode(code, language, timeout, "default")
+		}
 
 		// Log token comparison
 		codeTokens := estimateTokens(code)
