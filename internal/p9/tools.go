@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
-	"sort"
 	"strings"
 
 	"9fans.net/go/plan9"
@@ -145,96 +143,12 @@ func (t *ToolsFS) listAllTools() ([]*ToolMeta, error) {
 	return tools, nil
 }
 
-// listCapabilities returns unique capability names from all tools
-func (t *ToolsFS) listCapabilities() ([]string, error) {
-	tools, err := t.listAllTools()
-	if err != nil {
-		return nil, err
-	}
-
-	capSet := make(map[string]bool)
-	for _, tool := range tools {
-		for _, cap := range tool.Capabilities {
-			capSet[cap] = true
-		}
-	}
-
-	var caps []string
-	for cap := range capSet {
-		caps = append(caps, cap)
-	}
-	return caps, nil
-}
-
-// listToolsInCapability returns tools that have the given capability
-func (t *ToolsFS) listToolsInCapability(capability string) ([]*ToolMeta, error) {
-	tools, err := t.listAllTools()
-	if err != nil {
-		return nil, err
-	}
-
-	var result []*ToolMeta
-	for _, tool := range tools {
-		if slices.Contains(tool.Capabilities, capability) {
-			result = append(result, tool)
-		}
-	}
-	return result, nil
-}
-
-// generateHelp creates aggregated one-liner index of all tools
-func (t *ToolsFS) generateHelp() (string, error) {
-	tools, err := t.listAllTools()
-	if err != nil {
-		return "", err
-	}
-
-	seen := make(map[string]bool)
-	var lines []string
-	for _, tool := range tools {
-		key := tool.Name + "\t" + tool.Description
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		lines = append(lines, key)
-	}
-	sort.Strings(lines)
-	return strings.Join(lines, "\n") + "\n", nil
-}
-
 func (t *ToolsFS) List(path string) ([]plan9.Dir, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
-	// /tools - list capabilities + help file
+	// /tools - list all tools flat
 	if len(parts) == 2 && parts[0] == "agent" && parts[1] == "tools" {
-		caps, err := t.listCapabilities()
-		if err != nil {
-			return nil, err
-		}
-
-		var dirs []plan9.Dir
-		// Add help file
-		dirs = append(dirs, plan9.Dir{
-			Name: "help",
-			Qid:  plan9.Qid{Type: plan9.QTFILE},
-			Mode: 0444,
-		})
-		// Add capability directories
-		for _, cap := range caps {
-			dirs = append(dirs, plan9.Dir{
-				Name: cap,
-				Qid:  plan9.Qid{Type: plan9.QTDIR},
-				Mode: plan9.DMDIR | 0555,
-			})
-		}
-		return dirs, nil
-	}
-
-	// /tools/<capability> - list tools in that capability
-	if len(parts) == 3 && parts[0] == "agent" && parts[1] == "tools" {
-		capability := parts[2]
-		tools, err := t.listToolsInCapability(capability)
+		tools, err := t.listAllTools()
 		if err != nil {
 			return nil, err
 		}
@@ -256,22 +170,12 @@ func (t *ToolsFS) List(path string) ([]plan9.Dir, error) {
 func (t *ToolsFS) Read(path string) ([]byte, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
-	// /tools/help - aggregated index
-	if len(parts) == 2 && parts[0] == "tools" && parts[1] == "help" {
-		help, err := t.generateHelp()
-		if err != nil {
-			return nil, err
-		}
-		return []byte(help), nil
-	}
-
-	// /tools/<capability>/<tool.sh> - read tool script
-	if len(parts) != 3 || parts[0] != "tools" {
+	// /tools/<tool.sh> - read tool script
+	if len(parts) != 2 || parts[0] != "tools" {
 		return nil, fmt.Errorf("not found")
 	}
 
-	capability := parts[1]
-	filename := parts[2]
+	filename := parts[1]
 
 	if !strings.HasSuffix(filename, ".sh") {
 		return nil, fmt.Errorf("not a shell script")
@@ -283,8 +187,7 @@ func (t *ToolsFS) Read(path string) ([]byte, error) {
 		return nil, fmt.Errorf("invalid filename")
 	}
 
-	// Verify tool has this capability
-	tools, err := t.listToolsInCapability(capability)
+	tools, err := t.listAllTools()
 	if err != nil {
 		return nil, err
 	}
@@ -307,5 +210,5 @@ func (t *ToolsFS) Read(path string) ([]byte, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("tool not found in capability")
+	return nil, fmt.Errorf("tool not found")
 }

@@ -12,14 +12,14 @@ Find your project's beads mount:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: MOUNT=$(bash <(9p read agent/tools/beads/list_mounts.sh) | grep "$(pwd)" | awk '{print $1}'); echo $MOUNT
+code: MOUNT=$(bash <(9p read agent/tools/list_mounts.sh) | grep "$(pwd)" | awk '{print $1}'); echo $MOUNT
 ```
 
 If no mount exists, create one:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/beads/mount_beads.sh) "$(pwd)"
+code: bash <(9p read agent/tools/mount_beads.sh) "$(pwd)"
 ```
 
 ## Tools
@@ -30,35 +30,35 @@ List mounts:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/beads/list_mounts.sh)
+code: bash <(9p read agent/tools/list_mounts.sh)
 ```
 
 List ready beads:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/beads/list_ready_beads.sh) <mount>
+code: bash <(9p read agent/tools/list_ready_beads.sh) <mount>
 ```
 
 List all beads:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/beads/list_beads.sh) <mount>
+code: bash <(9p read agent/tools/list_beads.sh) <mount>
 ```
 
 Read bead JSON:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/beads/read_bead.sh) <mount> <id> json
+code: bash <(9p read agent/tools/read_bead.sh) <mount> <id> json
 ```
 
 Read bead comments:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/beads/read_bead.sh) <mount> <id> comments
+code: bash <(9p read agent/tools/read_bead.sh) <mount> <id> comments
 ```
 
 **IMPORTANT:** When working on a bead, always check `comment_count` in the JSON output. If > 0, read comments for additional context, decisions, or blockers.
@@ -67,63 +67,63 @@ Claim bead:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/beads/claim_bead.sh) <mount> <id> [$AGENT_ID]
+code: bash <(9p read agent/tools/claim_bead.sh) <mount> <id> [$AGENT_ID]
 ```
 
 Complete bead:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/beads/complete_bead.sh) <mount> <id>
+code: bash <(9p read agent/tools/complete_bead.sh) <mount> <id>
 ```
 
 Fail bead:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/beads/fail_bead.sh) <mount> <id> "reason"
+code: bash <(9p read agent/tools/fail_bead.sh) <mount> <id> "reason"
 ```
 
 Create bead:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/beads/create_bead.sh) <mount> "title" "desc" [parent]
+code: bash <(9p read agent/tools/create_bead.sh) <mount> "title" "desc" [parent]
 ```
 
 Update bead:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/beads/update_bead.sh) <mount> <id> <field> <value>
+code: bash <(9p read agent/tools/update_bead.sh) <mount> <id> <field> <value>
 ```
 
 Add dependency:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/beads/add_dependency.sh) <mount> <child> <parent>
+code: bash <(9p read agent/tools/add_dependency.sh) <mount> <child> <parent>
 ```
 
 Comment on bead:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/beads/comment_bead.sh) <mount> <id> "text"
+code: bash <(9p read agent/tools/comment_bead.sh) <mount> <id> "text"
 ```
 
 Label bead:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/beads/label_bead.sh) <mount> <id> <label>
+code: bash <(9p read agent/tools/label_bead.sh) <mount> <id> <label>
 ```
 
 Delete bead:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/beads/delete_bead.sh) <mount> <id>
+code: bash <(9p read agent/tools/delete_bead.sh) <mount> <id>
 ```
 
 **Note:** Delete does not cascade. To delete a parent and all children, delete children first, then parent.

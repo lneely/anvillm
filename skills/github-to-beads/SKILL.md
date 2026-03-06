@@ -13,7 +13,7 @@ Import GitHub issues into beads.
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/github/github_to_beads.sh) OWNER/REPO ISSUE_NUMBER
+code: bash <(9p read agent/tools/github_to_beads.sh) OWNER/REPO ISSUE_NUMBER
 ```
 
 **What it does:**

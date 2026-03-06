@@ -217,32 +217,11 @@ func (r *RolesFS) listRolesInFocusArea(focusArea string) ([]*RoleMeta, error) {
 	return result, nil
 }
 
-// generateHelp creates aggregated index: focus-area/role-filename.md\tDisplayName\tDescription
-func (r *RolesFS) generateHelp() (string, error) {
-	roles, err := r.listAllRoles()
-	if err != nil {
-		return "", err
-	}
-
-	var lines []string
-	for _, role := range roles {
-		displayName := role.DisplayName
-		if displayName == "" {
-			displayName = role.Name
-		}
-		for _, fa := range role.FocusAreas {
-			line := fmt.Sprintf("%s/%s.md\t%s\t%s", fa, role.Name, displayName, role.Description)
-			lines = append(lines, line)
-		}
-	}
-	return strings.Join(lines, "\n") + "\n", nil
-}
-
 // List returns directory entries for a roles path
 func (r *RolesFS) List(path string) ([]plan9.Dir, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
-	// /agent/roles - list focus areas + help file
+	// /agent/roles - list focus areas
 	if len(parts) == 2 && parts[0] == "agent" && parts[1] == "roles" {
 		focusAreas, err := r.listFocusAreas()
 		if err != nil {
@@ -250,11 +229,6 @@ func (r *RolesFS) List(path string) ([]plan9.Dir, error) {
 		}
 
 		var dirs []plan9.Dir
-		dirs = append(dirs, plan9.Dir{
-			Name: "help",
-			Qid:  plan9.Qid{Type: plan9.QTFILE},
-			Mode: 0444,
-		})
 		for _, fa := range focusAreas {
 			dirs = append(dirs, plan9.Dir{
 				Name: fa,
@@ -290,15 +264,6 @@ func (r *RolesFS) List(path string) ([]plan9.Dir, error) {
 // Read returns file content for a roles path
 func (r *RolesFS) Read(path string) ([]byte, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
-
-	// /agent/roles/help
-	if len(parts) == 3 && parts[0] == "agent" && parts[1] == "roles" && parts[2] == "help" {
-		help, err := r.generateHelp()
-		if err != nil {
-			return nil, err
-		}
-		return []byte(help), nil
-	}
 
 	// /agent/roles/<focus-area>/<role-name>.md
 	if len(parts) != 4 || parts[0] != "agent" || parts[1] != "roles" {

@@ -2,6 +2,7 @@
   "mcpServers": {
     "anvilmcp": {
       "command": "anvilmcp",
+      "autoApproveTools": ["execute_code"],
       "args": [],
       "env": {}
     }

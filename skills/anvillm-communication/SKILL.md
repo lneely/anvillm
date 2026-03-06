@@ -15,21 +15,21 @@ Discover agents:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/agents/list_sessions.sh) | grep "$(pwd)"
+code: bash <(9p read agent/tools/list_sessions.sh) | grep "$(pwd)"
 ```
 
 Send message:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/messaging/send_message.sh) <FROM> <TO> <TYPE> <SUBJECT> <BODY>
+code: bash <(9p read agent/tools/send_message.sh) <FROM> <TO> <TYPE> <SUBJECT> <BODY>
 ```
 
 Check inbox:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/messaging/read_inbox.sh) <AGENT_ID>
+code: bash <(9p read agent/tools/read_inbox.sh) <AGENT_ID>
 ```
 
 ## Rules

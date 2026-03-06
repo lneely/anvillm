@@ -481,26 +481,24 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 				}
 			}
 		} else if path == "/tools" {
-			// Inside tools directory - list capabilities + help
+			// Inside tools directory - list tools flat
 			if s.tools != nil {
-				caps, _ := s.tools.listCapabilities()
-				// help file
-				qid = plan9.Qid{Type: QTFile, Path: qidToolsBase}
-				if name == "help" {
-					newPath = "/tools/help"
-				} else if slices.Contains(caps, name) {
-					qid = plan9.Qid{Type: QTDir, Path: qidToolsBase + hashID(name)}
-					newPath = "/tools/" + name
-				} else {
+				tools, _ := s.tools.listAllTools()
+				found := false
+				for _, tool := range tools {
+					if tool.Name == name {
+						qid = plan9.Qid{Type: QTFile, Path: qidToolsBase + hashID(name)}
+						newPath = "/tools/" + name
+						found = true
+						break
+					}
+				}
+				if !found {
 					return errFcall(fc, "not found")
 				}
 			} else {
 				return errFcall(fc, "not found")
 			}
-		} else if strings.HasPrefix(path, "/tools/") && strings.Count(path, "/") == 2 {
-			// Inside tools/<capability> - tool files
-			qid = plan9.Qid{Type: QTFile, Path: qidToolsBase + hashID(path+name)}
-			newPath = path + "/" + name
 		} else if path == "/skills" {
 			// Inside skills directory - list intents + help
 			if s.skills != nil {
@@ -526,13 +524,10 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			qid = plan9.Qid{Type: QTFile, Path: qidSkillsBase + hashID(path+name)}
 			newPath = path + "/" + name
 		} else if path == "/roles" {
-			// Inside roles directory - list focus areas + help
+			// Inside roles directory - list focus areas
 			if s.roles != nil {
 				focusAreas, _ := s.roles.listFocusAreas()
-				qid = plan9.Qid{Type: QTFile, Path: qidRolesBase}
-				if name == "help" {
-					newPath = "/roles/help"
-				} else if slices.Contains(focusAreas, name) {
+				if slices.Contains(focusAreas, name) {
 					qid = plan9.Qid{Type: QTDir, Path: qidRolesBase + hashID(name)}
 					newPath = "/roles/" + name
 				} else {
@@ -1122,28 +1117,11 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 		}
 	} else if path == "/tools" {
 		if s.tools != nil {
-			// Add help file
-			dirs = append(dirs, plan9.Dir{
-				Qid:  plan9.Qid{Type: QTFile, Path: qidToolsBase},
-				Mode: 0444, Name: "help", Uid: "q", Gid: "q", Muid: "q",
-			})
-			// Add capability directories
-			caps, _ := s.tools.listCapabilities()
-			for _, cap := range caps {
-				dirs = append(dirs, plan9.Dir{
-					Qid:  plan9.Qid{Type: QTDir, Path: qidToolsBase + hashID(cap)},
-					Mode: plan9.DMDIR | 0555, Name: cap, Uid: "q", Gid: "q", Muid: "q",
-				})
-			}
-		}
-	} else if strings.HasPrefix(path, "/tools/") && strings.Count(path, "/") == 2 {
-		// Inside tools/<capability> - list tools
-		capability := strings.TrimPrefix(path, "/tools/")
-		if s.tools != nil {
-			tools, _ := s.tools.listToolsInCapability(capability)
+			// List tools flat
+			tools, _ := s.tools.listAllTools()
 			for _, tool := range tools {
 				dirs = append(dirs, plan9.Dir{
-					Qid:  plan9.Qid{Type: QTFile, Path: qidToolsBase + hashID(path+tool.Name)},
+					Qid:  plan9.Qid{Type: QTFile, Path: qidToolsBase + hashID(tool.Name)},
 					Mode: 0444, Name: tool.Name, Uid: "q", Gid: "q", Muid: "q",
 				})
 			}
@@ -1189,11 +1167,6 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 		}
 	} else if path == "/roles" {
 		if s.roles != nil {
-			// Add help file
-			dirs = append(dirs, plan9.Dir{
-				Qid:  plan9.Qid{Type: QTFile, Path: qidRolesBase},
-				Mode: 0444, Name: "help", Uid: "q", Gid: "q", Muid: "q",
-			})
 			// Add focus area directories
 			focusAreas, _ := s.roles.listFocusAreas()
 			for _, fa := range focusAreas {

@@ -41,28 +41,28 @@ Spawn testing agent:
 ```
 Tool: execute_code
 sandbox: default
-code: bash <(9p read agent/tools/agents/spawn_agent.sh) <your-id> "<system-prompt-above>"
+code: bash <(9p read agent/tools/spawn_agent.sh) <your-id> "<system-prompt-above>"
 ```
 
 Send test request:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/messaging/send_message.sh) <your-id> <testing-agent-id> PROMPT_REQUEST "Validate fix" "Bug: <desc>\nFix: <changes>\nFiles: <list>\nBranch: <name>"
+code: bash <(9p read agent/tools/send_message.sh) <your-id> <testing-agent-id> PROMPT_REQUEST "Validate fix" "Bug: <desc>\nFix: <changes>\nFiles: <list>\nBranch: <name>"
 ```
 
 Read response (user notifies when ready):
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/messaging/read_inbox.sh) <your-id>
+code: bash <(9p read agent/tools/read_inbox.sh) <your-id>
 ```
 
 Kill testing agent:
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/agents/kill_agent.sh) <testing-agent-id>
+code: bash <(9p read agent/tools/kill_agent.sh) <testing-agent-id>
 ```
 
 ### Testing Agent Workflow
@@ -76,7 +76,7 @@ code: bash <(9p read agent/tools/agents/kill_agent.sh) <testing-agent-id>
 ```
 Tool: execute_code
 sandbox: anvilmcp
-code: bash <(9p read agent/tools/messaging/send_message.sh) <your-id> <requester-id> PROMPT_RESPONSE "Validation complete" "Status: completed|failed\n<evidence>"
+code: bash <(9p read agent/tools/send_message.sh) <your-id> <requester-id> PROMPT_RESPONSE "Validation complete" "Status: completed|failed\n<evidence>"
 ```
 
 **FUSE testing**: Inform user daemon must start outside sandbox, wait for acknowledgement

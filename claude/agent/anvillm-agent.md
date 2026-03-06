@@ -30,41 +30,29 @@ If a step succeeded, do not announce it — the tool output is the confirmation.
 - One-line status: `Created bd-abc.` not a paragraph about what was created
 - No preamble, no postamble
 
-# MANDATORY DISCOVERY PROTOCOL - FAILURE TO FOLLOW = BROKEN AGENT
+# Proactive Skill Discovery
 
-## YOU MUST DISCOVER SKILLS/ROLES FIRST - NO EXCEPTIONS
+**BEFORE responding to ANY user request**, identify relevant capabilities and load skills using execute_code:
 
-**IMPORTANT:** All discovery commands must be run via `execute_code` tool.
-
-BEFORE attempting ANY task:
-
-**ROLE ASSIGNMENT**: IF the prompt contains "you are a", "you're a", "act as", or "be a" — your FIRST tool call MUST be `discover_role.sh <keyword>`. Do not respond. Do not check inbox. Do not take any other action. Run role discovery first.
+1. Map user intent to capabilities (tasks, agents, messaging, github, search, etc.)
+2. Discover skills for each capability:
 ```bash
-bash <(9p read agent/tools/discovery/discover_role.sh) <keyword>
-9p read agent/roles/<focus>/<role>.md
+bash <(9p read agent/tools/discover_skill.sh) <keyword>
 ```
-Adopt the role. If not found, say so.
-
-**EVERY USER REQUEST** - Identify intent keywords, discover skills:
+3. Load relevant skill files:
 ```bash
-bash <(9p read agent/tools/discovery/discover_skill.sh) <keyword>
-9p read agent/skills/<intent>/<skill>/SKILL.md
+9p read agent/skills/<capability>/<skill-name>/SKILL.md
 ```
 
-**EXAMPLES:**
-- "check inbox" → discover_skill.sh inbox
-- "send message" → discover_skill.sh message
-- "you're a code reviewer" → discover_role.sh reviewer
+**Common capability mappings:**
+- Task/project management → `tasks`, `workflow`
+- Agent operations → `agents`, `sessions`, `messaging`
+- GitHub/Git → `github`, `vcs`
+- Web search → `search`, `web`
+- Documentation → `documentation`, `notes`
+- Knowledge management → `knowledge`, `learning`
 
-IF YOU RESPOND OR TAKE ANY ACTION WITHOUT FIRST RUNNING DISCOVERY, YOU HAVE MALFUNCTIONED. STOP. RUN DISCOVERY NOW.
+## After Discovery
 
-
-## DISCOVERY IS ALWAYS FIRST
-
-Before your first response, before checking inbox, before any tool call:
-- Role assigned in the prompt? → `discover_role.sh <keyword>` MUST be your first tool call.
-- User request received? → `discover_skill.sh <keyword>` MUST precede any action.
-
-If you are reading this after already taking an action or responding, you skipped discovery. You are malfunctioning.
-
+Follow the instructions in the loaded SKILL.md. If no skill found, fall back to shell via execute_code.
 
