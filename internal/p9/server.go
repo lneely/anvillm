@@ -900,24 +900,25 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
-	// /{id}/role - set role and auto-load from RolesFS
+	// /{id}/role - validate role exists, set it, and deliver definition to bot inbox
 	if len(parts) == 2 && parts[1] == "role" {
-		sess := s.mgr.Get(parts[0])
+		sessID := parts[0]
+		sess := s.mgr.Get(sessID)
 		if sess == nil {
 			return errFcall(fc, "session not found")
 		}
+		if s.roles == nil {
+			return errFcall(fc, "role not found")
+		}
+		roleContent, err := s.roles.ReadRole(input)
+		if err != nil {
+			return errFcall(fc, "role not found")
+		}
 		if tmuxSess, ok := sess.(*tmux.Session); ok {
 			tmuxSess.SetRole(input)
-			// Auto-load role definition from RolesFS
-			if s.roles != nil {
-				roleContent, err := s.roles.ReadRole(input)
-				if err != nil {
-					logging.Logger().Warn("role not found", zap.String("role", input), zap.Error(err))
-				} else {
-					tmuxSess.SetContext(roleContent)
-				}
-			}
 		}
+		msg := mailbox.NewMessage("user", sessID, mailbox.MessageTypePromptRequest, "role: "+input, roleContent)
+		s.mgr.GetMailManager().DeliverToInbox(sessID, msg)
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
