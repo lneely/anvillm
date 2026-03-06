@@ -14,7 +14,10 @@ when_to_load: Load when you need to send messages to other agents, respond to th
 Discover agents:
 ```
 Tool: execute_code
-code: bash <(9p read agent/tools/list_sessions.sh) | grep "$(pwd)"
+pipe: [
+	{"tool": "list_sessions.sh"},
+	{"code": "grep '<current-working-dir>'"}
+]
 ```
 
 Send message:

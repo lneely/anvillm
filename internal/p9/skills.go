@@ -5,16 +5,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 
 	"9fans.net/go/plan9"
 )
 
-// SkillsFS provides virtual filesystem for skills organized by intent
-// SkillsFS provides 9P filesystem access to agent skills organized by intent.
-// Skills are discovered from configured directories and exposed as virtual files.
+// SkillsFS provides a flat virtual filesystem for skills.
+// Skills are discovered from configured directories and exposed as <name>.md files.
+// The listing is the union of all skills directories, sorted by name.
 type SkillsFS struct {
 	skillsDirs []string
 }
@@ -22,13 +21,12 @@ type SkillsFS struct {
 // SkillMeta holds parsed YAML front-matter from SKILL.md files.
 type SkillMeta struct {
 	Name        string
-	Intents     []string
 	Description string
 	Path        string // directory path
 }
 
 // NewSkillsFS creates a new skills filesystem handler.
-// It discovers skills from SKILLS_DIR environment variable or default locations.
+// It discovers skills from ANVILLM_SKILLS_DIR environment variable or default locations.
 func NewSkillsFS() *SkillsFS {
 	var dirs []string
 
@@ -52,7 +50,7 @@ func NewSkillsFS() *SkillsFS {
 	return &SkillsFS{skillsDirs: dirs}
 }
 
-// parseSkillFrontMatter extracts intent and description from SKILL.md YAML front-matter
+// parseSkillFrontMatter extracts name and description from SKILL.md YAML front-matter.
 func parseSkillFrontMatter(skillDir string) (*SkillMeta, error) {
 	skillFile := filepath.Join(skillDir, "SKILL.md")
 	f, err := os.Open(skillFile)
@@ -87,14 +85,7 @@ func parseSkillFrontMatter(skillDir string) (*SkillMeta, error) {
 			continue
 		}
 
-		if intents, ok := strings.CutPrefix(line, "intent:"); ok {
-			for i := range strings.SplitSeq(intents, ",") {
-				i = strings.TrimSpace(i)
-				if i != "" {
-					meta.Intents = append(meta.Intents, i)
-				}
-			}
-		} else if name, ok := strings.CutPrefix(line, "name:"); ok {
+		if name, ok := strings.CutPrefix(line, "name:"); ok {
 			meta.Name = strings.TrimSpace(name)
 			hasName = true
 		} else if desc, ok := strings.CutPrefix(line, "description:"); ok {
@@ -111,7 +102,8 @@ func parseSkillFrontMatter(skillDir string) (*SkillMeta, error) {
 	return meta, nil
 }
 
-// listAllSkills scans all skills directories and returns metadata
+// listAllSkills scans all skills directories and returns deduplicated metadata,
+// with the first occurrence (by skillsDirs order) winning on name collision.
 func (s *SkillsFS) listAllSkills() ([]*SkillMeta, error) {
 	seen := make(map[string]bool)
 	var skills []*SkillMeta
@@ -142,204 +134,56 @@ func (s *SkillsFS) listAllSkills() ([]*SkillMeta, error) {
 		}
 	}
 
+	sort.Slice(skills, func(i, j int) bool { return skills[i].Name < skills[j].Name })
 	return skills, nil
 }
 
-// listIntents returns unique intent names from all skills
-func (s *SkillsFS) listIntents() ([]string, error) {
-	skills, err := s.listAllSkills()
-	if err != nil {
-		return nil, err
-	}
-
-	intentSet := make(map[string]bool)
-	for _, skill := range skills {
-		if len(skill.Intents) == 0 {
-			intentSet["uncategorized"] = true
-		} else {
-			for _, intent := range skill.Intents {
-				intentSet[intent] = true
-			}
-		}
-	}
-
-	var intents []string
-	for intent := range intentSet {
-		intents = append(intents, intent)
-	}
-	return intents, nil
-}
-
-// listSkillsInIntent returns skills that have the given intent
-func (s *SkillsFS) listSkillsInIntent(intent string) ([]*SkillMeta, error) {
-	skills, err := s.listAllSkills()
-	if err != nil {
-		return nil, err
-	}
-
-	var result []*SkillMeta
-	for _, skill := range skills {
-		if intent == "uncategorized" && len(skill.Intents) == 0 {
-			result = append(result, skill)
-			continue
-		}
-		if slices.Contains(skill.Intents, intent) {
-			result = append(result, skill)
-		}
-	}
-	return result, nil
-}
-
-// generateHelp creates aggregated index: intent/skill-name\tdescription
-func (s *SkillsFS) generateHelp() (string, error) {
-	skills, err := s.listAllSkills()
-	if err != nil {
-		return "", err
-	}
-
-	seen := make(map[string]bool)
-	var lines []string
-	for _, skill := range skills {
-		key := skill.Name + "\t" + skill.Description
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		lines = append(lines, key)
-	}
-	sort.Strings(lines)
-	return strings.Join(lines, "\n") + "\n", nil
-}
-
-// List returns directory entries for a skills path
+// List returns directory entries for the flat skills root: agent/skills → <name>.md files.
 func (s *SkillsFS) List(path string) ([]plan9.Dir, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
-	// /skills - list intents + help file
 	if len(parts) == 2 && parts[0] == "agent" && parts[1] == "skills" {
-		intents, err := s.listIntents()
+		skills, err := s.listAllSkills()
 		if err != nil {
 			return nil, err
 		}
-
-		var dirs []plan9.Dir
-		dirs = append(dirs, plan9.Dir{
-			Name: "help",
-			Qid:  plan9.Qid{Type: plan9.QTFILE},
-			Mode: 0444,
-		})
-		for _, intent := range intents {
-			dirs = append(dirs, plan9.Dir{
-				Name: intent,
-				Qid:  plan9.Qid{Type: plan9.QTDIR},
-				Mode: plan9.DMDIR | 0555,
-			})
-		}
-		return dirs, nil
-	}
-
-	// /skills/<intent> - list skill directories
-	if len(parts) == 3 && parts[0] == "agent" && parts[1] == "skills" {
-		intent := parts[2]
-		skills, err := s.listSkillsInIntent(intent)
-		if err != nil {
-			return nil, err
-		}
-
 		var dirs []plan9.Dir
 		for _, skill := range skills {
 			dirs = append(dirs, plan9.Dir{
-				Name: skill.Name,
-				Qid:  plan9.Qid{Type: plan9.QTDIR},
-				Mode: plan9.DMDIR | 0555,
+				Name: skill.Name + ".md",
+				Qid:  plan9.Qid{Type: plan9.QTFILE},
+				Mode: 0444,
 			})
 		}
 		return dirs, nil
-	}
-
-	// /skills/<intent>/<skillname> - list files in skill directory
-	if len(parts) == 4 && parts[0] == "agent" && parts[1] == "skills" {
-		intent := parts[2]
-		skillName := parts[3]
-
-		skills, err := s.listSkillsInIntent(intent)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, skill := range skills {
-			if skill.Name == skillName {
-				entries, err := os.ReadDir(skill.Path)
-				if err != nil {
-					return nil, err
-				}
-
-				var dirs []plan9.Dir
-				for _, entry := range entries {
-					mode := plan9.Perm(0444)
-					qtype := uint8(plan9.QTFILE)
-					if entry.IsDir() {
-						mode = plan9.DMDIR | 0555
-						qtype = uint8(plan9.QTDIR)
-					}
-					dirs = append(dirs, plan9.Dir{
-						Name: entry.Name(),
-						Qid:  plan9.Qid{Type: qtype},
-						Mode: mode,
-					})
-				}
-				return dirs, nil
-			}
-		}
 	}
 
 	return nil, fmt.Errorf("not found")
 }
 
-// Read returns file content for a skills path
+// Read returns SKILL.md content for agent/skills/<name>.md.
 func (s *SkillsFS) Read(path string) ([]byte, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
-	// /agent/skills/help
-	if len(parts) == 3 && parts[0] == "agent" && parts[1] == "skills" && parts[2] == "help" {
-		help, err := s.generateHelp()
+	// agent/skills/<name>.md
+	if len(parts) == 3 && parts[0] == "agent" && parts[1] == "skills" {
+		fileName := parts[2]
+		if !strings.HasSuffix(fileName, ".md") {
+			return nil, fmt.Errorf("not found")
+		}
+		skillName := strings.TrimSuffix(fileName, ".md")
+
+		skills, err := s.listAllSkills()
 		if err != nil {
 			return nil, err
 		}
-		return []byte(help), nil
-	}
-
-	// /agent/skills/<intent>/<skillname>/<file>
-	if len(parts) < 5 || parts[0] != "agent" || parts[1] != "skills" {
-		return nil, fmt.Errorf("not found")
-	}
-
-	intent := parts[2]
-	skillName := parts[3]
-	fileName := strings.Join(parts[4:], "/")
-
-	// Prevent path traversal
-	cleanName := filepath.Clean(fileName)
-	if filepath.IsAbs(cleanName) {
-		return nil, fmt.Errorf("invalid path")
-	}
-
-	skills, err := s.listSkillsInIntent(intent)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, skill := range skills {
-		if skill.Name == skillName {
-			filePath := filepath.Join(skill.Path, cleanName)
-			// Verify result stays within skill directory
-			relPath, err := filepath.Rel(skill.Path, filePath)
-			if err != nil || strings.HasPrefix(relPath, "..") {
-				return nil, fmt.Errorf("invalid path")
+		for _, skill := range skills {
+			if skill.Name == skillName {
+				return os.ReadFile(filepath.Join(skill.Path, "SKILL.md"))
 			}
-			return os.ReadFile(filePath)
 		}
+		return nil, fmt.Errorf("skill not found: %s", skillName)
 	}
 
-	return nil, fmt.Errorf("skill not found")
+	return nil, fmt.Errorf("not found")
 }
