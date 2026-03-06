@@ -32,7 +32,7 @@ func (s *Supervisor) assignWork() {
 		return
 	}
 	
-	// Get all claimable tasks from all projects
+	// Get all ready tasks from all projects
 	ready, err := s.beads.Read("ready")
 	if err != nil || len(ready) == 0 {
 		return
@@ -43,31 +43,21 @@ func (s *Supervisor) assignWork() {
 		return
 	}
 	
-	// Filter for claimable tasks
-	claimable := []map[string]interface{}{}
+	// Filter for unassigned tasks
+	unassigned := []map[string]interface{}{}
 	for _, bead := range beads {
 		// Skip if already assigned
 		if assignee, ok := bead["assignee"].(string); ok && assignee != "" {
 			continue
 		}
-		
-		labels, ok := bead["labels"].([]interface{})
-		if !ok {
-			continue
-		}
-		for _, label := range labels {
-			if labelStr, ok := label.(string); ok && labelStr == "claimable" {
-				claimable = append(claimable, bead)
-				break
-			}
-		}
+		unassigned = append(unassigned, bead)
 	}
 	
-	if len(claimable) == 0 {
+	if len(unassigned) == 0 {
 		return
 	}
 	
-	// Try to assign to idle bots in matching project directories
+	// Try to assign to idle bots with matching role
 	bots := s.sessions.List()
 	for _, botID := range bots {
 		sess := s.sessions.Get(botID)
@@ -77,14 +67,40 @@ func (s *Supervisor) assignWork() {
 		}
 		botCwd := sess.Metadata().Cwd
 		
+		// Get bot role (default to "developer" if not set)
+		botRole := "developer"
+		if tmuxSess, ok := sess.(interface{ GetRole() string }); ok {
+			if role := tmuxSess.GetRole(); role != "" {
+				botRole = role
+			}
+		}
+		
 		// Only assign if session CWD is exactly or under task mountpoint
-		for _, bead := range claimable {
+		for _, bead := range unassigned {
 			taskCwd, ok := bead["cwd"].(string)
 			if !ok {
 				continue
 			}
 			
 			if botCwd != taskCwd && !strings.HasPrefix(botCwd, taskCwd+"/") {
+				continue
+			}
+			
+			// Extract role label from bead (format: "role:developer")
+			beadRole := "developer" // default
+			if labels, ok := bead["labels"].([]interface{}); ok {
+				for _, label := range labels {
+					if labelStr, ok := label.(string); ok {
+						if role, found := strings.CutPrefix(labelStr, "role:"); found {
+							beadRole = role
+							break
+						}
+					}
+				}
+			}
+			
+			// Skip if role doesn't match
+			if beadRole != botRole {
 				continue
 			}
 			

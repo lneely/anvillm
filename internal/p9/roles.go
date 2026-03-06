@@ -325,3 +325,23 @@ func (r *RolesFS) Read(path string) ([]byte, error) {
 
 	return nil, fmt.Errorf("role not found")
 }
+
+// ReadRole reads a role by name, searching all focus areas
+func (r *RolesFS) ReadRole(roleName string) (string, error) {
+	roles, err := r.listAllRoles()
+	if err != nil {
+		return "", err
+	}
+
+	for _, role := range roles {
+		if role.Name == roleName {
+			content, err := os.ReadFile(role.Path)
+			if err != nil {
+				return "", err
+			}
+			return string(content), nil
+		}
+	}
+
+	return "", fmt.Errorf("role %s not found", roleName)
+}

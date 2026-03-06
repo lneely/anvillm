@@ -111,10 +111,11 @@ const (
 	fileTmux
 	fileMail
 	fileModel
+	fileRole
 	fileCount
 )
 
-var fileNames = []string{"ctl", "state", "pid", "cwd", "alias", "backend", "context", "sandbox", "tmux", "mail", "model"}
+var fileNames = []string{"ctl", "state", "pid", "cwd", "alias", "backend", "context", "sandbox", "tmux", "mail", "model", "role"}
 
 // Directory names in session
 var dirNames = []string{"inbox", "outbox", "completed"}
@@ -908,6 +909,27 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
+	// /{id}/role - set role and auto-load from RolesFS
+	if len(parts) == 2 && parts[1] == "role" {
+		sess := s.mgr.Get(parts[0])
+		if sess == nil {
+			return errFcall(fc, "session not found")
+		}
+		if tmuxSess, ok := sess.(*tmux.Session); ok {
+			tmuxSess.SetRole(input)
+			// Auto-load role definition from RolesFS
+			if s.roles != nil {
+				roleContent, err := s.roles.ReadRole(input)
+				if err != nil {
+					logging.Logger().Warn("role not found", zap.String("role", input), zap.Error(err))
+				} else {
+					tmuxSess.SetContext(roleContent)
+				}
+			}
+		}
+		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
+	}
+
 	// /{id}/state - set session state (with validation)
 	if len(parts) == 2 && parts[1] == "state" {
 		sessID := parts[0]
@@ -1643,6 +1665,11 @@ func (s *Server) getSessionFile(sess backend.Session, idx int) string {
 		return ""
 	case fileModel:
 		return sess.Model()
+	case fileRole:
+		if tmuxSess, ok := sess.(*tmux.Session); ok {
+			return tmuxSess.GetRole()
+		}
+		return ""
 	}
 	return ""
 }

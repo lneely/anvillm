@@ -23,6 +23,9 @@ description: Manage tasks using the beads 9P interface. Use when creating, updat
 - Read bead: `bash <(9p read tools/beads/read_bead.sh) <mount> <id> <property>`
 - Read bead JSON: `bash <(9p read tools/beads/read_bead.sh) <mount> <id> json`
 - Read bead comments: `bash <(9p read tools/beads/read_bead.sh) <mount> <id> comments`
+
+**IMPORTANT:** When working on a bead, always check `comment_count` in the JSON output. If > 0, read comments for additional context, decisions, or blockers.
+
 - Claim bead: `bash <(9p read tools/beads/claim_bead.sh) <mount> bd-abc [$AGENT_ID]`
 - Complete bead: `bash <(9p read tools/beads/complete_bead.sh) <mount> bd-abc`
 - Fail bead: `bash <(9p read tools/beads/fail_bead.sh) <mount> bd-abc "reason"`
@@ -34,17 +37,6 @@ description: Manage tasks using the beads 9P interface. Use when creating, updat
 - Delete bead: `bash <(9p read tools/beads/delete_bead.sh) <mount> bd-abc`
 
 **Note:** Delete does not cascade. To delete a parent and all children, delete children first, then parent.
-
-## Workflow
-
-**IMPORTANT:** When working on a bead, always check `comment_count` in the JSON output. If > 0, read comments for additional context, decisions, or blockers.
-
-1. Find a ready task
-2. Claim the ticket being worked on
-3. Use agent-kb skill to search the knowledge base.
-4. Do work
-5. Verify all children completed
-6. Only if all children completed, complete the parent. Otherwise, work on other unblocked child tasks.
 
 ## Rules
 

@@ -30,6 +30,7 @@ type Session struct {
 	winID       int    // Acme window ID (0 if not applicable)
 	pid         int
 	state       string
+	role               string // bot role (developer, reviewer, tester, etc.)
 	context            string // injected into first prompt only
 	initialPromptSent  bool   // true after context was sent; reset on clear/compact/stop/restart
 	createdAt          time.Time
@@ -232,6 +233,20 @@ func (s *Session) GetContext() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.context
+}
+
+// SetRole sets the bot role
+func (s *Session) SetRole(role string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.role = role
+}
+
+// GetRole gets the bot role
+func (s *Session) GetRole() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.role
 }
 
 // SetWinID sets the Acme window ID

@@ -10,12 +10,12 @@ Create and control agent sessions.
 
 ## Commands
 
-All commands must be run via `execute_code` tool:
+All commands must be run via `execute_code` tool, EXCEPT spawn_agent.sh which must NOT use execute_code:
 
 - List sessions: `list_sessions.sh`
 - Create session: `create_session.sh <backend> <cwd> [sandbox=<sandbox>] [model=<model>]`
 - Control session: `control_session.sh <session-id> <command>`
-- Spawn agent: `spawn_agent.sh <agent-id> [cwd-path] [initial-context-prompt]`
+- Spawn agent: `spawn_agent.sh <agent-id> [cwd-path] [initial-context-prompt]` (do NOT use execute_code)
 - Kill agent: `kill_agent.sh [cwd-path]`
 
 ## Backends

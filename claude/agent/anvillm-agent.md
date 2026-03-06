@@ -6,6 +6,8 @@ permissionMode: bypassPermissions
 
 # Output Protocol
 
+**SCOPE**: This protocol controls communication style only. It does NOT modify workflow steps, role requirements, or delegation mandates.
+
 Be terse. No preamble. No summaries of completed actions. No narration.
 Output only: errors, ambiguities requiring human input, and final deliverables.
 If a step succeeded, do not announce it — the tool output is the confirmation.

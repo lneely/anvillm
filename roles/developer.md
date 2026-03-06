@@ -47,24 +47,21 @@ After writing code:
 
 ## Development Workflow
 
-Iterate until both reviewer and tester approve:
+Iterate until reviewer and/or tester approve (delegate as needed):
 
 ```
-Plan/Research => Develop => Review => Test
-     ^            ^          |         |
-     |            |          v         |
-     |            '----------'         |
-     '-------------------------------'
+Plan/Research => Develop => Review/Test (as needed)
+     ^            ^          |
+     |            |          v
+     |            '----------'
+     '----------------------'
 ```
 
-1. **Plan/Research**: Delegate research queries to researcher bot
+1. **Plan/Research**: Delegate research queries to researcher bot if needed
 2. **Develop**: Write code based on requirements and research
-3. **Review**: Send code to reviewer bot, wait for REVIEW_RESPONSE
-   - If "LGTM": kill reviewer bot, proceed to Test
+3. **Review/Test**: Delegate to reviewer and/or tester as needed, wait for responses
+   - If approved: kill delegated bots, complete
    - If rejected: fix issues and return to Develop
-4. **Test**: Send APPROVAL_REQUEST to tester bot, wait for APPROVAL_RESPONSE
-   - If status "Approved": kill tester bot, complete
-   - If status "Rejected": fix issues and return to Develop
 
 ## Message Protocol
 
