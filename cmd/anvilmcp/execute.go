@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 var dangerousPatterns = []*regexp.Regexp{
@@ -22,16 +24,13 @@ var dangerousPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`rm\s+(-[a-z]*r[a-z]*\s+)*-[a-z]*f[a-z]*\s+\.\.?(/|$)`),                                           // rm -rf ./ or rm -rf ../
 	regexp.MustCompile(`rm\s+(-[a-z]*r[a-z]*\s+)*-[a-z]*f[a-z]*\s+~`),                                                    // rm -rf ~ (home dir)
 	regexp.MustCompile(`rm\s+(-[a-z]*r[a-z]*\s+)*-[a-z]*f[a-z]*\s+\*`),                                                   // rm -rf * (glob expansion)
-	regexp.MustCompile(`:\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&`), // fork bomb
-	regexp.MustCompile(`\bmkfs\b`),                         // filesystem format
-	regexp.MustCompile(`\bdd\b.*\bif=/dev/`),               // dd from device
-	regexp.MustCompile(`\bchmod\s+777\b`),                  // world-writable
-	regexp.MustCompile(`\b(curl|wget)\s+\S*://`),           // network fetch (any protocol)
-	regexp.MustCompile(`>\s*/dev/`),                        // write to device
-	regexp.MustCompile(`\beval\s*\(`),                      // eval execution
-	regexp.MustCompile(`\bexec\s*\(`),                      // exec execution
-	regexp.MustCompile(`\b(sudo|su)\b`),                    // privilege escalation
-	regexp.MustCompile(`/etc/(passwd|shadow|sudoers)`),     // sensitive files
+	regexp.MustCompile(`:\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&`),                                                              // fork bomb
+	regexp.MustCompile(`\bmkfs\b`),                                                                                       // filesystem format
+	regexp.MustCompile(`\bdd\b.*\bif=/dev/`),                                                                             // dd from device
+	regexp.MustCompile(`>\s*/dev/sd`),                                                                                    // write to block device
+	regexp.MustCompile(`\beval\s+".*\$`),                                                                                 // eval with variable expansion
+	regexp.MustCompile(`\b(sudo|su)\s`),                                                                                  // privilege escalation
+	regexp.MustCompile(`/etc/(shadow|sudoers)`),                                                                          // sensitive files (not passwd)
 }
 
 var whitespacePattern = regexp.MustCompile(`\s+`)
@@ -109,7 +108,95 @@ func validateCode(code string) error {
 	return nil
 }
 
-func executeCode(code, language string, timeout int) (string, error) {
+// SandboxConfig represents the sandbox configuration loaded from YAML
+type SandboxConfig struct {
+	CWD        string `yaml:"cwd"` // "temp" for temp workspace, or path template like "{CWD}"
+	Filesystem struct {
+		RO  []string `yaml:"ro"`
+		ROX []string `yaml:"rox"`
+		RW  []string `yaml:"rw"`
+		RWX []string `yaml:"rwx"`
+	} `yaml:"filesystem"`
+	Env     []string `yaml:"env"`
+	Network struct {
+		Unrestricted bool `yaml:"unrestricted"`
+	} `yaml:"network"`
+}
+
+// loadSandboxConfig loads sandbox config from ~/.config/anvillm/sandbox/<name>.yaml
+// Falls back to ./cfg/sandbox/<name>.yaml for development
+func loadSandboxConfig(name string) (*SandboxConfig, error) {
+	// Validate name to prevent path traversal
+	if name == "" {
+		name = "anvilmcp"
+	}
+	for _, r := range name {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
+			return nil, fmt.Errorf("invalid sandbox name: %s", name)
+		}
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	cfgPath := filepath.Join(homeDir, ".config", "anvillm", "sandbox", name+".yaml")
+
+	// Fall back to ./cfg/sandbox/ for development
+	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+		cfgPath = filepath.Join("cfg", "sandbox", name+".yaml")
+	}
+
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load sandbox config %s: %v", name, err)
+	}
+
+	var cfg SandboxConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse sandbox config: %v", err)
+	}
+
+	return &cfg, nil
+}
+
+// expandPath replaces template variables with actual values
+func expandPath(pattern string) string {
+	s := pattern
+	homeDir, _ := os.UserHomeDir()
+
+	// Generic environment variable expansion: {VAR_NAME}
+	re := regexp.MustCompile(`\{([A-Z_][A-Z0-9_]*)\}`)
+	s = re.ReplaceAllStringFunc(s, func(match string) string {
+		varName := match[1 : len(match)-1]
+
+		switch varName {
+		case "HOME":
+			return homeDir
+		case "PLAN9":
+			if plan9 := os.Getenv("PLAN9"); plan9 != "" {
+				return plan9
+			}
+			return "" // Will cause path to be skipped
+		case "NAMESPACE":
+			if ns := os.Getenv("NAMESPACE"); ns != "" {
+				return ns
+			}
+			if nsCmd, err := exec.Command("namespace").Output(); err == nil {
+				return strings.TrimSpace(string(nsCmd))
+			}
+			return fmt.Sprintf("/tmp/ns.%s.:0", os.Getenv("USER"))
+		case "CWD":
+			return "" // Handled specially - replaced with workDir
+		}
+
+		if val := os.Getenv(varName); val != "" {
+			return val
+		}
+		return "" // Will cause path to be skipped
+	})
+
+	return s
+}
+
+func executeCode(code, language string, timeout int, sandbox string) (string, error) {
 	start := time.Now()
 	
 	if timeout <= 0 {
@@ -129,113 +216,92 @@ func executeCode(code, language string, timeout int) (string, error) {
 		return "", err
 	}
 
+	// Load sandbox config
+	cfg, err := loadSandboxConfig(sandbox)
+	if err != nil {
+		return "", err
+	}
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get home dir: %v", err)
 	}
+
+	// Determine working directory based on config
+	var workDir string
+	var cleanupWorkDir bool
 	
-	workspaceBase := filepath.Join(homeDir, ".cache", "anvillm", "exec")
-	if err := os.MkdirAll(workspaceBase, 0700); err != nil {
-		return "", fmt.Errorf("failed to create workspace base: %v", err)
+	if cfg.CWD == "" || cfg.CWD == "temp" {
+		// Use temp workspace (original behavior)
+		workspaceBase := filepath.Join(homeDir, ".cache", "anvillm", "exec")
+		if err := os.MkdirAll(workspaceBase, 0700); err != nil {
+			return "", fmt.Errorf("failed to create workspace base: %v", err)
+		}
+		workDir, err = os.MkdirTemp(workspaceBase, "anvilmcp-*")
+		if err != nil {
+			return "", fmt.Errorf("failed to create workspace: %v", err)
+		}
+		cleanupWorkDir = true
+	} else {
+		// Use configured path (e.g., "{CWD}" expands to current directory)
+		workDir = expandPath(cfg.CWD)
+		if workDir == "" {
+			workDir, _ = os.Getwd()
+		}
+		cleanupWorkDir = false
 	}
 	
-	workDir, err := os.MkdirTemp(workspaceBase, "anvilmcp-*")
-	if err != nil {
-		return "", fmt.Errorf("failed to create workspace: %v", err)
+	if cleanupWorkDir {
+		defer os.RemoveAll(workDir)
 	}
-	defer os.RemoveAll(workDir)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer cancel()
 
-	// Check for landrun
 	landrunPath, err := exec.LookPath("landrun")
 	if err != nil {
 		return "", fmt.Errorf("landrun not found: %v", err)
 	}
 
-	// Get namespace for 9p access
-	namespace := os.Getenv("NAMESPACE")
-	if namespace == "" {
-		// Try to get from namespace command
-		if nsCmd, err := exec.Command("namespace").Output(); err == nil {
-			namespace = strings.TrimSpace(string(nsCmd))
-		}
-		if namespace == "" {
-			namespace = fmt.Sprintf("/tmp/ns.%s.:0", os.Getenv("USER"))
-		}
-	}
-
-	// Get AGENT_ID if set
-	agentID := os.Getenv("AGENT_ID")
-
 	var cmd *exec.Cmd
 	switch language {
 	case "bash", "":
-		args := []string{
-			"--rwx", workDir,
-			"--unrestricted-network",
-		}
-		
-		// Add common system paths if they exist
-		systemPaths := []struct {
-			flag string
-			path string
-		}{
-			{"--rox", "/usr"},
-			{"--rox", "/lib"},
-			{"--rox", "/lib64"},
-			{"--rox", "/bin"},
-			{"--ro", "/etc/alternatives"},
-			{"--ro", "/etc/ld.so.cache"},
-			{"--ro", "/etc/passwd"},
-			{"--rw", "/dev/null"},
-			{"--ro", "/dev/urandom"},
-			{"--rw", "/tmp"},
-		}
-		
-		for _, sp := range systemPaths {
-			if _, err := os.Stat(sp.path); err == nil {
-				args = append(args, sp.flag, sp.path)
+		args := []string{}
+
+		// Add filesystem permissions from config
+		addPaths := func(flag string, paths []string) {
+			for _, p := range paths {
+				expanded := expandPath(p)
+				if expanded == "" {
+					continue
+				}
+				// Handle {CWD} specially
+				if strings.Contains(p, "{CWD}") {
+					expanded = strings.ReplaceAll(p, "{CWD}", workDir)
+				}
+				if _, err := os.Stat(expanded); err == nil {
+					args = append(args, flag, expanded)
+				}
 			}
 		}
-		
-		// Add namespace if set
-		if namespace != "" {
-			args = append(args, "--rw", namespace)
+
+		addPaths("--ro", cfg.Filesystem.RO)
+		addPaths("--rox", cfg.Filesystem.ROX)
+		addPaths("--rw", cfg.Filesystem.RW)
+		addPaths("--rwx", cfg.Filesystem.RWX)
+
+		// Network
+		if cfg.Network.Unrestricted {
+			args = append(args, "--unrestricted-network")
 		}
-		
-		// Add common user binary directories
-		userBinDirs := []string{
-			filepath.Join(homeDir, "bin"),
-			filepath.Join(homeDir, ".local", "bin"),
-			filepath.Join(homeDir, "opt"),
-			filepath.Join(homeDir, "go", "bin"),
-		}
-		
-		// Add PLAN9 bin if set
-		if plan9 := os.Getenv("PLAN9"); plan9 != "" {
-			userBinDirs = append(userBinDirs, filepath.Join(plan9, "bin"))
-		}
-		
-		for _, dir := range userBinDirs {
-			if _, err := os.Stat(dir); err == nil {
-				args = append(args, "--rox", dir)
+
+		// Environment variables
+		for _, env := range cfg.Env {
+			if os.Getenv(env) != "" || env == "HOME" || env == "USER" || env == "PATH" {
+				args = append(args, "--env", env)
 			}
 		}
-		
-		args = append(args,
-			"--env", "NAMESPACE",
-			"--env", "PATH",
-			"--env", "HOME",
-			"--env", "PLAN9",
-			"--env", "DISPLAY",
-			"--env", "WAYLAND_DISPLAY",
-			"--env", "USER",
-		)
-		if agentID != "" {
-			args = append(args, "--env", "AGENT_ID")
-		}
+
 		args = append(args, "--", "bash", "-c", code)
 		
 		cmd = exec.CommandContext(ctx, landrunPath, args...)
@@ -253,7 +319,6 @@ func executeCode(code, language string, timeout int) (string, error) {
 	err = cmd.Run()
 	output := outputBuf.Bytes()
 	
-	// Append truncation notice if output was truncated
 	if lw.truncated {
 		output = append(output, []byte("\n[output truncated at 10MB]")...)
 	}

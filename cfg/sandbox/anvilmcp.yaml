@@ -1,0 +1,36 @@
+# Default sandbox config for anvilmcp execute_code
+# Based on hard-coded permissions from execute.go
+cwd: temp  # Use temp workspace (cleaned up after execution)
+filesystem:
+  ro:
+    - "/etc/alternatives"
+    - "/etc/ld.so.cache"
+    - "/etc/passwd"
+    - "/dev/urandom"
+  rox:
+    - "/usr"
+    - "/lib"
+    - "/lib64"
+    - "/bin"
+    - "{HOME}/go/bin"
+    - "{HOME}/bin"
+    - "{HOME}/.local/bin"
+    - "{HOME}/opt"
+    - "{PLAN9}/bin"
+  rw:
+    - "/dev/null"
+    - "/tmp"
+    - "{NAMESPACE}"
+  rwx:
+    - "{CWD}"
+env:
+  - NAMESPACE
+  - PATH
+  - HOME
+  - PLAN9
+  - DISPLAY
+  - WAYLAND_DISPLAY
+  - USER
+  - AGENT_ID
+network:
+  unrestricted: true

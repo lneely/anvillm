@@ -95,6 +95,7 @@ func main() {
 								"code":     {Type: "string", Description: "Bash code to execute"},
 								"language": {Type: "string", Description: "Programming language (bash)", Enum: []string{"bash"}},
 								"timeout":  {Type: "integer", Description: "Timeout in seconds (default: 30)"},
+								"sandbox":  {Type: "string", Description: "Sandbox config name (default: default)"},
 							},
 							Required: []string{"code"},
 						},
@@ -132,13 +133,17 @@ func handleToolCall(req MCPRequest) {
 		if t, ok := params.Arguments["timeout"].(float64); ok {
 			timeout = int(t)
 		}
+		sandbox, _ := params.Arguments["sandbox"].(string)
+		if sandbox == "" {
+			sandbox = "anvilmcp"
+		}
 
 		// Acquire execution slot
 		executionSemaphore <- struct{}{}
 		defer func() { <-executionSemaphore }()
 
-		fmt.Fprintf(os.Stderr, "[anvilmcp] Executing bash code (timeout: %ds)\n", timeout)
-		result, err := executeCode(code, language, timeout)
+		fmt.Fprintf(os.Stderr, "[anvilmcp] Executing bash code (timeout: %ds, sandbox: %s)\n", timeout, sandbox)
+		result, err := executeCode(code, language, timeout, sandbox)
 
 		// Log token comparison
 		codeTokens := estimateTokens(code)

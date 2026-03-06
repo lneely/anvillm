@@ -9,12 +9,28 @@ when_to_load: Load when you need to send messages to other agents, respond to th
 
 ## Tools
 
-**IMPORTANT:** All anvillm-communication tools must be run via `execute_code` tool.
 **IMPORTANT:** Read the $AGENT_ID environment variable to get your agent ID
 
-- Discover agents: `bash <(9p read agent/tools/agents/list_sessions.sh) | grep "$(pwd)"`
-- Send message: `bash <(9p read agent/tools/messaging/send_message.sh) <FROM> <TO> <TYPE> <SUBJECT> <BODY>`
-- Check inbox: `bash <(9p read agent/tools/messaging/read_inbox.sh) <AGENT_ID>`
+Discover agents:
+```
+Tool: execute_code
+sandbox: anvilmcp
+code: bash <(9p read agent/tools/agents/list_sessions.sh) | grep "$(pwd)"
+```
+
+Send message:
+```
+Tool: execute_code
+sandbox: anvilmcp
+code: bash <(9p read agent/tools/messaging/send_message.sh) <FROM> <TO> <TYPE> <SUBJECT> <BODY>
+```
+
+Check inbox:
+```
+Tool: execute_code
+sandbox: anvilmcp
+code: bash <(9p read agent/tools/messaging/read_inbox.sh) <AGENT_ID>
+```
 
 ## Rules
 

@@ -10,10 +10,10 @@ Import Jira ticket hierarchies into beads.
 
 ## Usage
 
-All commands must be run via `execute_code` tool.
-
-```bash
-jira_to_beads.sh PROJ-12345
+```
+Tool: execute_code
+sandbox: anvilmcp
+code: bash <(9p read agent/tools/jira/jira_to_beads.sh) PROJ-12345
 ```
 
 **What it does:**

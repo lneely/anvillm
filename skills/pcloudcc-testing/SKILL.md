@@ -37,15 +37,33 @@ Load pcloudcc-testing skill. Test the affected code path with unit tests, fault 
 
 **Prerequisites**: Load `anvillm-sessions` and `anvillm-communication` skills
 
-**Spawn testing agent**: `bash <(9p read agent/tools/agents/spawn_agent.sh) <your-id> "<system-prompt-above>"`
+Spawn testing agent:
+```
+Tool: execute_code
+sandbox: default
+code: bash <(9p read agent/tools/agents/spawn_agent.sh) <your-id> "<system-prompt-above>"
+```
 
-**Send test request**: `bash <(9p read agent/tools/messaging/send_message.sh) <your-id> <testing-agent-id> PROMPT_REQUEST "Validate fix" "Bug: <desc>\nFix: <changes>\nFiles: <list>\nBranch: <name>"`
+Send test request:
+```
+Tool: execute_code
+sandbox: anvilmcp
+code: bash <(9p read agent/tools/messaging/send_message.sh) <your-id> <testing-agent-id> PROMPT_REQUEST "Validate fix" "Bug: <desc>\nFix: <changes>\nFiles: <list>\nBranch: <name>"
+```
 
-**Read response** (user notifies when ready): `bash <(9p read agent/tools/messaging/read_inbox.sh) <your-id>`
+Read response (user notifies when ready):
+```
+Tool: execute_code
+sandbox: anvilmcp
+code: bash <(9p read agent/tools/messaging/read_inbox.sh) <your-id>
+```
 
-**Kill testing agent**: `bash <(9p read agent/tools/agents/kill_agent.sh) <testing-agent-id>`
-
-**Note**: `spawn_agent.sh` is an exception — use the Bash tool (`execute_bash`), NOT `execute_code`. All other commands in this section use `execute_code` as normal.
+Kill testing agent:
+```
+Tool: execute_code
+sandbox: anvilmcp
+code: bash <(9p read agent/tools/agents/kill_agent.sh) <testing-agent-id>
+```
 
 ### Testing Agent Workflow
 
@@ -54,7 +72,12 @@ Load pcloudcc-testing skill. Test the affected code path with unit tests, fault 
 3. Design targeted test (reproduce bug scenario)
 4. Execute test (unit/fault-inject/smoke)
 5. Verify fix (old fails, new passes)
-6. Report: `bash <(9p read agent/tools/messaging/send_message.sh) <your-id> <requester-id> PROMPT_RESPONSE "Validation complete" "Status: completed|failed\n<evidence>"`
+6. Report:
+```
+Tool: execute_code
+sandbox: anvilmcp
+code: bash <(9p read agent/tools/messaging/send_message.sh) <your-id> <requester-id> PROMPT_RESPONSE "Validation complete" "Status: completed|failed\n<evidence>"
+```
 
 **FUSE testing**: Inform user daemon must start outside sandbox, wait for acknowledgement
 

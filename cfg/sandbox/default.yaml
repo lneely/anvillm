@@ -1,5 +1,6 @@
 # Default role: combined most-permissive settings from all tasks/roles
 # TODO: revisit role-based permissions later
+cwd: "{CWD}"
 filesystem:
   ro:
     - "{HOME}/.gitconfig"

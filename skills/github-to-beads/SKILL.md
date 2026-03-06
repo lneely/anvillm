@@ -10,10 +10,10 @@ Import GitHub issues into beads.
 
 ## Usage
 
-All commands must be run via `execute_code` tool.
-
-```bash
-github_to_beads.sh OWNER/REPO ISSUE_NUMBER
+```
+Tool: execute_code
+sandbox: anvilmcp
+code: bash <(9p read agent/tools/github/github_to_beads.sh) OWNER/REPO ISSUE_NUMBER
 ```
 
 **What it does:**
