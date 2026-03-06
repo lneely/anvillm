@@ -196,8 +196,8 @@ func validateName(name string) error {
 	return nil
 }
 
-// expandPath replaces template variables with actual values
-func expandPath(pattern, cwd string) string {
+// ExpandPath replaces template variables with actual values
+func ExpandPath(pattern, cwd string) string {
 	s := pattern
 
 	// CWD is special - passed as parameter, not from env

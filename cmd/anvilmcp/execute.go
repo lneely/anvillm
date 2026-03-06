@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	"anvillm/internal/sandbox"
 )
 
 var dangerousPatterns = []*regexp.Regexp{
@@ -117,95 +117,47 @@ func validateCode(code string) error {
 	return nil
 }
 
-// SandboxConfig represents the sandbox configuration loaded from YAML
-type SandboxConfig struct {
-	CWD        string `yaml:"cwd"` // "temp" for temp workspace, or path template like "{CWD}"
-	Filesystem struct {
-		RO  []string `yaml:"ro"`
-		ROX []string `yaml:"rox"`
-		RW  []string `yaml:"rw"`
-		RWX []string `yaml:"rwx"`
-	} `yaml:"filesystem"`
-	Env     []string `yaml:"env"`
-	Network struct {
-		Unrestricted bool `yaml:"unrestricted"`
-	} `yaml:"network"`
-}
+// loadLayeredConfig loads sandbox config using the layered approach:
+// global.yaml -> backend (anvilmcp) -> sandbox/<name>.yaml
+func loadLayeredConfig(name string) (*sandbox.Config, error) {
+	// Load global.yaml as base
+	baseCfg, err := sandbox.Load()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load global config: %w", err)
+	}
 
-// loadSandboxConfig loads sandbox config from ~/.config/anvillm/sandbox/<name>.yaml
-// Falls back to ./cfg/sandbox/<name>.yaml for development
-func loadSandboxConfig(name string) (*SandboxConfig, error) {
-	// Validate name to prevent path traversal
+	// Convert base config to layered format
+	baseLayer := sandbox.LayeredConfig{
+		Filesystem: baseCfg.Filesystem,
+		Network:    baseCfg.Network,
+		Env:        baseCfg.Env,
+	}
+	layers := []sandbox.LayeredConfig{baseLayer}
+
+	// Load sandbox layer
 	if name == "" {
 		name = "anvilmcp"
 	}
-	for _, r := range name {
-		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
-			return nil, fmt.Errorf("invalid sandbox name: %s", name)
-		}
-	}
-
-	homeDir, _ := os.UserHomeDir()
-	cfgPath := filepath.Join(homeDir, ".config", "anvillm", "sandbox", name+".yaml")
-
-	// Fall back to ./cfg/sandbox/ for development
-	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
-		cfgPath = filepath.Join("cfg", "sandbox", name+".yaml")
-	}
-
-	data, err := os.ReadFile(cfgPath)
+	sbxLayer, err := sandbox.LoadSandbox(name)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load sandbox config %s: %v", name, err)
+		return nil, fmt.Errorf("failed to load sandbox %q: %w", name, err)
+	}
+	layers = append(layers, sbxLayer)
+
+	// Merge layers
+	general := sandbox.GeneralConfig{
+		BestEffort: baseCfg.General.BestEffort,
+		LogLevel:   baseCfg.General.LogLevel,
+	}
+	advanced := sandbox.AdvancedConfig{
+		LDD:     baseCfg.Advanced.LDD,
+		AddExec: baseCfg.Advanced.AddExec,
 	}
 
-	var cfg SandboxConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse sandbox config: %v", err)
-	}
-
-	return &cfg, nil
+	return sandbox.Merge(general, advanced, layers...), nil
 }
 
-// expandPath replaces template variables with actual values
-func expandPath(pattern string) string {
-	s := pattern
-	homeDir, _ := os.UserHomeDir()
-
-	// Generic environment variable expansion: {VAR_NAME}
-	re := regexp.MustCompile(`\{([A-Z_][A-Z0-9_]*)\}`)
-	s = re.ReplaceAllStringFunc(s, func(match string) string {
-		varName := match[1 : len(match)-1]
-
-		switch varName {
-		case "HOME":
-			return homeDir
-		case "PLAN9":
-			if plan9 := os.Getenv("PLAN9"); plan9 != "" {
-				return plan9
-			}
-			return "" // Will cause path to be skipped
-		case "NAMESPACE":
-			if ns := os.Getenv("NAMESPACE"); ns != "" {
-				return ns
-			}
-			if nsCmd, err := exec.Command("namespace").Output(); err == nil {
-				return strings.TrimSpace(string(nsCmd))
-			}
-			return fmt.Sprintf("/tmp/ns.%s.:0", os.Getenv("USER"))
-		case "CWD":
-			return "" // Handled specially - replaced with workDir
-		}
-
-		if val := os.Getenv(varName); val != "" {
-			return val
-		}
-		return "" // Will cause path to be skipped
-	})
-
-	return s
-}
-
-func executeCode(code, language string, timeout int, sandbox string) (string, error) {
+func executeCode(code, language string, timeout int, sandboxName string) (string, error) {
 	start := time.Now()
 	
 	if timeout <= 0 {
@@ -225,8 +177,8 @@ func executeCode(code, language string, timeout int, sandbox string) (string, er
 		return "", err
 	}
 
-	// Load sandbox config
-	cfg, err := loadSandboxConfig(sandbox)
+	// Load layered sandbox config
+	cfg, err := loadLayeredConfig(sandboxName)
 	if err != nil {
 		return "", err
 	}
@@ -236,12 +188,12 @@ func executeCode(code, language string, timeout int, sandbox string) (string, er
 		return "", fmt.Errorf("failed to get home dir: %v", err)
 	}
 
-	// Determine working directory based on config
-	var workDir string
+	// Use current working directory
+	workDir, _ := os.Getwd()
+
+	// For anvilmcp sandbox, use temp workspace
 	var cleanupWorkDir bool
-	
-	if cfg.CWD == "" || cfg.CWD == "temp" {
-		// Use temp workspace (original behavior)
+	if sandboxName == "" || sandboxName == "anvilmcp" {
 		workspaceBase := filepath.Join(homeDir, ".cache", "anvillm", "exec")
 		if err := os.MkdirAll(workspaceBase, 0700); err != nil {
 			return "", fmt.Errorf("failed to create workspace base: %v", err)
@@ -251,13 +203,6 @@ func executeCode(code, language string, timeout int, sandbox string) (string, er
 			return "", fmt.Errorf("failed to create workspace: %v", err)
 		}
 		cleanupWorkDir = true
-	} else {
-		// Use configured path (e.g., "{CWD}" expands to current directory)
-		workDir = expandPath(cfg.CWD)
-		if workDir == "" {
-			workDir, _ = os.Getwd()
-		}
-		cleanupWorkDir = false
 	}
 	
 	if cleanupWorkDir {
@@ -280,13 +225,9 @@ func executeCode(code, language string, timeout int, sandbox string) (string, er
 		// Add filesystem permissions from config
 		addPaths := func(flag string, paths []string) {
 			for _, p := range paths {
-				expanded := expandPath(p)
-				if expanded == "" {
-					continue
-				}
-				// Handle {CWD} specially
-				if strings.Contains(p, "{CWD}") {
-					expanded = strings.ReplaceAll(p, "{CWD}", workDir)
+				expanded := sandbox.ExpandPath(p, workDir)
+				if expanded == "" || strings.Contains(expanded, "{") {
+					continue // Skip unexpanded templates
 				}
 				if _, err := os.Stat(expanded); err == nil {
 					args = append(args, flag, expanded)
