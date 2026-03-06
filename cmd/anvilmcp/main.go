@@ -134,7 +134,7 @@ func main() {
 								"args":     {Type: "array", Description: "Arguments to pass to tool", Items: &Items{Type: "string"}},
 								"code":     {Type: "string", Description: "Inline code to execute (if tool not specified)"},
 								"language": {Type: "string", Description: "Programming language", Enum: []string{"bash"}},
-								"timeout":  {Type: "integer", Description: "Timeout in seconds (default: 30)"},
+								"timeout":  {Type: "integer", Description: "Timeout in seconds (default: 30). Recommended: 600 for builds, 120 for network ops, 1800 for remote builds"},
 								"sandbox":  {Type: "string", Description: "Sandbox config name (default: default)"},
 							},
 						},
