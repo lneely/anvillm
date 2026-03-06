@@ -53,4 +53,4 @@ args: ["<agent_id>"]
 
 1. Check your inbox
 2. Follow the instructions in the message
-3. Respond to the sender appropriately (see Sending Messages)
+3. Always respond to the sender (the `from` field of the message), not to "user", unless the sender is "user"
