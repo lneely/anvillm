@@ -1,5 +1,4 @@
 # Default sandbox config for anvilmcp execute_code
-# Based on hard-coded permissions from execute.go
 cwd: temp  # Use temp workspace (cleaned up after execution)
 filesystem:
   ro:
