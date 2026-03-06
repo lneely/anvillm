@@ -157,24 +157,26 @@ func loadLayeredConfig(name string) (*sandbox.Config, error) {
 	return sandbox.Merge(general, advanced, layers...), nil
 }
 
-func executeCode(code, language string, timeout int, sandboxName string) (string, error) {
+func executeCode(code, language string, timeout int, sandboxName string, trusted bool) (string, error) {
 	start := time.Now()
 	
 	if timeout <= 0 {
 		timeout = 30
 	}
 
-	if err := validateCode(code); err != nil {
-		logExecution(ExecutionLog{
-			Timestamp:  start,
-			CodeHash:   hashCode(code),
-			Language:   language,
-			Duration:   time.Since(start),
-			Success:    false,
-			OutputSize: 0,
-			Error:      err.Error(),
-		})
-		return "", err
+	if !trusted {
+		if err := validateCode(code); err != nil {
+			logExecution(ExecutionLog{
+				Timestamp:  start,
+				CodeHash:   hashCode(code),
+				Language:   language,
+				Duration:   time.Since(start),
+				Success:    false,
+				OutputSize: 0,
+				Error:      err.Error(),
+			})
+			return "", err
+		}
 	}
 
 	// Load layered sandbox config
@@ -256,8 +258,43 @@ func executeCode(code, language string, timeout int, sandboxName string) (string
 		
 		cmd = exec.CommandContext(ctx, landrunPath, args...)
 		cmd.Dir = workDir
+	case "go":
+		args := []string{}
+
+		addPaths := func(flag string, paths []string) {
+			for _, p := range paths {
+				expanded := sandbox.ExpandPath(p, workDir)
+				if expanded == "" || strings.Contains(expanded, "{") {
+					continue
+				}
+				if _, err := os.Stat(expanded); err == nil {
+					args = append(args, flag, expanded)
+				}
+			}
+		}
+
+		addPaths("--ro", cfg.Filesystem.RO)
+		addPaths("--rox", cfg.Filesystem.ROX)
+		addPaths("--rw", cfg.Filesystem.RW)
+		addPaths("--rwx", cfg.Filesystem.RWX)
+
+		if cfg.Network.Unrestricted {
+			args = append(args, "--unrestricted-network")
+		}
+
+		for _, env := range cfg.Env {
+			if os.Getenv(env) != "" || env == "HOME" || env == "USER" || env == "PATH" {
+				args = append(args, "--env", env)
+			}
+		}
+
+		args = append(args, "--", "go", "run", "-")
+
+		cmd = exec.CommandContext(ctx, landrunPath, args...)
+		cmd.Dir = workDir
+		cmd.Stdin = strings.NewReader(code)
 	default:
-		return "", fmt.Errorf("unsupported language: %s (only bash supported)", language)
+		return "", fmt.Errorf("unsupported language: %s (supported: bash, go)", language)
 	}
 
 	// Limit output size (10MB)

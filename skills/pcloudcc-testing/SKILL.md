@@ -40,29 +40,30 @@ Load pcloudcc-testing skill. Test the affected code path with unit tests, fault 
 Spawn testing agent:
 ```
 Tool: execute_code
+tool: spawn_agent.sh
+args: ["<your-id>", "<cwd>", "<system-prompt-above>"]
 sandbox: default
-code: bash <(9p read agent/tools/spawn_agent.sh) <your-id> "<system-prompt-above>"
 ```
 
 Send test request:
 ```
 Tool: execute_code
-sandbox: anvilmcp
-code: bash <(9p read agent/tools/send_message.sh) <your-id> <testing-agent-id> PROMPT_REQUEST "Validate fix" "Bug: <desc>\nFix: <changes>\nFiles: <list>\nBranch: <name>"
+tool: send_message.sh
+args: ["<your-id>", "<testing-agent-id>", "PROMPT_REQUEST", "Validate fix", "Bug: <desc>\nFix: <changes>\nFiles: <list>\nBranch: <name>"]
 ```
 
 Read response (user notifies when ready):
 ```
 Tool: execute_code
-sandbox: anvilmcp
-code: bash <(9p read agent/tools/read_inbox.sh) <your-id>
+tool: read_inbox.sh
+args: ["<your-id>"]
 ```
 
 Kill testing agent:
 ```
 Tool: execute_code
-sandbox: anvilmcp
-code: bash <(9p read agent/tools/kill_agent.sh) <testing-agent-id>
+tool: kill_agent.sh
+args: ["<testing-agent-id>"]
 ```
 
 ### Testing Agent Workflow
@@ -75,8 +76,8 @@ code: bash <(9p read agent/tools/kill_agent.sh) <testing-agent-id>
 6. Report:
 ```
 Tool: execute_code
-sandbox: anvilmcp
-code: bash <(9p read agent/tools/send_message.sh) <your-id> <requester-id> PROMPT_RESPONSE "Validation complete" "Status: completed|failed\n<evidence>"
+tool: send_message.sh
+args: ["<your-id>", "<requester-id>", "PROMPT_RESPONSE", "Validation complete", "Status: completed|failed\n<evidence>"]
 ```
 
 **FUSE testing**: Inform user daemon must start outside sandbox, wait for acknowledgement

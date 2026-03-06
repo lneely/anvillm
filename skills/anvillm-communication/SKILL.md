@@ -14,22 +14,21 @@ when_to_load: Load when you need to send messages to other agents, respond to th
 Discover agents:
 ```
 Tool: execute_code
-sandbox: anvilmcp
 code: bash <(9p read agent/tools/list_sessions.sh) | grep "$(pwd)"
 ```
 
 Send message:
 ```
 Tool: execute_code
-sandbox: anvilmcp
-code: bash <(9p read agent/tools/send_message.sh) <FROM> <TO> <TYPE> <SUBJECT> <BODY>
+tool: send_message.sh
+args: ["<from>", "<to>", "<type>", "<subject>", "<body>"]
 ```
 
 Check inbox:
 ```
 Tool: execute_code
-sandbox: anvilmcp
-code: bash <(9p read agent/tools/read_inbox.sh) <AGENT_ID>
+tool: read_inbox.sh
+args: ["<agent_id>"]
 ```
 
 ## Rules
@@ -52,5 +51,3 @@ code: bash <(9p read agent/tools/read_inbox.sh) <AGENT_ID>
 1. Check your inbox
 2. Follow the instructions in the message
 3. Respond to the sender appropriately (see Sending Messages)
-
-

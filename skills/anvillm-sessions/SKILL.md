@@ -10,41 +10,39 @@ Create and control agent sessions.
 
 ## Commands
 
-All commands use `execute_code` with `sandbox: "anvilmcp"`, EXCEPT spawn_agent.sh which requires `sandbox: "default"`.
-
 List sessions:
 ```
 Tool: execute_code
-sandbox: anvilmcp
-code: bash <(9p read agent/tools/list_sessions.sh)
+tool: list_sessions.sh
 ```
 
 Create session:
 ```
 Tool: execute_code
-sandbox: anvilmcp
-code: bash <(9p read agent/tools/create_session.sh) <backend> <cwd> [sandbox=<sandbox>] [model=<model>]
+tool: create_session.sh
+args: ["<backend>", "<cwd>", "sandbox=<sandbox>", "model=<model>"]
 ```
 
 Control session:
 ```
 Tool: execute_code
-sandbox: anvilmcp
-code: bash <(9p read agent/tools/control_session.sh) <session-id> <command>
+tool: control_session.sh
+args: ["<session-id>", "<command>"]
 ```
 
-Spawn agent:
+Spawn agent (requires default sandbox):
 ```
 Tool: execute_code
+tool: spawn_agent.sh
+args: ["<agent-id>", "<cwd-path>", "<initial-context-prompt>"]
 sandbox: default
-code: bash <(9p read agent/tools/spawn_agent.sh) <agent-id> [cwd-path] [initial-context-prompt]
 ```
 
 Kill agent:
 ```
 Tool: execute_code
-sandbox: anvilmcp
-code: bash <(9p read agent/tools/kill_agent.sh) [cwd-path]
+tool: kill_agent.sh
+args: ["<cwd-path>"]
 ```
 
 ## Backends
