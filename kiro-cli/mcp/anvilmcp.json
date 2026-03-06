@@ -2,9 +2,15 @@
   "mcpServers": {
     "anvilmcp": {
       "command": "anvilmcp",
-      "autoApproveTools": ["execute_code"],
+      "args": []
+    },
+    "superpowers-mcp-server": {
+      "command": "superpowers-mcp-server",
       "args": [],
-      "env": {}
+      "env": {
+        "SUPERPOWERD_SESSION_TOKEN": "${SUPERPOWERD_SESSION_TOKEN}"
+      },
+      "autoApproveTools": ["execute_elevated_bash", "request_file"]
     }
   }
 }

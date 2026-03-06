@@ -111,5 +111,6 @@ env:
   - PCLOUD_USER
   - EDITOR
   - GIT_SEQUENCE_EDITOR
+  - SUPERPOWERD_SESSION_TOKEN
 network:
   unrestricted: true

@@ -15,7 +15,9 @@
     "aws",
     "subagent",
     "web_fetch",
-    "@anvilmcp/execute_code"
+    "@anvilmcp/execute_code",
+    "@superpowers-mcp-server/execute_elevated_bash",
+    "@superpowers-mcp-server/request_file"
   ],
   "allowedTools": [
     "code",
@@ -30,7 +32,9 @@
     "aws",
     "subagent",
     "web_fetch",
-    "@anvilmcp/execute_code"
+    "@anvilmcp/execute_code",
+    "@superpowers-mcp-server/execute_elevated_bash",
+    "@superpowers-mcp-server/request_file"
    ],
   "toolsSettings": {
     "shell": {

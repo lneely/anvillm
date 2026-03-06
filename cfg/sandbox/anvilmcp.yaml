@@ -20,6 +20,7 @@ filesystem:
     - "/dev/null"
     - "/tmp"
     - "{NAMESPACE}"
+    - "{XDG_RUNTIME_DIR}/superpowerd"
   rwx:
     - "{CWD}"
 env:
@@ -31,5 +32,8 @@ env:
   - WAYLAND_DISPLAY
   - USER
   - AGENT_ID
+  - SUPERPOWERD_SESSION_TOKEN
+  - SUPERPOWERD_SOCKET_DIR
+  - XDG_RUNTIME_DIR
 network:
   unrestricted: true

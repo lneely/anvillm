@@ -214,53 +214,15 @@ func executeCode(code, language string, timeout int, sandboxName string, trusted
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer cancel()
 
-	landrunPath, err := exec.LookPath("landrun")
-	if err != nil {
-		return "", fmt.Errorf("landrun not found: %v", err)
-	}
-
 	var cmd *exec.Cmd
 	switch language {
 	case "bash", "":
-		args := []string{}
-
-		// Add filesystem permissions from config
-		addPaths := func(flag string, paths []string) {
-			for _, p := range paths {
-				expanded := sandbox.ExpandPath(p, workDir)
-				if expanded == "" || strings.Contains(expanded, "{") {
-					continue // Skip unexpanded templates
-				}
-				if _, err := os.Stat(expanded); err == nil {
-					args = append(args, flag, expanded)
-				}
-			}
-		}
-
-		addPaths("--ro", cfg.Filesystem.RO)
-		addPaths("--rox", cfg.Filesystem.ROX)
-		addPaths("--rw", cfg.Filesystem.RW)
-		addPaths("--rwx", cfg.Filesystem.RWX)
-
-		// Network
-		if cfg.Network.Unrestricted {
-			args = append(args, "--unrestricted-network")
-		}
-
-		// Environment variables
-		for _, env := range cfg.Env {
-			if os.Getenv(env) != "" || env == "HOME" || env == "USER" || env == "PATH" {
-				args = append(args, "--env", env)
-			}
-		}
-
-		args = append(args, "--", "bash", "-c", code)
-		
-		cmd = exec.CommandContext(ctx, landrunPath, args...)
+		wrapped := sandbox.WrapCommand(cfg, []string{"bash", "-c", code}, workDir)
+		cmd = exec.CommandContext(ctx, wrapped[0], wrapped[1:]...)
 		cmd.Dir = workDir
 	// Add new language cases here:
 	// case "python":
-	//     args = append(args, "--", "python3", "-c", code)
+	//     wrapped := sandbox.WrapCommand(cfg, []string{"python3", "-c", code}, workDir)
 	default:
 		return "", fmt.Errorf("unsupported language: %s (supported: bash)", language)
 	}

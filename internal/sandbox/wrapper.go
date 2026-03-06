@@ -2,7 +2,10 @@ package sandbox
 
 import (
 	"fmt"
+	"net"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -107,6 +110,16 @@ func WrapCommand(cfg *Config, originalCmd []string, cwd string) []string {
 	args = append(args, "--")
 	args = append(args, originalCmd...)
 
+	// Wrap with superpowers run-session if superpowerd is running
+	if IsSuperpowerdRunning() {
+		if superpowersPath, err := exec.LookPath("superpowers"); err == nil {
+			// Insert --env SUPERPOWERD_SESSION_TOKEN after landrun
+			args = append([]string{args[0], "--env", "SUPERPOWERD_SESSION_TOKEN"}, args[1:]...)
+			// Wrap: superpowers run-session -- landrun ...
+			args = append([]string{superpowersPath, "run-session", "--"}, args...)
+		}
+	}
+
 	return args
 }
 
@@ -167,4 +180,22 @@ func BuildSummary(cfg *Config) string {
 func pathExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// IsSuperpowerdRunning checks if superpowerd daemon is running by testing socket connectivity
+func IsSuperpowerdRunning() bool {
+	socketDir := os.Getenv("SUPERPOWERD_SOCKET_DIR")
+	if socketDir == "" {
+		socketDir = os.Getenv("XDG_RUNTIME_DIR")
+		if socketDir == "" {
+			return false
+		}
+		socketDir = filepath.Join(socketDir, "superpowerd")
+	}
+	conn, err := net.Dial("unixpacket", filepath.Join(socketDir, "superpowerd.sock"))
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
 }
