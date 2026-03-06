@@ -258,43 +258,11 @@ func executeCode(code, language string, timeout int, sandboxName string, trusted
 		
 		cmd = exec.CommandContext(ctx, landrunPath, args...)
 		cmd.Dir = workDir
-	case "go":
-		args := []string{}
-
-		addPaths := func(flag string, paths []string) {
-			for _, p := range paths {
-				expanded := sandbox.ExpandPath(p, workDir)
-				if expanded == "" || strings.Contains(expanded, "{") {
-					continue
-				}
-				if _, err := os.Stat(expanded); err == nil {
-					args = append(args, flag, expanded)
-				}
-			}
-		}
-
-		addPaths("--ro", cfg.Filesystem.RO)
-		addPaths("--rox", cfg.Filesystem.ROX)
-		addPaths("--rw", cfg.Filesystem.RW)
-		addPaths("--rwx", cfg.Filesystem.RWX)
-
-		if cfg.Network.Unrestricted {
-			args = append(args, "--unrestricted-network")
-		}
-
-		for _, env := range cfg.Env {
-			if os.Getenv(env) != "" || env == "HOME" || env == "USER" || env == "PATH" {
-				args = append(args, "--env", env)
-			}
-		}
-
-		args = append(args, "--", "go", "run", "-")
-
-		cmd = exec.CommandContext(ctx, landrunPath, args...)
-		cmd.Dir = workDir
-		cmd.Stdin = strings.NewReader(code)
+	// Add new language cases here:
+	// case "python":
+	//     args = append(args, "--", "python3", "-c", code)
 	default:
-		return "", fmt.Errorf("unsupported language: %s (supported: bash, go)", language)
+		return "", fmt.Errorf("unsupported language: %s (supported: bash)", language)
 	}
 
 	// Limit output size (10MB)

@@ -94,7 +94,10 @@ func parseFrontMatter(path string) (*ToolMeta, error) {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
+		// Handle both shell (#) and Go (//) comments
 		if comment, ok := strings.CutPrefix(line, "#"); ok {
+			line = strings.TrimSpace(comment)
+		} else if comment, ok := strings.CutPrefix(line, "//"); ok {
 			line = strings.TrimSpace(comment)
 		} else {
 			break
@@ -114,7 +117,7 @@ func parseFrontMatter(path string) (*ToolMeta, error) {
 	return meta, nil
 }
 
-// listAllTools scans all tools directories and returns metadata for all .sh files
+// listAllTools scans all tools directories and returns metadata for all tool files
 func (t *ToolsFS) listAllTools() ([]*ToolMeta, error) {
 	seen := make(map[string]bool)
 	var tools []*ToolMeta
@@ -126,17 +129,22 @@ func (t *ToolsFS) listAllTools() ([]*ToolMeta, error) {
 		}
 
 		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sh") {
+			name := entry.Name()
+			if entry.IsDir() {
 				continue
 			}
-			if seen[entry.Name()] {
+			// Include .sh and .go files
+			if !strings.HasSuffix(name, ".sh") && !strings.HasSuffix(name, ".go") {
 				continue
 			}
-			meta, err := parseFrontMatter(filepath.Join(dir, entry.Name()))
+			if seen[name] {
+				continue
+			}
+			meta, err := parseFrontMatter(filepath.Join(dir, name))
 			if err != nil {
 				continue
 			}
-			seen[entry.Name()] = true
+			seen[name] = true
 			tools = append(tools, meta)
 		}
 	}
@@ -170,15 +178,15 @@ func (t *ToolsFS) List(path string) ([]plan9.Dir, error) {
 func (t *ToolsFS) Read(path string) ([]byte, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
-	// /tools/<tool.sh> - read tool script
+	// /tools/<tool> - read tool script
 	if len(parts) != 2 || parts[0] != "tools" {
 		return nil, fmt.Errorf("not found")
 	}
 
 	filename := parts[1]
 
-	if !strings.HasSuffix(filename, ".sh") {
-		return nil, fmt.Errorf("not a shell script")
+	if !strings.HasSuffix(filename, ".sh") && !strings.HasSuffix(filename, ".go") {
+		return nil, fmt.Errorf("not a tool file")
 	}
 
 	// Prevent path traversal

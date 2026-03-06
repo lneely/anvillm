@@ -133,7 +133,7 @@ func main() {
 								"tool":     {Type: "string", Description: "Tool name from agent/tools/ (e.g. 'list_sessions.sh')"},
 								"args":     {Type: "array", Description: "Arguments to pass to tool", Items: &Items{Type: "string"}},
 								"code":     {Type: "string", Description: "Inline code to execute (if tool not specified)"},
-								"language": {Type: "string", Description: "Programming language (auto-detected from tool extension)", Enum: []string{"bash", "go"}},
+								"language": {Type: "string", Description: "Programming language", Enum: []string{"bash"}},
 								"timeout":  {Type: "integer", Description: "Timeout in seconds (default: 30)"},
 								"sandbox":  {Type: "string", Description: "Sandbox config name (default: default)"},
 							},
@@ -183,17 +183,8 @@ func handleToolCall(req MCPRequest) {
 				return
 			}
 			code = toolCode
-			// Auto-detect language from extension
-			if language == "" {
-				switch {
-				case strings.HasSuffix(tool, ".go"):
-					language = "go"
-				default:
-					language = "bash"
-				}
-			}
 			// For bash with args, wrap script to receive positional params
-			if language == "bash" && len(toolArgs) > 0 {
+			if len(toolArgs) > 0 {
 				// Escape args for bash array
 				var escaped []string
 				for _, arg := range toolArgs {
