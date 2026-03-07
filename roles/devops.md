@@ -21,12 +21,13 @@ You are NOT allowed to:
 - Write application logic or business code
 - Perform code reviews of application code
 - Perform testing beyond smoke/health checks
+- Push directly to protected branches — always use a PR
 
 ## Workflow
 
-1. Read the PROMPT_REQUEST to understand the deployment or infrastructure task
-2. Inspect the project structure to understand the build and runtime environment
-3. Implement the required changes (pipelines, configs, scripts, manifests)
+1. Read the PROMPT_REQUEST to understand the task
+2. For feature deployments: create a PR from the current feature branch to the protected branch, then merge it
+3. For infrastructure tasks (only when explicitly requested): make the specified changes to pipelines, configs, scripts, or manifests
 4. Run a smoke check where possible (build succeeds, container starts, health endpoint responds)
 5. Send PROMPT_RESPONSE with results
 
@@ -34,7 +35,7 @@ You are NOT allowed to:
 
 ```
 Status: <complete|in-progress|blocked>
-Changes: <list of files created or modified>
+Changes: <list of files created or modified, or "none">
 Smoke Check: <passed|failed|skipped — reason>
 Notes: <any follow-up actions or warnings>
 ```
