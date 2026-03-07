@@ -37,24 +37,12 @@ func getTerminalCommand() string {
 type SessionInfo struct {
 	ID      string
 	Backend string
-	Model   string
+	Role    string
 	State   string
 	Alias   string
 	Cwd     string
 	Pid     int
 	WinID   int
-}
-
-// modelTier extracts the abbreviated tier name (haiku/sonnet/opus) from a model string.
-// If none of the known tiers are found, the raw value is returned.
-func modelTier(model string) string {
-	lower := strings.ToLower(model)
-	for _, tier := range []string{"haiku", "sonnet", "opus"} {
-		if strings.Contains(lower, tier) {
-			return tier
-		}
-	}
-	return model
 }
 
 var (
@@ -571,14 +559,14 @@ func listSessions() ([]*SessionInfo, error) {
 			Backend: fields[1],
 			State:   fields[2],
 			Alias:   fields[3],
-			Model:   fields[4],
+			Role:    fields[4],
 			Cwd:     strings.Join(fields[5:], " "),
 		}
 		if sess.Alias == "-" {
 			sess.Alias = ""
 		}
-		if sess.Model == "-" {
-			sess.Model = ""
+		if sess.Role == "-" {
+			sess.Role = ""
 		}
 		sessions = append(sessions, sess)
 	}
@@ -653,15 +641,19 @@ func refreshList(w *acme.Win) {
 		return
 	}
 
-	buf.WriteString(fmt.Sprintf("%-8s %-10s %-7s %-9s %-16s %s\n", "ID", "Backend", "Model", "State", "Alias", "Cwd"))
-	buf.WriteString(fmt.Sprintf("%-8s %-10s %-7s %-9s %-16s %s\n", "--------", "----------", "-------", "---------", "----------------", strings.Repeat("-", 40)))
+	buf.WriteString(fmt.Sprintf("%-8s %-10s %-16s %-9s %-16s %s\n", "ID", "Backend", "Role", "State", "Alias", "Cwd"))
+	buf.WriteString(fmt.Sprintf("%-8s %-10s %-16s %-9s %-16s %s\n", "--------", "----------", "----------------", "---------", "----------------", strings.Repeat("-", 40)))
 
 	for _, sess := range sessions {
 		alias := sess.Alias
 		if alias == "" {
 			alias = "-"
 		}
-		buf.WriteString(fmt.Sprintf("%-8s %-10s %-7s %-9s %-16s %s\n", sess.ID, sess.Backend, modelTier(sess.Model), sess.State, alias, sess.Cwd))
+		role := sess.Role
+		if role == "" {
+			role = "-"
+		}
+		buf.WriteString(fmt.Sprintf("%-8s %-10s %-16s %-9s %-16s %s\n", sess.ID, sess.Backend, role, sess.State, alias, sess.Cwd))
 	}
 
 	w.Addr(",")

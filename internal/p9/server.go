@@ -1467,11 +1467,14 @@ func (s *Server) readFile(path string) string {
 				if backend == "" {
 					backend = "-"
 				}
-				model := sess.Model()
-				if model == "" {
-					model = "-"
+				role := ""
+				if tmuxSess, ok := sess.(*tmux.Session); ok {
+					role = tmuxSess.GetRole()
 				}
-				lines = append(lines, fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s", sess.ID(), backend, sess.State(), alias, model, meta.Cwd))
+				if role == "" {
+					role = "-"
+				}
+				lines = append(lines, fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s", sess.ID(), backend, sess.State(), alias, role, meta.Cwd))
 			}
 		}
 		return strings.Join(lines, "\n") + "\n"

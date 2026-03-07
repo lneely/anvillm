@@ -1,6 +1,6 @@
 #!/bin/bash
 # capabilities: agents
-# description: List all active agent sessions (tab-separated: id, alias, state, pid, cwd)
+# description: List all active agent sessions (tab-separated: id, backend, state, alias, role, cwd)
 set -euo pipefail
 
 # Verify running under landrun (test filesystem restriction)

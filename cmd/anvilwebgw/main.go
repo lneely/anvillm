@@ -290,7 +290,7 @@ type Session struct {
 	PID     string `json:"pid"`
 	CWD     string `json:"cwd"`
 	Backend string `json:"backend"`
-	Model   string `json:"model,omitempty"`
+	Role    string `json:"role,omitempty"`
 }
 
 // --- Session handlers ---
@@ -338,21 +338,21 @@ func listSessions(w http.ResponseWriter, r *http.Request) {
 		if len(fields) < 6 {
 			continue
 		}
-		// list format: id backend state alias model cwd
+		// list format: id backend state alias role cwd
 		alias := fields[3]
 		if alias == "-" {
 			alias = ""
 		}
-		model := fields[4]
-		if model == "-" {
-			model = ""
+		role := fields[4]
+		if role == "-" {
+			role = ""
 		}
 		sess := Session{
 			ID:      fields[0],
 			Backend: fields[1],
 			State:   fields[2],
 			Alias:   alias,
-			Model:   model,
+			Role:    role,
 			CWD:     strings.Join(fields[5:], " "),
 		}
 
@@ -481,7 +481,7 @@ func getSession(w http.ResponseWriter, r *http.Request, id string) {
 	sess.State = readField("state")
 	sess.Alias = readField("alias")
 	sess.Backend = readField("backend")
-	sess.Model = readField("model")
+	sess.Role = readField("role")
 	sess.PID = readField("pid")
 	sess.CWD = readField("cwd")
 

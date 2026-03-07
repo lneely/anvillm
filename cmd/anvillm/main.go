@@ -41,7 +41,7 @@ type SessionInfo struct {
 	State   string
 	Pid     int
 	Cwd     string
-	Model   string // Active model override (empty = backend default)
+	Role    string // Role assigned to this session (empty = not set)
 }
 
 func main() {
@@ -264,15 +264,15 @@ func refreshSessions() {
 			stateColor = tcell.ColorRed
 		}
 
-		model := sess.Model
-		if model == "" {
-			model = "-"
+		role := sess.Role
+		if role == "" {
+			role = "-"
 		}
 
 		sessionList.SetCell(row, 0, tview.NewTableCell(" "+sess.ID[:8]+" ").SetExpansion(1))
 		sessionList.SetCell(row, 1, tview.NewTableCell(" "+alias+" ").SetExpansion(1))
 		sessionList.SetCell(row, 2, tview.NewTableCell(" "+sess.Backend+" ").SetExpansion(1))
-		sessionList.SetCell(row, 3, tview.NewTableCell(" "+model+" ").SetExpansion(1))
+		sessionList.SetCell(row, 3, tview.NewTableCell(" "+role+" ").SetExpansion(1))
 		sessionList.SetCell(row, 4, tview.NewTableCell(" "+sess.State+" ").SetTextColor(stateColor).SetExpansion(1))
 		sessionList.SetCell(row, 5, tview.NewTableCell(fmt.Sprintf(" %d ", sess.Pid)).SetExpansion(1))
 		sessionList.SetCell(row, 6, tview.NewTableCell(" "+sess.Cwd+" ").SetExpansion(3))
@@ -296,7 +296,7 @@ func listSessions() ([]*SessionInfo, error) {
 			continue
 		}
 
-		// Parse: id backend state alias model cwd
+		// Parse: id backend state alias role cwd
 		fields := strings.Split(line, "\t")
 		if len(fields) < 6 {
 			continue
@@ -307,14 +307,14 @@ func listSessions() ([]*SessionInfo, error) {
 			Backend: fields[1],
 			State:   fields[2],
 			Alias:   fields[3],
-			Model:   fields[4],
+			Role:    fields[4],
 			Cwd:     fields[5],
 		}
 		if sess.Alias == "-" {
 			sess.Alias = ""
 		}
-		if sess.Model == "-" {
-			sess.Model = ""
+		if sess.Role == "-" {
+			sess.Role = ""
 		}
 
 		sessions = append(sessions, sess)
