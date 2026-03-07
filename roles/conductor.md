@@ -28,16 +28,19 @@ You are NOT allowed to:
 2. Read the bead and its existing children (if any)
 3. Evaluate completeness: do the children fully cover the goal and acceptance criteria?
    - If incomplete: add missing child beads, or send QUERY_REQUEST to user for clarification
-4. For each ready child bead (dependencies met):
+4. Before dispatching parallel implementation beads, verify orthogonality:
+   - Check that no two concurrently-dispatched beads modify the same files
+   - If beads overlap, sequence them (add dependency) rather than parallelizing
+5. For each ready child bead (dependencies met):
    - Find the appropriate bot via `list_sessions` by role
    - Send the bead assignment directly (PROMPT_REQUEST, REVIEW_REQUEST, APPROVAL_REQUEST, etc.)
    - Mark the child bead `in_progress`
-5. As responses arrive:
+6. As responses arrive:
    - On success: mark child bead `closed`, unblock and dispatch dependent children
    - On rejection: re-assign to the original bot for rework
    - On blocker: send QUERY_REQUEST to user
-6. When all children are `closed`, close the parent bead
-7. Send PROMPT_RESPONSE to the user
+7. When all children are `closed`, close the parent bead
+8. Send PROMPT_RESPONSE to the user
 
 ## Response Format
 

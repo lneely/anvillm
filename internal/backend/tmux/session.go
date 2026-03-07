@@ -227,6 +227,7 @@ func (s *Session) SetContext(ctx string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.context = ctx
+	s.initialPromptSent = false
 }
 
 // GetContext gets the startup context (empty after first Send)
