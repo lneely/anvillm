@@ -135,6 +135,12 @@ func handleToolCall(req MCPRequest) {
 					toolArgs = append(toolArgs, s)
 				}
 			}
+		} else if argsStr, ok := params.Arguments["args"].(string); ok {
+			// LLM passed args as a JSON-encoded string instead of an array
+			var parsed []string
+			if err := json.Unmarshal([]byte(argsStr), &parsed); err == nil {
+				toolArgs = parsed
+			}
 		}
 		code, _ := params.Arguments["code"].(string)
 		language, _ := params.Arguments["language"].(string)
@@ -155,6 +161,11 @@ func handleToolCall(req MCPRequest) {
 						if s, ok := a.(string); ok {
 							step.Args = append(step.Args, s)
 						}
+					}
+				} else if argsStr, ok := stepMap["args"].(string); ok {
+					var parsed []string
+					if err := json.Unmarshal([]byte(argsStr), &parsed); err == nil {
+						step.Args = parsed
 					}
 				}
 				pipeSteps = append(pipeSteps, step)

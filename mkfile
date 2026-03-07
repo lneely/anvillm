@@ -21,9 +21,9 @@ build:V:
 	chmod 0755 $INSTALL_PATH/9p-read-inbox
 	cp scripts/anvilspawn $INSTALL_PATH/anvilspawn
 	chmod 0755 $INSTALL_PATH/anvilspawn
-	mkdir -p $HOME/bin/Teams
-	cp -f team-templates/* $HOME/bin/Teams/
-	chmod 0755 $HOME/bin/Teams/*
+	mkdir -p $INSTALL_PATH/Teams
+	cp -f team-templates/* $INSTALL_PATH/Teams/
+	chmod 0755 $INSTALL_PATH/Teams/*
 	mkdir -p $HOME/.config/anvillm
 	cp -rf cfg/* $HOME/.config/anvillm/
 	mkdir -p $HOME/.config/anvillm/skills

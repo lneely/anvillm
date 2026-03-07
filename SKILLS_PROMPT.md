@@ -7,14 +7,14 @@
 ```bash
 Tool: execute_code
 tool: discover_skill.sh
-args: ["<keyword>"]
+args: [keyword]
 ```
 
 3. Load relevant skill files:
 ```bash
 Tool: execute_code
 tool: load_skill.sh
-args: ["<skill-name>"]
+args: [skill-name]
 ```
 
 **Common capability mappings:**
