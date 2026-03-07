@@ -1,0 +1,17 @@
+#!/bin/bash
+# feature-with-docs - Spawn a team for the feature-with-docs workflow
+# Roles: conductor, developer, reviewer, tester, devops, author, technical-editor
+# Usage: feature-with-docs [backend] [workdir]
+
+set -e
+
+BACKEND="${1:-claude}"
+WORKDIR="${2:-$(pwd)}"
+
+anvilspawn "$BACKEND" conductor        "$WORKDIR"
+anvilspawn "$BACKEND" developer        "$WORKDIR"
+anvilspawn "$BACKEND" reviewer         "$WORKDIR"
+anvilspawn "$BACKEND" tester           "$WORKDIR"
+anvilspawn "$BACKEND" devops           "$WORKDIR"
+anvilspawn "$BACKEND" author           "$WORKDIR"
+anvilspawn "$BACKEND" technical-editor "$WORKDIR"

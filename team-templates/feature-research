@@ -1,0 +1,16 @@
+#!/bin/bash
+# feature-research - Spawn a team for the feature-research workflow
+# Roles: conductor, researcher, developer, reviewer, tester, devops
+# Usage: feature-research [backend] [workdir]
+
+set -e
+
+BACKEND="${1:-claude}"
+WORKDIR="${2:-$(pwd)}"
+
+anvilspawn "$BACKEND" conductor  "$WORKDIR"
+anvilspawn "$BACKEND" researcher "$WORKDIR"
+anvilspawn "$BACKEND" developer  "$WORKDIR"
+anvilspawn "$BACKEND" reviewer   "$WORKDIR"
+anvilspawn "$BACKEND" tester     "$WORKDIR"
+anvilspawn "$BACKEND" devops     "$WORKDIR"

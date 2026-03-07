@@ -1,0 +1,12 @@
+#!/bin/bash
+# audit - Spawn a team for the audit workflow
+# Roles: conductor, reviewer
+# Usage: audit [backend] [workdir]
+
+set -e
+
+BACKEND="${1:-claude}"
+WORKDIR="${2:-$(pwd)}"
+
+anvilspawn "$BACKEND" conductor "$WORKDIR"
+anvilspawn "$BACKEND" reviewer  "$WORKDIR"

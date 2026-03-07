@@ -1,0 +1,13 @@
+#!/bin/bash
+# refactor - Spawn a team for the refactor workflow
+# Roles: conductor, developer, reviewer
+# Usage: refactor [backend] [workdir]
+
+set -e
+
+BACKEND="${1:-claude}"
+WORKDIR="${2:-$(pwd)}"
+
+anvilspawn "$BACKEND" conductor "$WORKDIR"
+anvilspawn "$BACKEND" developer "$WORKDIR"
+anvilspawn "$BACKEND" reviewer  "$WORKDIR"
