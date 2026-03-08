@@ -25,6 +25,37 @@ Common commands:
 - `crypto stop` - Lock crypto folder
 - `finalize` - Kill daemon and quit
 
+## Sandbox Escape (FUSE / daemon)
+
+The pcloudcc daemon requires FUSE (mount syscall), which is blocked inside the sandbox. Use the `execute_elevated_bash` tool (provided by the `superpowerd` MCP server) to run commands outside the sandbox.
+
+**Load the tool first** (deferred tool — must be discovered before use):
+```
+ToolSearch: select:mcp__superpowers-mcp-server__execute_elevated_bash
+```
+
+**Start daemon outside sandbox** (always use `-d` — never start without it):
+```
+Tool: mcp__superpowers-mcp-server__execute_elevated_bash
+command: "cd <cwd> && ./pcloudcc -d"
+summary: "Start pcloudcc daemon for FUSE testing"
+```
+
+**Send CLI commands** (these are lightweight and can run inside sandbox):
+```
+Tool: execute_code
+code: echo "<command>" | ./pcloudcc -k
+```
+
+**Stop daemon**:
+```
+Tool: mcp__superpowers-mcp-server__execute_elevated_bash
+command: "cd <cwd> && echo 'finalize' | ./pcloudcc -k"
+summary: "Stop pcloudcc daemon"
+```
+
+Mount point: `~/pCloudDrive`
+
 ## Testing Workflow
 
 ### Testing Agent System Prompt
@@ -80,15 +111,15 @@ tool: send_message.sh
 args: ["<your-id>", "<requester-id>", "PROMPT_RESPONSE", "Validation complete", "Status: completed|failed\n<evidence>"]
 ```
 
-**FUSE testing**: Inform user daemon must start outside sandbox, wait for acknowledgement
+**FUSE testing**: Use `execute_elevated_bash` to start the daemon outside the sandbox (see Sandbox Escape section above). No user intervention required.
 
 ### Manual Testing Workflow
 
 1. Build: `make -j$(nproc)`
-2. Start daemon: `./pcloudcc -d`
+2. Start daemon (outside sandbox): `mcp__superpowers-mcp-server__execute_elevated_bash` → `cd <cwd> && ./pcloudcc -d`
 3. Wait for initialization: `sleep 2`
-4. Test commands: `echo "<command>" | ./pcloudcc -k`
-5. Stop daemon: `echo "finalize" | ./pcloudcc -k`
+4. Test commands (inside sandbox): `echo "<command>" | ./pcloudcc -k`
+5. Stop daemon: `mcp__superpowers-mcp-server__execute_elevated_bash` → `cd <cwd> && echo 'finalize' | ./pcloudcc -k`
 
 ## Test Design
 
@@ -101,15 +132,17 @@ args: ["<your-id>", "<requester-id>", "PROMPT_RESPONSE", "Validation complete", 
 
 **Test design**: Understand bug → reproduce scenario → verify old fails, new passes → provide evidence
 
-**FUSE testing**: Daemon must start outside sandbox (mount syscall blocked). Inform user, wait for acknowledgement. Mount: `~/pCloudDrive`
+**FUSE testing**: Use `execute_elevated_bash` to run the daemon outside the sandbox. Mount point: `~/pCloudDrive`
 
 **Fault Injection Pattern**: `#define _GNU_SOURCE` + `#include <dlfcn.h>` to override functions. Compile: `gcc -shared -fPIC -o inject.so inject.c -ldl`. Run: `LD_PRELOAD=./inject.so ./pcloudcc -d`
 
 ## Notes
 
+- **Always start the daemon with `-d`** — never invoke `./pcloudcc` as daemon without this flag
 - Daemon must be running before using `-k` commands
 - Each `-k` invocation creates new connection to daemon
 - Daemon closes socket after each response
 - Always finalize to cleanly stop daemon
 - Use `status` instead of `pending` for checking upload/download state
 - Kill daemon: use the PID shown at startup (e.g., `kill -9 12345`)
+- `execute_elevated_bash` requires user approval per invocation — requests should be clearly summarized
