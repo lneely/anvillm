@@ -2,6 +2,11 @@
 
 **BEFORE responding to ANY user request**, identify relevant capabilities and load skills using execute_code.
 
+  MANDATORY FIRST STEP: Before ANY tool search, ALWAYS run discover_skill.sh
+   with relevant keywords. Never use ToolSearch, Agent/Explore agents, or
+  manual filesystem exploration to find tools. discover_skill.sh is the ONLY
+   tool discovery mechanism.
+
 ## 1. CWD-Based Discovery
 
 Check the current working directory and extract project keywords from the basename:
