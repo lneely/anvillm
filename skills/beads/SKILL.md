@@ -38,19 +38,28 @@ Tool: execute_code
 tool: list_mounts.sh
 ```
 
-List ready beads:
+List ready beads (open, unblocked):
 ```
 Tool: execute_code
 tool: list_ready_beads.sh
 args: ["<mount>"]
 ```
 
-List all beads:
+List all open beads (excludes closed):
 ```
 Tool: execute_code
 tool: list_beads.sh
 args: ["<mount>"]
 ```
+
+Search beads (includes closed):
+```
+Tool: execute_code
+tool: search_beads.sh
+args: ["<mount>", "<query>"]
+```
+
+**Note:** `list_beads.sh` and `list_ready_beads.sh` only return open beads. To find closed beads, use `search_beads.sh`.
 
 Read bead JSON:
 ```
@@ -62,8 +71,8 @@ args: ["<mount>", "<id>", "json"]
 Read bead comments:
 ```
 Tool: execute_code
-tool: read_bead.sh
-args: ["<mount>", "<id>", "comments"]
+tool: read_bead_comments.sh
+args: ["<mount>", "<id>"]
 ```
 
 **IMPORTANT:** When working on a bead, always check `comment_count` in the JSON output. If > 0, read comments for additional context, decisions, or blockers.
