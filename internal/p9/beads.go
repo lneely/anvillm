@@ -231,9 +231,21 @@ func (b *BeadsFS) readFromMount(m *MountedProject, endpoint string) ([]byte, err
 	parts := strings.Split(endpoint, "/")
 	switch {
 	case len(parts) == 1 && parts[0] == "list":
-		return b.readListFromStore(m.store)
+		return b.readListFromStore(m.store, 100)
+	case len(parts) == 2 && parts[0] == "list":
+		limit, _ := strconv.Atoi(parts[1])
+		if limit == 0 {
+			limit = 100
+		}
+		return b.readListFromStore(m.store, limit)
 	case len(parts) == 1 && parts[0] == "ready":
-		return b.readReadyFromStore(m.store)
+		return b.readReadyFromStore(m.store, 100)
+	case len(parts) == 2 && parts[0] == "ready":
+		limit, _ := strconv.Atoi(parts[1])
+		if limit == 0 {
+			limit = 100
+		}
+		return b.readReadyFromStore(m.store, limit)
 	case len(parts) == 1 && parts[0] == "pending":
 		return b.readPendingFromStore(m.store)
 	case len(parts) == 1 && parts[0] == "blocked":
@@ -338,8 +350,12 @@ func (b *BeadsFS) readMtab() ([]byte, error) {
 	return []byte(strings.Join(lines, "\n")), nil
 }
 
-func (b *BeadsFS) readListFromStore(store bd.Storage) ([]byte, error) {
-	issues, err := store.SearchIssues(b.ctx, "", bd.IssueFilter{})
+func (b *BeadsFS) readListFromStore(store bd.Storage, limit int) ([]byte, error) {
+	filter := bd.IssueFilter{
+		ExcludeStatus: []bd.Status{bd.StatusClosed},
+		Limit:         limit,
+	}
+	issues, err := store.SearchIssues(b.ctx, "", filter)
 	if err != nil {
 		return nil, err
 	}
@@ -358,7 +374,7 @@ func (b *BeadsFS) readListFromStore(store bd.Storage) ([]byte, error) {
 		CapabilityLevel string   `json:"capability_level,omitempty"`
 		CommentCount    int      `json:"comment_count,omitempty"`
 	}
-	result := make([]BeadWithBlockers, len(issues))
+	items := make([]BeadWithBlockers, len(issues))
 	for i, issue := range issues {
 		// Fetch labels if not already populated
 		if issue.Labels == nil {
@@ -367,26 +383,26 @@ func (b *BeadsFS) readListFromStore(store bd.Storage) ([]byte, error) {
 				issue.Labels = labels
 			}
 		}
-		result[i].Issue = issue
+		items[i].Issue = issue
 		blockers, err := b.getBlockersFromStore(store, issue.ID)
 		if err != nil {
 			logging.Logger().Warn("failed to get blockers", zap.String("issue", issue.ID), zap.Error(err))
 		} else if len(blockers) > 0 {
-			result[i].Blockers = blockers
+			items[i].Blockers = blockers
 		}
-		result[i].CapabilityLevel = extractCapabilityLevel(issue.Labels)
+		items[i].CapabilityLevel = extractCapabilityLevel(issue.Labels)
 		comments, err := store.GetIssueComments(b.ctx, issue.ID)
 		if err == nil && len(comments) > 0 {
-			result[i].CommentCount = len(comments)
+			items[i].CommentCount = len(comments)
 		}
 	}
 
-	return json.MarshalIndent(result, "", "  ")
+	return json.MarshalIndent(items, "", "  ")
 }
 
 
-func (b *BeadsFS) readReadyFromStore(store bd.Storage) ([]byte, error) {
-	filter := bd.WorkFilter{}
+func (b *BeadsFS) readReadyFromStore(store bd.Storage, limit int) ([]byte, error) {
+	filter := bd.WorkFilter{Limit: limit}
 	issues, err := store.GetReadyWork(b.ctx, filter)
 	if err != nil {
 		return nil, err
@@ -397,7 +413,6 @@ func (b *BeadsFS) readReadyFromStore(store bd.Storage) ([]byte, error) {
 	// Filter out blocked issues - ready means unblocked
 	ready := []*bd.Issue{}
 	for _, issue := range issues {
-		// Fetch labels if not already populated
 		if issue.Labels == nil {
 			labels, err := store.GetLabels(b.ctx, issue.ID)
 			if err == nil {
@@ -409,6 +424,7 @@ func (b *BeadsFS) readReadyFromStore(store bd.Storage) ([]byte, error) {
 			ready = append(ready, issue)
 		}
 	}
+
 	return json.MarshalIndent(ready, "", "  ")
 }
 
@@ -695,18 +711,25 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 		
 	case "new", "create":
 		if len(args) < 1 {
-			return fmt.Errorf("usage: new 'title' ['description'] [parent-id] [--no-lint] [capability=low|standard|high]")
+			return fmt.Errorf("usage: new 'title' ['description'] [parent-id] [--no-lint] [capability=low|standard|high] [blockers=id1,id2,...]")
 		}
 
-		// Strip --no-lint flag and capability= option from args before positional parsing.
+		// Strip flags and options from args before positional parsing.
 		noLint := false
 		capLevel := ""
+		var blockerIDs []string
 		filtered := args[:0]
 		for _, a := range args {
 			if a == "--no-lint" {
 				noLint = true
 			} else if level, ok := strings.CutPrefix(a, "capability="); ok {
 				capLevel = level
+			} else if ids, ok := strings.CutPrefix(a, "blockers="); ok {
+				for _, id := range strings.Split(ids, ",") {
+					if id = strings.TrimSpace(id); id != "" {
+						blockerIDs = append(blockerIDs, id)
+					}
+				}
 			} else {
 				filtered = append(filtered, a)
 			}
@@ -724,8 +747,6 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 		}
 
 		// Emit lint warnings unless --no-lint or issue_type=idea.
-		// The new command always creates TypeTask; idea exemption applies
-		// when the title starts with "IDEA:" as a convention.
 		isIdea := strings.HasPrefix(strings.ToUpper(title), "IDEA:")
 		if !noLint && !isIdea && description != "" {
 			for _, w := range lintDescription(description) {
@@ -733,29 +754,45 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 			}
 		}
 
+		var newID string
 		if parentID != "" {
 			childID, err := b.createSubtaskOnStore(store, parentID, title, description, actor)
 			if err != nil {
 				return err
 			}
-			// Apply capability label if provided.
+			newID = childID
 			if capLevel != "" {
 				_ = store.AddLabel(b.ctx, childID, capabilityPrefix+capLevel, actor)
 			}
-			return nil
+		} else {
+			issue := &bd.Issue{
+				Title:       title,
+				Description: description,
+				Status:      bd.StatusOpen,
+				IssueType:   bd.TypeTask,
+				Priority:    2,
+			}
+			if capLevel != "" {
+				issue.Labels = []string{capabilityPrefix + capLevel}
+			}
+			if err := store.CreateIssue(b.ctx, issue, actor); err != nil {
+				return err
+			}
+			newID = issue.ID
 		}
 
-		issue := &bd.Issue{
-			Title:       title,
-			Description: description,
-			Status:      bd.StatusOpen,
-			IssueType:   bd.TypeTask,
-			Priority:    2,
+		// Add blockers
+		for _, blockerID := range blockerIDs {
+			dep := &bd.Dependency{
+				IssueID:     newID,
+				DependsOnID: blockerID,
+				Type:        bd.DepBlocks,
+			}
+			if err := store.AddDependency(b.ctx, dep, actor); err != nil {
+				logging.Logger().Warn("failed to add blocker", zap.String("bead", newID), zap.String("blocker", blockerID), zap.Error(err))
+			}
 		}
-		if capLevel != "" {
-			issue.Labels = []string{capabilityPrefix + capLevel}
-		}
-		return store.CreateIssue(b.ctx, issue, actor)
+		return nil
 		
 	case "claim":
 		if len(args) < 1 {

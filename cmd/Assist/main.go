@@ -1870,10 +1870,9 @@ func parseBeadEdits(content string, beads []Bead) []beadEdit {
 	return edits
 }
 
-// applyBeadEdits applies a batch of bead edits, then refreshes the tasks window.
-func applyBeadEdits(w *acme.Win, edits []beadEdit, beads *[]Bead, statusFilter string, mount string) {
+// applyBeadEdits applies a batch of bead edits.
+func applyBeadEdits(w *acme.Win, edits []beadEdit, beads *[]Bead, filter string, mount string) {
 	if len(edits) == 0 {
-		refreshTasksWindowWithBeads(w, *beads, mount)
 		return
 	}
 	
@@ -1909,9 +1908,8 @@ func applyBeadEdits(w *acme.Win, edits []beadEdit, beads *[]Bead, statusFilter s
 	for _, e := range errs {
 		fmt.Fprintf(os.Stderr, "beadEdit error: %s\n", e)
 	}
-	refreshed, _ := listBeadsWithFilter(statusFilter, mount)
+	refreshed, _ := listBeadsWithFilter(filter, mount)
 	*beads = refreshed
-	refreshTasksWindowWithBeads(w, *beads, mount)
 }
 
 func openTasksWindow() error {
@@ -1931,10 +1929,10 @@ func handleTasksWindow(w *acme.Win) {
 	defer w.CloseFiles()
 
 	var beads []Bead
-	statusFilter := ""
-	windowMount := "" // Start with no mount
-	beads, _ = listBeadsWithFilter(statusFilter, windowMount)
-	refreshTasksWindowWithBeads(w, beads, windowMount)
+	filter := "ready"
+	windowMount := ""
+	beads, _ = listBeadsWithFilter(filter, windowMount)
+	refreshTasksWindowWithBeads(w, beads, windowMount, filter)
 
 	for e := range w.EventChan() {
 		switch e.C2 {
@@ -1943,8 +1941,8 @@ func handleTasksWindow(w *acme.Win) {
 			arg := strings.TrimSpace(string(e.Arg))
 			switch cmd {
 			case "Get":
-				beads, _ = listBeadsWithFilter(statusFilter, windowMount)
-				refreshTasksWindowWithBeads(w, beads, windowMount)
+				beads, _ = listBeadsWithFilter(filter, windowMount)
+				refreshTasksWindowWithBeads(w, beads, windowMount, filter)
 			case "Put":
 				body, err := w.ReadAll("body")
 				if err != nil {
@@ -1952,7 +1950,7 @@ func handleTasksWindow(w *acme.Win) {
 					continue
 				}
 				edits := parseBeadEdits(string(body), beads)
-				applyBeadEdits(w, edits, &beads, statusFilter, windowMount)
+				applyBeadEdits(w, edits, &beads, filter, windowMount)
 			case "New":
 				if err := openNewBeadWindow("", windowMount); err != nil {
 					fmt.Fprintf(os.Stderr, "Error opening new bead window: %v\n", err)
@@ -1963,8 +1961,8 @@ func handleTasksWindow(w *acme.Win) {
 				} else if err := deleteBead(arg, windowMount); err != nil {
 					fmt.Fprintf(os.Stderr, "Error deleting bead: %v\n", err)
 				} else {
-					beads, _ = listBeadsWithFilter(statusFilter, windowMount)
-					refreshTasksWindowWithBeads(w, beads, windowMount)
+					beads, _ = listBeadsWithFilter(filter, windowMount)
+					refreshTasksWindowWithBeads(w, beads, windowMount, filter)
 				}
 			case "Init":
 				prefix := arg
@@ -1974,8 +1972,8 @@ func handleTasksWindow(w *acme.Win) {
 				if err := initBeads(prefix, windowMount); err != nil {
 					fmt.Fprintf(os.Stderr, "Error initializing beads: %v\n", err)
 				} else {
-					beads, _ = listBeadsWithFilter(statusFilter, windowMount)
-					refreshTasksWindowWithBeads(w, beads, windowMount)
+					beads, _ = listBeadsWithFilter(filter, windowMount)
+					refreshTasksWindowWithBeads(w, beads, windowMount, filter)
 				}
 			case "Mount":
 				cwd := strings.TrimSpace(arg)
@@ -1990,10 +1988,9 @@ func handleTasksWindow(w *acme.Win) {
 					if err := mountProject(cwd, name); err != nil {
 						fmt.Fprintf(os.Stderr, "Error mounting: %v\n", err)
 					} else {
-						// "" = name
 						windowMount = name
-						beads, _ = listBeadsWithFilter(statusFilter, windowMount)
-						refreshTasksWindowWithBeads(w, beads, windowMount)
+						beads, _ = listBeadsWithFilter(filter, windowMount)
+						refreshTasksWindowWithBeads(w, beads, windowMount, filter)
 					}
 				}
 			case "Umount":
@@ -2003,7 +2000,6 @@ func handleTasksWindow(w *acme.Win) {
 				} else if err := umountProject(name); err != nil {
 					fmt.Fprintf(os.Stderr, "Error unmounting: %v\n", err)
 				} else {
-					// If we unmounted the current window mount, pick first available mount
 					if windowMount == name {
 						data, _ := readFile("beads/mtab")
 						lines := strings.Split(strings.TrimSpace(string(data)), "\n")
@@ -2013,27 +2009,24 @@ func handleTasksWindow(w *acme.Win) {
 								parts := strings.Split(line, "\t")
 								if len(parts) > 0 {
 									windowMount = parts[0]
-									// "" = parts[0]
 									found = true
 									break
 								}
 							}
 						}
 						if !found {
-							// No mounts left, clear the window
 							windowMount = ""
 							beads = nil
-							refreshTasksWindowWithBeads(w, beads, windowMount)
+							refreshTasksWindowWithBeads(w, beads, windowMount, filter)
 							continue
 						}
 					}
-					beads, _ = listBeadsWithFilter(statusFilter, windowMount)
-					refreshTasksWindowWithBeads(w, beads, windowMount)
+					beads, _ = listBeadsWithFilter(filter, windowMount)
+					refreshTasksWindowWithBeads(w, beads, windowMount, filter)
 				}
 			case "Select":
 				name := strings.TrimSpace(arg)
 				if name == "" {
-					// Display mtab
 					data, err := readFile("beads/mtab")
 					if err != nil {
 						fmt.Fprintf(os.Stderr, "Error reading mtab: %v\n", err)
@@ -2042,7 +2035,6 @@ func handleTasksWindow(w *acme.Win) {
 						fmt.Fprintf(os.Stderr, "Usage: select mount name, then Select\n")
 					}
 				} else {
-					// Verify mount exists
 					data, err := readFile("beads/mtab")
 					if err != nil {
 						fmt.Fprintf(os.Stderr, "Error reading mtab: %v\n", err)
@@ -2057,37 +2049,20 @@ func handleTasksWindow(w *acme.Win) {
 						if !found {
 							fmt.Fprintf(os.Stderr, "Mount %s not found\n", name)
 						} else {
-							// "" = name
 							windowMount = name
-							beads, _ = listBeadsWithFilter(statusFilter, windowMount)
-							refreshTasksWindowWithBeads(w, beads, windowMount)
+							beads, _ = listBeadsWithFilter(filter, windowMount)
+							refreshTasksWindowWithBeads(w, beads, windowMount, filter)
 						}
 					}
 				}
-			case "Open":
-				statusFilter = "open"
-				beads, _ = listBeadsWithFilter(statusFilter, windowMount)
-				refreshTasksWindowWithBeads(w, beads, windowMount)
-			case "InProgress":
-				statusFilter = "in_progress"
-				beads, _ = listBeadsWithFilter(statusFilter, windowMount)
-				refreshTasksWindowWithBeads(w, beads, windowMount)
-			case "Closed":
-				statusFilter = "closed"
-				beads, _ = listBeadsWithFilter(statusFilter, windowMount)
-				refreshTasksWindowWithBeads(w, beads, windowMount)
-			case "Failed":
-				statusFilter = "failed"
-				beads, _ = listBeadsWithFilter(statusFilter, windowMount)
-				refreshTasksWindowWithBeads(w, beads, windowMount)
-			case "PendingReview":
-				statusFilter = "pending_review"
-				beads, _ = listBeadsWithFilter(statusFilter, windowMount)
-				refreshTasksWindowWithBeads(w, beads, windowMount)
-			case "PendingApproval":
-				statusFilter = "pending_approval"
-				beads, _ = listBeadsWithFilter(statusFilter, windowMount)
-				refreshTasksWindowWithBeads(w, beads, windowMount)
+			case "All":
+				filter = "all"
+				beads, _ = listBeadsWithFilter(filter, windowMount)
+				refreshTasksWindowWithBeads(w, beads, windowMount, filter)
+			case "Ready":
+				filter = "ready"
+				beads, _ = listBeadsWithFilter(filter, windowMount)
+				refreshTasksWindowWithBeads(w, beads, windowMount, filter)
 			default:
 				w.WriteEvent(e)
 			}
@@ -2106,7 +2081,7 @@ func handleTasksWindow(w *acme.Win) {
 	}
 }
 
-func refreshTasksWindowWithBeads(w *acme.Win, beads []Bead, mount string) {
+func refreshTasksWindowWithBeads(w *acme.Win, beads []Bead, mount string, filter string) {
 	if mount == "" {
 		w.Name("/AnviLLM/Tasks")
 	} else {
@@ -2121,7 +2096,7 @@ func refreshTasksWindowWithBeads(w *acme.Win, beads []Bead, mount string) {
 		buf.WriteString("  1. Select a directory path, then click Mount\n")
 		buf.WriteString("  2. Or click Select to see available mounts\n\n")
 	} else {
-		buf.WriteString("[Open] [InProgress] [Closed] [Failed] [PendingReview] [PendingApproval]\n\n")
+		buf.WriteString("[All] [Ready]\n\n")
 		buf.WriteString(fmt.Sprintf("%-4s %-12s %-12s %-4s %-8s %s\n", "#", "ID", "Status", "Blk", "Assignee", "Title"))
 		buf.WriteString(fmt.Sprintf("%-4s %-12s %-12s %-4s %-8s %s\n", "----", "------------", "------------", "----", "--------", strings.Repeat("-", 50)))
 
@@ -2146,12 +2121,23 @@ func refreshTasksWindowWithBeads(w *acme.Win, beads []Bead, mount string) {
 	w.Ctl("show")
 }
 
-func listBeadsWithFilter(statusFilter string, mount string) ([]Bead, error) {
+func listBeadsWithFilter(filter string, mount string) ([]Bead, error) {
 	if !isConnected() {
 		return nil, fmt.Errorf("not connected to anvilsrv")
 	}
 
-	data, err := readFile(filepath.Join("beads", mount, "list"))
+	if mount == "" {
+		return nil, nil
+	}
+
+	var endpoint string
+	if filter == "ready" {
+		endpoint = filepath.Join("beads", mount, "ready")
+	} else {
+		endpoint = filepath.Join("beads", mount, "list")
+	}
+
+	data, err := readFile(endpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -2160,38 +2146,7 @@ func listBeadsWithFilter(statusFilter string, mount string) ([]Bead, error) {
 	if err := json.Unmarshal(data, &beads); err != nil {
 		return nil, err
 	}
-
-	// Apply status filter
-	if statusFilter == "" {
-		// Default: filter out closed beads
-		var openBeads []Bead
-		for _, b := range beads {
-			if b.Status != "closed" {
-				openBeads = append(openBeads, b)
-			}
-		}
-		return openBeads, nil
-	}
-
-	// Special case: "failed" means closed beads whose close_reason is not "completed"
-	if statusFilter == "failed" {
-		var filtered []Bead
-		for _, b := range beads {
-			if b.Status == "closed" && b.CloseReason != "completed" {
-				filtered = append(filtered, b)
-			}
-		}
-		return filtered, nil
-	}
-
-	// Filter by specific status (covers open, in_progress, closed, pending_review, pending_approval)
-	var filtered []Bead
-	for _, b := range beads {
-		if b.Status == statusFilter {
-			filtered = append(filtered, b)
-		}
-	}
-	return filtered, nil
+	return beads, nil
 }
 
 func openNewBeadWindow(parentID string, mount string) error {
@@ -2296,42 +2251,16 @@ func createBeadFromMarkdown(content, parentID string, mount string) error {
 		return fmt.Errorf("title is required")
 	}
 
-	// Build command: new 'title' 'description' [parent-id]
+	// Build command: new 'title' 'description' [parent-id] [blockers=...]
 	cmd := fmt.Sprintf("new '%s' '%s'", title, description)
 	if parentID != "" {
 		cmd = fmt.Sprintf("%s %s", cmd, parentID)
 	}
-
-	if err := writeFile(filepath.Join("beads", mount, "ctl"), []byte(cmd)); err != nil {
-		return err
-	}
-
-	// Add blockers if specified
 	if blockers != "" {
-		// Need to find the newly created bead ID
-		beads, err := listBeadsWithFilter("", mount)
-		if err != nil {
-			return nil // bead created, deps failed
-		}
-		var newID string
-		for _, b := range beads {
-			if b.Title == title {
-				newID = b.ID
-				break
-			}
-		}
-		if newID != "" {
-			for _, blockerID := range strings.Split(blockers, ",") {
-				blockerID = strings.TrimSpace(blockerID)
-				if blockerID != "" {
-					// blockerID blocks newID
-					addBlocksDep(blockerID, newID, mount)
-				}
-			}
-		}
+		cmd = fmt.Sprintf("%s blockers=%s", cmd, blockers)
 	}
 
-	return nil
+	return writeFile(filepath.Join("beads", mount, "ctl"), []byte(cmd))
 }
 
 func openViewBeadWindow(beadID string, mount string) error {
