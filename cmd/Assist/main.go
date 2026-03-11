@@ -2341,7 +2341,7 @@ func openViewBeadWindow(beadID string, mount string) error {
 	}
 
 	w.Name(fmt.Sprintf("/AnviLLM/Tasks/%s", beadID))
-	w.Write("tag", []byte("Get Put New Blocks "))
+	w.Write("tag", []byte("Get Put New Blocks Comments "))
 
 	go handleViewBeadWindow(w, beadID, mount)
 	return nil
@@ -2396,6 +2396,10 @@ func handleViewBeadWindow(w *acme.Win, beadID string, mount string) {
 				} else if err := addBlocksDep(beadID, arg, mount); err != nil {
 					fmt.Fprintf(os.Stderr, "Error adding blocks dep: %v\n", err)
 				}
+			case "Comments":
+				if err := openCommentsWindow(beadID, mount); err != nil {
+					fmt.Fprintf(os.Stderr, "Error opening comments window: %v\n", err)
+				}
 			default:
 				w.WriteEvent(e)
 			}
@@ -2443,6 +2447,74 @@ func refreshViewBeadWindow(w *acme.Win, beadID string, mount string) {
 			desc = bead.Description
 		}
 		buf.WriteString(desc)
+	}
+
+	w.Addr(",")
+	w.Write("data", []byte(buf.String()))
+	w.Ctl("clean")
+	w.Addr("0")
+	w.Ctl("dot=addr")
+	w.Ctl("show")
+}
+
+func openCommentsWindow(beadID string, mount string) error {
+	w, err := acme.New()
+	if err != nil {
+		return err
+	}
+	w.Name(fmt.Sprintf("/AnviLLM/Tasks/%s/comments", beadID))
+	w.Write("tag", []byte("Get "))
+
+	go handleCommentsWindow(w, beadID, mount)
+	return nil
+}
+
+func handleCommentsWindow(w *acme.Win, beadID string, mount string) {
+	defer w.CloseFiles()
+	refreshCommentsWindow(w, beadID, mount)
+
+	for e := range w.EventChan() {
+		switch e.C2 {
+		case 'x', 'X':
+			if string(e.Text) == "Get" {
+				refreshCommentsWindow(w, beadID, mount)
+			} else {
+				w.WriteEvent(e)
+			}
+		default:
+			w.WriteEvent(e)
+		}
+	}
+}
+
+func refreshCommentsWindow(w *acme.Win, beadID string, mount string) {
+	data, err := readFile(filepath.Join("beads", mount, beadID, "comments"))
+	if err != nil {
+		w.Addr(",")
+		w.Write("data", []byte(fmt.Sprintf("Error reading comments: %v\n", err)))
+		w.Ctl("clean")
+		return
+	}
+
+	var comments []struct {
+		Author    string `json:"author"`
+		Body      string `json:"body"`
+		CreatedAt string `json:"created_at"`
+	}
+	if err := json.Unmarshal(data, &comments); err != nil {
+		w.Addr(",")
+		w.Write("data", []byte(fmt.Sprintf("Error parsing comments: %v\n", err)))
+		w.Ctl("clean")
+		return
+	}
+
+	var buf strings.Builder
+	if len(comments) == 0 {
+		buf.WriteString("No comments.\n")
+	} else {
+		for _, c := range comments {
+			buf.WriteString(fmt.Sprintf("--- %s (%s) ---\n%s\n\n", c.Author, c.CreatedAt, c.Body))
+		}
 	}
 
 	w.Addr(",")
