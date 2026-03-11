@@ -11,15 +11,32 @@ NAMESPACE = os.environ.get("NAMESPACE", f"/tmp/ns.{os.environ['USER']}.:0")
 PORT = 8089
 
 events = []
+sessions = {}  # id -> (alias, role)
 lock = threading.Lock()
+
+def format_participant(pid):
+    """Format participant with alias and role if available."""
+    if pid == "user":
+        return "user"
+    info = sessions.get(pid)
+    if info:
+        alias, role = info
+        if alias and alias != "-":
+            label = alias
+        else:
+            label = pid
+        if role and role != "-":
+            return f"{label}\\n({role})"
+        return label
+    return pid
 
 def generate_puml():
     with lock:
         lines = ["@startuml", "skinparam responseMessageBelowArrow true", "participant user"]
         for e in events:
             d = e.get("data", {})
-            frm = d.get("from", "?")
-            to = d.get("to", "?")
+            frm = format_participant(d.get("from", "?"))
+            to = format_participant(d.get("to", "?"))
             subj = d.get("subject", "").replace('"', "'")[:60]
             lines.append(f'"{frm}" -> "{to}": {subj}')
         lines.append("@enduml")
@@ -101,7 +118,28 @@ def event_reader():
         except json.JSONDecodeError:
             pass
 
+def refresh_sessions():
+    global sessions
+    while True:
+        try:
+            p = subprocess.run(["9p", "read", "agent/list"], capture_output=True, text=True, timeout=5, env={**os.environ, "NAMESPACE": NAMESPACE})
+            if p.returncode == 0:
+                new_sessions = {}
+                for line in p.stdout.strip().split("\n"):
+                    if not line:
+                        continue
+                    parts = line.split("\t")
+                    if len(parts) >= 5:
+                        sid, _, _, alias, role = parts[:5]
+                        new_sessions[sid] = (alias, role)
+                with lock:
+                    sessions.update(new_sessions)
+        except Exception:
+            pass
+        threading.Event().wait(2)
+
 if __name__ == "__main__":
     threading.Thread(target=event_reader, daemon=True).start()
+    threading.Thread(target=refresh_sessions, daemon=True).start()
     print(f"Trace UI: http://localhost:{PORT}")
     HTTPServer(("", PORT), Handler).serve_forever()
