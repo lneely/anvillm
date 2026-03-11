@@ -52,7 +52,7 @@ tool: list_beads.sh
 args: ["<mount>"]
 ```
 
-Search beads (includes closed):
+Search beads by id, title, or description (includes closed):
 ```
 Tool: execute_code
 tool: search_beads.sh
