@@ -56,26 +56,34 @@ HTML = """<!DOCTYPE html>
 body{margin:0;display:flex;height:100vh;font-family:monospace}
 #left{width:25%;overflow:auto;background:#1e1e1e;color:#d4d4d4;padding:8px;box-sizing:border-box;display:flex;flex-direction:column}
 #right{width:75%;overflow:auto;background:#fff;display:flex;align-items:center;justify-content:center}
-#svg-container{transform-origin:center;cursor:grab}
+#svg-container{transform-origin:0 0;cursor:grab}
 pre{margin:0;white-space:pre-wrap;font-size:12px;flex:1}
 button{margin-bottom:8px;padding:4px 8px;cursor:pointer}
 </style></head><body>
 <div id="left"><button onclick="reset()">Reset</button><pre id="puml"></pre></div>
 <div id="right"><div id="svg-container"></div></div>
 <script>
-let scale=1;
+let scale=1,panX=0,panY=0,dragging=false,startX,startY;
+function updateTransform(){
+  document.getElementById('svg-container').style.transform='translate('+panX+'px,'+panY+'px) scale('+scale+')';
+}
 function refresh(){
   fetch('/data').then(r=>r.json()).then(d=>{
     document.getElementById('puml').textContent=d.puml;
     document.getElementById('svg-container').innerHTML=d.svg;
   });
 }
-function reset(){fetch('/reset',{method:'POST'}).then(()=>{scale=1;refresh();});}
+function reset(){fetch('/reset',{method:'POST'}).then(()=>{scale=1;panX=0;panY=0;updateTransform();refresh();});}
 document.getElementById('right').addEventListener('wheel',e=>{
   e.preventDefault();
   scale*=e.deltaY<0?1.1:0.9;
-  document.getElementById('svg-container').style.transform='scale('+scale+')';
+  updateTransform();
 });
+const container=document.getElementById('right');
+container.addEventListener('mousedown',e=>{dragging=true;startX=e.clientX-panX;startY=e.clientY-panY;container.style.cursor='grabbing';});
+container.addEventListener('mousemove',e=>{if(dragging){panX=e.clientX-startX;panY=e.clientY-startY;updateTransform();}});
+container.addEventListener('mouseup',()=>{dragging=false;container.style.cursor='grab';});
+container.addEventListener('mouseleave',()=>{dragging=false;container.style.cursor='grab';});
 setInterval(refresh,2000);
 refresh();
 </script></body></html>"""
