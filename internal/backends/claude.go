@@ -42,9 +42,7 @@ func newClaudeWithCommand(command []string, nsSuffix string) backend.Backend {
 			Rows: 40,
 			Cols: 120,
 		},
-		StartupTime:    15 * time.Second,
 		Commands:       &claudeCommands{},
-		StartupHandler: &claudeStartupHandler{},
 		StateInspector: &claudeStateInspector{},
 		ClearHandler:   claudeClearHandler,
 		CompactHandler: claudeCompactHandler,
@@ -223,51 +221,4 @@ func GetMostRecentSessionID(cwd string) (string, error) {
 		return "", fmt.Errorf("no sessions found")
 	}
 	return sessions[0].ID, nil
-}
-
-// claudeStartupHandler handles the --dangerously-skip-permissions dialog
-type claudeStartupHandler struct {
-	sentDown  bool
-	sentEnter bool
-}
-
-func (h *claudeStartupHandler) HandleStartup(output string) (keys string, done bool) {
-	clean := stripANSI(output)
-
-	// Look for the permissions dialog
-	if strings.Contains(clean, "WARNING: Claude Code running in Bypass Permissions mode") {
-		// Check if we're on "No, exit" (default selection)
-		if strings.Contains(clean, "❯ 1. No, exit") && !h.sentDown {
-			// Send Down arrow to select "Yes, I accept"
-			h.sentDown = true
-			return "Down", false
-		}
-		// Check if we're on "Yes, I accept"
-		if strings.Contains(clean, "❯ 2. Yes, I accept") && !h.sentEnter {
-			// Send Enter to confirm
-			h.sentEnter = true
-			return "C-m", false
-		}
-		// Still showing dialog but not on a specific selection
-		// Wait for more output
-		return "", false
-	}
-
-	// Check if we're past the dialog (looking for greeting)
-	greetingPatterns := []string{
-		"Hello",
-		"Welcome",
-		"I'm Claude",
-		"What can I help",
-		"How can I assist",
-	}
-
-	for _, pattern := range greetingPatterns {
-		if strings.Contains(clean, pattern) {
-			return "", true // Done with startup
-		}
-	}
-
-	// Not at dialog yet, keep waiting
-	return "", false
 }

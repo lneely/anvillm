@@ -31,7 +31,6 @@ func NewKiroCLI(nsSuffix string) backend.Backend {
 			Rows: 40,
 			Cols: 120,
 		},
-		StartupTime:    30 * time.Second,
 		StateInspector: &kiroStateInspector{},
 		ClearHandler:   kiroClearHandler,
 		ResumeHandler:  kiroResumeHandler,

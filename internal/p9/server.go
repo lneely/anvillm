@@ -714,67 +714,84 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return errFcall(fc, "beads not initialized")
 	}
 
-	// /ctl - create new session
+	// /ctl - create new session or recover orphaned sessions
 	if path == "/ctl" {
 		args := strings.Fields(input)
-		if len(args) < 2 || args[0] != "new" {
-			return errFcall(fc, "usage: new <backend> <cwd> [sandbox=<sandbox>] [model=<model>]")
+		if len(args) == 0 {
+			return errFcall(fc, "usage: new <backend> <cwd> [sandbox=<sandbox>] [model=<model>] | recover")
 		}
 
-		backendName := args[1]
-		cwd, err := os.Getwd()
-		if err != nil {
-			return errFcall(fc, fmt.Sprintf("failed to get working directory: %v", err))
-		}
-		var sbx string
-		var model string
-
-		// Parse remaining arguments: first non-key=value is cwd, rest are options
-		cwdSet := false
-		for i := 2; i < len(args); i++ {
-			arg := args[i]
-			if s, ok := strings.CutPrefix(arg, "sandbox="); ok {
-				sbx = s
-			} else if m, ok := strings.CutPrefix(arg, "model="); ok {
-				model = m
-			} else if !cwdSet {
-				// First positional argument is cwd
-				cwd = strings.Trim(arg, `"`)
-				cwdSet = true
-			} else {
-				return errFcall(fc, fmt.Sprintf("unexpected argument: %s", arg))
+		switch args[0] {
+		case "recover":
+			recovered := s.mgr.Recover()
+			if len(recovered) == 0 {
+				return errFcall(fc, "no orphaned sessions found")
 			}
-		}
+			return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 
-		// Validate and clean the path
-		cleanPath := filepath.Clean(cwd)
+		case "new":
+			if len(args) < 2 {
+				return errFcall(fc, "usage: new <backend> <cwd> [sandbox=<sandbox>] [model=<model>]")
+			}
 
-		// Ensure it's an absolute path
-		if !filepath.IsAbs(cleanPath) {
-			var err error
-			cleanPath, err = filepath.Abs(cleanPath)
+			backendName := args[1]
+			cwd, err := os.Getwd()
 			if err != nil {
-				return errFcall(fc, fmt.Sprintf("invalid path: %v", err))
+				return errFcall(fc, fmt.Sprintf("failed to get working directory: %v", err))
 			}
-		}
+			var sbx string
+			var model string
 
-		// Verify the directory exists
-		if info, err := os.Stat(cleanPath); err != nil {
-			return errFcall(fc, fmt.Sprintf("path does not exist: %v", err))
-		} else if !info.IsDir() {
-			return errFcall(fc, fmt.Sprintf("path is not a directory: %s", cleanPath))
-		}
+			// Parse remaining arguments: first non-key=value is cwd, rest are options
+			cwdSet := false
+			for i := 2; i < len(args); i++ {
+				arg := args[i]
+				if s, ok := strings.CutPrefix(arg, "sandbox="); ok {
+					sbx = s
+				} else if m, ok := strings.CutPrefix(arg, "model="); ok {
+					model = m
+				} else if !cwdSet {
+					// First positional argument is cwd
+					cwd = strings.Trim(arg, `"`)
+					cwdSet = true
+				} else {
+					return errFcall(fc, fmt.Sprintf("unexpected argument: %s", arg))
+				}
+			}
 
-		opts := backend.SessionOptions{
-			CWD:     cleanPath,
-			Sandbox: sbx,
-			Model:   model,
+			// Validate and clean the path
+			cleanPath := filepath.Clean(cwd)
+
+			// Ensure it's an absolute path
+			if !filepath.IsAbs(cleanPath) {
+				var err error
+				cleanPath, err = filepath.Abs(cleanPath)
+				if err != nil {
+					return errFcall(fc, fmt.Sprintf("invalid path: %v", err))
+				}
+			}
+
+			// Verify the directory exists
+			if info, err := os.Stat(cleanPath); err != nil {
+				return errFcall(fc, fmt.Sprintf("path does not exist: %v", err))
+			} else if !info.IsDir() {
+				return errFcall(fc, fmt.Sprintf("path is not a directory: %s", cleanPath))
+			}
+
+			opts := backend.SessionOptions{
+				CWD:     cleanPath,
+				Sandbox: sbx,
+				Model:   model,
+			}
+			_, err = s.mgr.New(opts, backendName)
+			if err != nil {
+				return errFcall(fc, err.Error())
+			}
+			return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
+
+		default:
+			return errFcall(fc, "usage: new <backend> <cwd> [sandbox=<sandbox>] [model=<model>] | recover")
 		}
-		_, err = s.mgr.New(opts, backendName)
-		if err != nil {
-			return errFcall(fc, err.Error())
-		}
-		return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
 	}
 
 	// /{id}/ctl - session control

@@ -102,7 +102,7 @@ func main() {
 	defer w.CloseFiles()
 
 	w.Name(windowName)
-	w.Write("tag", []byte("Get Put Attach Stop Restart Kill Alias Context Daemon Inbox Archive Tasks "))
+	w.Write("tag", []byte("Get Put Attach Stop Restart Kill Alias Context Daemon Recover Inbox Archive Tasks "))
 	refreshList(w)
 	w.Ctl("clean")
 
@@ -266,6 +266,10 @@ func main() {
 			case "Daemon":
 				if err := openDaemonWindow(); err != nil {
 					fmt.Fprintf(os.Stderr, "Error opening daemon window: %v\n", err)
+				}
+			case "Recover":
+				if err := recoverSessions(w); err != nil {
+					fmt.Fprintf(os.Stderr, "Error recovering sessions: %v\n", err)
 				}
 			case "Inbox":
 				owner := "user"
@@ -662,6 +666,17 @@ func refreshList(w *acme.Win) {
 	w.Addr("0")
 	w.Ctl("dot=addr")
 	w.Ctl("show")
+}
+
+func recoverSessions(w *acme.Win) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
+	if err := writeFile("ctl", []byte("recover")); err != nil {
+		return err
+	}
+	refreshList(w)
+	return nil
 }
 
 // sessionEdit represents a single inline action parsed from the sessions window body.

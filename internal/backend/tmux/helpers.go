@@ -48,7 +48,22 @@ func windowTarget(session, windowName string) string {
 	return fmt.Sprintf("%s:%s", session, windowName)
 }
 
-// setEnvironment sets an environment variable in the tmux session or window
+// setWindowOption sets a window-scoped user option (@key) in tmux
+func setWindowOption(target, key, value string) error {
+	_, err := tmuxCmd("set-option", "-w", "-t", target, "@"+key, value)
+	return err
+}
+
+// getWindowOption gets a window-scoped user option (@key) from tmux
+func getWindowOption(target, key string) string {
+	out, err := tmuxCmd("show-option", "-w", "-t", target, "-v", "@"+key)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// setEnvironment sets an environment variable in the tmux session (for shell inheritance)
 func setEnvironment(target, key, value string) error {
 	_, err := tmuxCmd("set-environment", "-t", target, key, value)
 	return err
@@ -71,21 +86,6 @@ func SendKeysTo(target string, keys ...string) error {
 // sendLiteral sends literal text to a tmux target (doesn't interpret special chars)
 func sendLiteral(target, text string) error {
 	_, err := tmuxCmd("send-keys", "-t", target, "-l", text)
-	return err
-}
-
-// setupPipePane sets up pipe-pane to redirect output to a file/FIFO
-func setupPipePane(tmuxTarget, fifoPath string) error {
-	// -o flag: only capture stdout (not stdin)
-	cmd := fmt.Sprintf("cat >> %s", fifoPath)
-	_, err := tmuxCmd("pipe-pane", "-o", "-t", tmuxTarget, cmd)
-	return err
-}
-
-// closePipePane closes the pipe-pane for a target
-func closePipePane(target string) error {
-	// Calling pipe-pane with no command closes it
-	_, err := tmuxCmd("pipe-pane", "-t", target)
 	return err
 }
 

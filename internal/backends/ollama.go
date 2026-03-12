@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"time"
 
 	"9fans.net/go/plan9/client"
 )
@@ -34,7 +33,6 @@ func NewOllama(nsSuffix string) backend.Backend {
 			Rows: 40,
 			Cols: 120,
 		},
-		StartupTime:    30 * time.Second,
 		StateInspector: &ollamaStateInspector{},
 		NsSuffix:       nsSuffix,
 	})

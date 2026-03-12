@@ -180,6 +180,48 @@ func (m *Manager) Remove(id string) {
 	}
 }
 
+// Recover finds orphaned tmux windows and adopts them back into the manager.
+// Returns the list of recovered session IDs.
+func (m *Manager) Recover() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Build set of tracked session IDs
+	tracked := make(map[string]bool)
+	for id := range m.sessions {
+		tracked[id] = true
+	}
+
+	var recovered []string
+	for _, b := range m.backends {
+		tb, ok := b.(*tmux.Backend)
+		if !ok {
+			continue
+		}
+
+		orphans := tb.ListOrphanedWindows(tracked)
+		for _, windowName := range orphans {
+			sess, backendName, err := tb.RecoverSession(windowName)
+			if err != nil {
+				logging.Logger().Warn("failed to recover session", zap.String("id", windowName), zap.Error(err))
+				continue
+			}
+
+			// Wire up state change callback
+			if tmuxSess, ok := sess.(*tmux.Session); ok {
+				tmuxSess.OnStateChange = m.OnStateChange
+			}
+
+			m.sessions[sess.ID()] = sess
+			m.mailManager.EnsureMailbox(sess.ID())
+			recovered = append(recovered, sess.ID())
+			logging.Logger().Info("recovered session", zap.String("id", sess.ID()), zap.String("backend", backendName))
+		}
+	}
+
+	return recovered
+}
+
 // Stop stops the mail processing loop
 func (m *Manager) Stop() {
 	close(m.stopCh)

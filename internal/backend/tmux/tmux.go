@@ -9,11 +9,9 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -21,14 +19,6 @@ import (
 type TmuxSize struct {
 	Rows uint16
 	Cols uint16
-}
-
-// StartupHandler can send initial commands during startup
-type StartupHandler interface {
-	// HandleStartup is called during waitForReady when output is received
-	// Returns tmux key sequence to send (e.g., "Down", "C-m"), or empty string if no action needed
-	// Returns done=true when startup is complete
-	HandleStartup(output string) (keys string, done bool)
 }
 
 // StateInspector checks if the backend is busy by inspecting the process tree
@@ -65,9 +55,7 @@ type Config struct {
 	Command        []string
 	Environment    map[string]string
 	TmuxSize       TmuxSize
-	StartupTime    time.Duration
 	Commands       backend.CommandHandler
-	StartupHandler StartupHandler // Optional: handles startup dialogs
 	StateInspector StateInspector // Optional: for process tree inspection
 	NsSuffix       string         // Optional: namespace suffix (e.g., "0" for :0)
 	ModelResolver  ModelResolver  // Optional: modifies command to include model selection
@@ -91,9 +79,6 @@ func generateID() string {
 
 // New creates a new tmux-based backend
 func New(cfg Config) backend.Backend {
-	if cfg.StartupTime == 0 {
-		cfg.StartupTime = 30 * time.Second
-	}
 	if cfg.TmuxSize.Rows == 0 {
 		cfg.TmuxSize.Rows = 40
 	}
@@ -210,6 +195,16 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 		return nil, fmt.Errorf("failed to set AGENT_ID: %w", err)
 	}
 
+	// Set recovery metadata as window options (survives daemon restart)
+	setWindowOption(target, "ANVILLM_BACKEND", b.cfg.Name)
+	setWindowOption(target, "ANVILLM_CWD", opts.CWD)
+	if opts.Sandbox != "" {
+		setWindowOption(target, "ANVILLM_SANDBOX", opts.Sandbox)
+	}
+	if opts.Model != "" {
+		setWindowOption(target, "ANVILLM_MODEL", opts.Model)
+	}
+
 	for k, v := range b.cfg.Environment {
 		if err := setEnvironment(target, k, v); err != nil {
 			killWindow(b.tmuxSession, windowName)
@@ -221,36 +216,7 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 		}
 	}
 
-	// 4. Create FIFO for output
-	fifoPath := fmt.Sprintf("/tmp/tmux-%s-%s.fifo", b.tmuxSession, windowName)
-	// Remove existing FIFO if it exists (from previous crashed session)
-	os.Remove(fifoPath)
-	if err := syscall.Mkfifo(fifoPath, 0600); err != nil {
-		killWindow(b.tmuxSession, windowName)
-		return nil, fmt.Errorf("failed to create FIFO: %w", err)
-	}
-
-	// 5. Setup pipe-pane for this window
-	if err := setupPipePane(target, fifoPath); err != nil {
-		os.Remove(fifoPath)
-		killWindow(b.tmuxSession, windowName)
-		return nil, fmt.Errorf("failed to setup pipe-pane: %w", err)
-	}
-
-	// 6. Open FIFO for reading (this blocks until writer connects)
-	// We need to do this in a goroutine to avoid blocking
-	fifoOpenCh := make(chan *os.File, 1)
-	fifoErrCh := make(chan error, 1)
-	go func() {
-		f, err := os.OpenFile(fifoPath, os.O_RDONLY, 0600)
-		if err != nil {
-			fifoErrCh <- err
-			return
-		}
-		fifoOpenCh <- f
-	}()
-
-	// 7. Wrap command with landrun (ALWAYS - sandboxing cannot be disabled)
+	// 4. Wrap command with landrun (ALWAYS - sandboxing cannot be disabled)
 	command := b.cfg.Command
 	// Apply model resolver if a model is specified
 	if opts.Model != "" && b.cfg.ModelResolver != nil {
@@ -259,10 +225,9 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 	if !sandbox.IsAvailable() {
 		if sandboxCfg.General.BestEffort {
 			logging.Logger().Warn("landrun not available, running UNSANDBOXED (best-effort mode)")
-			logging.Logger().Warn("no filesystem or network restrictions will be enforced")
+			logging.Logger().Warn("no filesystem and network restrictions will be enforced")
 			logging.Logger().Warn("install landrun: go install github.com/landlock-lsm/landrun@latest")
 		} else {
-			os.Remove(fifoPath)
 			killWindow(b.tmuxSession, windowName)
 			logging.Logger().Error("landrun not available and sandboxing is required")
 			logging.Logger().Error("install landrun: go install github.com/landlock-lsm/landrun@latest")
@@ -273,7 +238,7 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 	command = sandbox.WrapCommand(sandboxCfg, command, opts.CWD)
 	debug.Log("[session %s] sandboxed command: %v", id, command)
 
-	// 8. Build command string for tmux
+	// 5. Build command string for tmux
 	cmdStr := ""
 	for i, arg := range command {
 		if i > 0 {
@@ -289,41 +254,23 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 
 	// Change to working directory first
 	if err := sendKeys(target, fmt.Sprintf("cd \"%s\"", opts.CWD), "C-m"); err != nil {
-		os.Remove(fifoPath)
 		killWindow(b.tmuxSession, windowName)
 		return nil, fmt.Errorf("failed to change directory: %w", err)
 	}
 
 	// Export AGENT_ID to shell environment
 	if err := sendKeys(target, fmt.Sprintf("export AGENT_ID=%s", id), "C-m"); err != nil {
-		os.Remove(fifoPath)
 		killWindow(b.tmuxSession, windowName)
 		return nil, fmt.Errorf("failed to export AGENT_ID: %w", err)
 	}
 
 	// Send the command
 	if err := sendKeys(target, cmdStr, "C-m"); err != nil {
-		os.Remove(fifoPath)
 		killWindow(b.tmuxSession, windowName)
 		return nil, fmt.Errorf("failed to start command: %w", err)
 	}
 
-	// 8. Wait for FIFO to open (should happen quickly after command starts)
-	var fifo *os.File
-	select {
-	case fifo = <-fifoOpenCh:
-		// Success
-	case err := <-fifoErrCh:
-		os.Remove(fifoPath)
-		killWindow(b.tmuxSession, windowName)
-		return nil, fmt.Errorf("failed to open FIFO: %w", err)
-	case <-time.After(5 * time.Second):
-		os.Remove(fifoPath)
-		killWindow(b.tmuxSession, windowName)
-		return nil, fmt.Errorf("timeout opening FIFO")
-	}
-
-	// 9. Get PID (find the backend process, not just the bash shell)
+	// 6. Get PID (find the backend process, not just the bash shell)
 	panePID, err := getPanePID(target)
 	if err != nil {
 		debug.Log("[session %s] warning: failed to get pane PID: %v", id, err)
@@ -373,14 +320,10 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 		resumeHandler:  b.cfg.ResumeHandler,
 		compactHandler: b.cfg.CompactHandler,
 		pid:            pid,
-		state:          "starting",
+		state:          "idle",
 		createdAt:      time.Now(),
-		fifoPath:       fifoPath,
-		fifo:           fifo,
-		dataCh:         make(chan []byte, 100),
 		stopCh:         make(chan struct{}),
 		commands:       b.cfg.Commands,
-		startupHandler: b.cfg.StartupHandler,
 		stateInspector: b.cfg.StateInspector,
 		// Store for restart support
 		backendCommand:     b.cfg.Command,
@@ -389,27 +332,7 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 	}
 	sess.idleCond = sync.NewCond(&sess.mu)
 
-	// 10. Start reader goroutine
-	go sess.reader()
-
-	// 11. Start background startup watcher that moves to "idle" when ready
-	go func() {
-		// Use background context, not the RPC context
-		bgCtx := context.Background()
-		if err := sess.waitForReady(bgCtx, b.cfg.StartupTime); err != nil {
-			debug.Log("[session %s] startup failed: %v", sess.ID(), err)
-			// Don't close the session - let user debug via tmux attach
-			sess.TransitionTo("error")
-			return
-		}
-		sess.mu.Lock()
-		sess.transitionToLocked("idle")
-		sess.output.Reset()
-		sess.mu.Unlock()
-		debug.Log("[session %s] ready (tmux=%s:%s, pid=%d)", sess.ID(), b.tmuxSession, windowName, sess.pid)
-	}()
-
-	// Return immediately - session starts in "starting" state
+	debug.Log("[session %s] ready (tmux=%s:%s, pid=%d)", sess.ID(), b.tmuxSession, windowName, sess.pid)
 	return sess, nil
 }
 
@@ -420,4 +343,115 @@ func containsSpace(s string) bool {
 		}
 	}
 	return false
+}
+
+// ListOrphanedWindows returns window names in the tmux session that look like session IDs
+// (8 hex chars) but are not in the tracked set.
+func (b *Backend) ListOrphanedWindows(tracked map[string]bool) []string {
+	if !sessionExists(b.tmuxSession) {
+		return nil
+	}
+
+	out, err := tmuxCmd("list-windows", "-t", b.tmuxSession, "-F", "#{window_name}")
+	if err != nil {
+		return nil
+	}
+
+	var orphans []string
+	for _, name := range strings.Split(strings.TrimSpace(out), "\n") {
+		if name == "" || name == "bash" {
+			continue
+		}
+		// Check if it looks like a session ID (8 hex chars)
+		if len(name) == 8 && isHex(name) && !tracked[name] {
+			orphans = append(orphans, name)
+		}
+	}
+	return orphans
+}
+
+// RecoverSession reconnects to a running tmux window.
+// Returns a fully functional Session and the backend name.
+func (b *Backend) RecoverSession(windowName string) (backend.Session, string, error) {
+	if !windowExists(b.tmuxSession, windowName) {
+		return nil, "", fmt.Errorf("window %s does not exist", windowName)
+	}
+
+	target := windowTarget(b.tmuxSession, windowName)
+
+	// Read recovery metadata from window options
+	envBackend := getWindowOption(target, "ANVILLM_BACKEND")
+	envCwd := getWindowOption(target, "ANVILLM_CWD")
+	envSandbox := getWindowOption(target, "ANVILLM_SANDBOX")
+	envModel := getWindowOption(target, "ANVILLM_MODEL")
+	envAlias := getWindowOption(target, "ANVILLM_ALIAS")
+	envRole := getWindowOption(target, "ANVILLM_ROLE")
+
+	// Use stored CWD if available, fallback to pane path
+	cwd, _ := tmuxCmd("display-message", "-t", target, "-p", "#{pane_current_path}")
+	cwd = strings.TrimSpace(cwd)
+	if envCwd != "" {
+		cwd = envCwd
+	}
+
+	// Get PID
+	panePID, _ := getPanePID(target)
+	pid := 0
+	if panePID != 0 {
+		cmd := exec.Command("ps", "-p", fmt.Sprintf("%d", panePID), "-o", "comm=")
+		if out, err := cmd.Output(); err == nil {
+			if strings.TrimSpace(string(out)) == "kiro-cli" {
+				pid = panePID
+			}
+		}
+		if pid == 0 {
+			pid = FindBackendPID(panePID)
+		}
+	}
+
+	// Use stored backend name, fallback to recovering backend
+	backendName := envBackend
+	if backendName == "" {
+		backendName = b.cfg.Name
+	}
+
+	sess := &Session{
+		id:             windowName,
+		backendName:    backendName,
+		tmuxSession:    b.tmuxSession,
+		windowName:     windowName,
+		cwd:            cwd,
+		alias:          envAlias,
+		sandbox:        envSandbox,
+		model:          envModel,
+		role:           envRole,
+		pid:            pid,
+		state:          "idle",
+		createdAt:      time.Now(),
+		stopCh:         make(chan struct{}),
+		commands:       b.cfg.Commands,
+		stateInspector: b.cfg.StateInspector,
+		backendCommand: b.cfg.Command,
+		environment:    b.cfg.Environment,
+	}
+	sess.idleCond = sync.NewCond(&sess.mu)
+
+	// Detect actual state via process inspection
+	if sess.stateInspector != nil {
+		if panePID != 0 && sess.stateInspector.IsBusy(panePID) {
+			sess.state = "running"
+		}
+	}
+
+	debug.Log("[session %s] recovered (backend=%s, cwd=%s, pid=%d, state=%s)", windowName, backendName, cwd, pid, sess.state)
+	return sess, backendName, nil
+}
+
+func isHex(s string) bool {
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }

@@ -5,11 +5,9 @@ import (
 	"anvillm/internal/debug"
 	"anvillm/internal/logging"
 	"anvillm/internal/sandbox"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"sync"
 	"syscall"
@@ -35,11 +33,7 @@ type Session struct {
 	initialPromptSent  bool   // true after context was sent; reset on clear/compact/stop/restart
 	createdAt          time.Time
 
-	fifoPath string
-	fifo     *os.File
-	dataCh   chan []byte
 	stopCh   chan struct{}
-	output   bytes.Buffer
 
 	model          string        // Active model override (empty = backend default)
 	modelResolver  ModelResolver // Optional: modifies command to include model selection
@@ -48,7 +42,6 @@ type Session struct {
 	compactHandler CompactHandler // Optional: backend-specific /compact handling
 
 	commands       backend.CommandHandler
-	startupHandler StartupHandler
 	stateInspector StateInspector
 
 	// For restart support
@@ -57,7 +50,6 @@ type Session struct {
 	originalCommandStr string            // Full command string as sent to tmux (for restart)
 
 	transitioning   bool // True during Stop/Restart/Close operations to prevent concurrent modifications
-	readerGeneration int  // Incremented on each restart to prevent old readers from updating state
 	intentionallyStopped bool // True if user explicitly stopped the session (prevents auto-restart)
 	lastRestartAttempt time.Time // Last time auto-restart was attempted (prevents spam)
 	hadCrash bool // True if session has crashed at least once (enables resume on restart)
@@ -144,16 +136,16 @@ func (s *Session) transitionToLocked(newState string) error {
 		s.idleCond.Broadcast()
 	case s.state == "error" && newState == "starting":
 		// Restart from error state
-		logging.Logger().Info("restarting from error state", zap.String("session", s.id))
+		debug.Log("[session %s] restarting from error state", s.id)
 		s.state = newState
 	case newState == "stopped" || newState == "killed":
 		// Allow transition to stopped/exited from any state
-		logging.Logger().Info("session stopped", zap.String("session", s.id), zap.String("old_state", oldState), zap.String("new_state", newState))
+		debug.Log("[session %s] stopped (old=%s, new=%s)", s.id, oldState, newState)
 		s.state = newState
 		s.idleCond.Broadcast()
 	case s.state == "stopped" && newState == "starting":
 		// Allow restart from stopped state
-		logging.Logger().Info("restarting from stopped state", zap.String("session", s.id))
+		debug.Log("[session %s] restarting from stopped state", s.id)
 		s.state = newState
 	default:
 		return fmt.Errorf("invalid state transition: %s → %s", s.state, newState)
@@ -170,6 +162,7 @@ func (s *Session) SetAlias(alias string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.alias = alias
+	setWindowOption(s.target(), "ANVILLM_ALIAS", alias)
 }
 
 func (s *Session) Metadata() backend.SessionMetadata {
@@ -242,6 +235,7 @@ func (s *Session) SetRole(role string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.role = role
+	setWindowOption(s.target(), "ANVILLM_ROLE", role)
 }
 
 // GetRole gets the bot role
@@ -258,172 +252,9 @@ func (s *Session) SetWinID(winID int) {
 	s.winID = winID
 }
 
-// reader continuously reads from FIFO and sends to dataCh
-func (s *Session) reader() {
-	// Capture the reader generation at start to detect if we've been superseded
-	s.mu.Lock()
-	myGeneration := s.readerGeneration
-	myDataCh := s.dataCh // Capture our channel reference
-	s.mu.Unlock()
-
-	buf := make([]byte, 4096)
-	for {
-		n, err := s.fifo.Read(buf)
-		if err != nil {
-			// Only log unexpected errors (not EOF or closed file during shutdown)
-			if err != io.EOF && !strings.Contains(err.Error(), "file already closed") {
-				debug.Log("[session %s] reader error: %v", s.id, err)
-			}
-
-			// Handle EOF/error with single lock acquisition to avoid races
-			s.mu.Lock()
-			superseded := s.readerGeneration != myGeneration
-			exited := s.state == "killed"
-
-			// Only update state if we're still the current reader
-			if !superseded && !exited {
-				// Only set to stopped if not explicitly closed
-				s.transitionToLocked("stopped")
-				s.pid = 0
-			}
-			s.mu.Unlock()
-
-			// Exit immediately if superseded or explicitly closed
-			if superseded || exited {
-				close(myDataCh)
-				debug.Log("[session %s] reader exiting (exited=%v, superseded=%v)",
-					s.id, exited, superseded)
-				return
-			}
-
-			// For stopped state, keep reader alive but idle
-			// Wait for either Restart (will increment readerGeneration) or Close (will set state=exited)
-			// Poll state every 100ms instead of busy-looping on EOF
-			debug.Log("[session %s] reader waiting in stopped state", s.id)
-			for {
-				time.Sleep(100 * time.Millisecond)
-				s.mu.Lock()
-				superseded := s.readerGeneration != myGeneration
-				exited := s.state == "killed"
-				s.mu.Unlock()
-
-				if superseded || exited {
-					close(myDataCh)
-					debug.Log("[session %s] reader exiting after stopped wait (exited=%v, superseded=%v)",
-						s.id, exited, superseded)
-					return
-				}
-				// Still stopped, continue waiting
-			}
-		}
-		if n > 0 {
-			data := make([]byte, n)
-			copy(data, buf[:n])
-
-			// Check if we've been superseded before sending (single lock check)
-			s.mu.Lock()
-			superseded := s.readerGeneration != myGeneration
-			s.mu.Unlock()
-
-			if superseded {
-				close(myDataCh)
-				debug.Log("[session %s] reader exiting (superseded during send)", s.id)
-				return
-			}
-
-			myDataCh <- data
-		}
-	}
-}
-
-func (s *Session) waitForReady(ctx context.Context, timeout time.Duration) error {
-	const minContent = 50
-	const quiescence = 300 * time.Millisecond
-	const pollInterval = 100 * time.Millisecond
-
-	deadline := time.Now().Add(timeout)
-	startupDone := s.startupHandler == nil // If no handler, startup is already "done"
-	var quiesceStart time.Time
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case data, ok := <-s.dataCh:
-			if !ok {
-				return fmt.Errorf("session closed")
-			}
-			s.output.Write(data)
-			output := s.output.String()
-			quiesceStart = time.Time{} // Reset quiescence on new data
-
-			// Check for error patterns that indicate launch failure
-			// But only if the backend hasn't shown its ready prompt yet
-			hasPrompt := strings.Contains(output, "!>")
-			if !hasPrompt && (strings.Contains(output, "Failed to apply sandbox") ||
-			   strings.Contains(output, "missing kernel Landlock support")) {
-				logging.Logger().Error("backend failed to launch", zap.String("output", output))
-				return fmt.Errorf("backend launch failed")
-			}
-
-			// If we have a startup handler and it hasn't completed, call it
-			if !startupDone && s.startupHandler != nil {
-				keys, done := s.startupHandler.HandleStartup(output)
-				if keys != "" {
-					debug.Log("[session %s] startup handler sending keys: %q", s.id, keys)
-					if err := sendKeys(s.target(), keys); err != nil {
-						return fmt.Errorf("failed to send startup response: %w", err)
-					}
-				}
-				if done {
-					debug.Log("[session %s] startup handler complete", s.id)
-					startupDone = true
-					s.output.Reset() // Reset output after startup handling
-					quiesceStart = time.Time{} // Reset quiescence after startup
-				}
-			}
-
-		case <-time.After(pollInterval):
-			// Only check for ready after startup is complete
-			if !startupDone {
-				continue
-			}
-
-			// Check if past deadline
-			if time.Now().After(deadline) {
-				output := s.output.String()
-				debug.Log("[session %s] timeout, current output: %s", s.id, output)
-				if output != "" {
-					logging.Logger().Error("timeout waiting for backend", zap.String("session", s.id), zap.String("output", output))
-				} else {
-					logging.Logger().Error("timeout waiting for backend (no output)", zap.String("session", s.id))
-				}
-				return fmt.Errorf("timeout waiting for ready")
-			}
-
-			// Start or continue quiescence timer
-			if quiesceStart.IsZero() {
-				quiesceStart = time.Now()
-				continue
-			}
-
-			// Check if quiescence period has passed
-			if time.Since(quiesceStart) >= quiescence {
-				debug.Log("[session %s] ready detected (quiescence, %d bytes)", s.id, s.output.Len())
-				return nil
-			}
-		}
-	}
-}
-
 func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 	// Acquire lock for initial validation and state change
 	s.mu.Lock()
-
-	if s.fifo == nil {
-		s.mu.Unlock()
-		return "", fmt.Errorf("session not running")
-	}
 
 	if s.state == "starting" {
 		s.mu.Unlock()
@@ -467,9 +298,6 @@ func (s *Session) Send(ctx context.Context, prompt string) (string, error) {
 		s.stopCh = make(chan struct{})
 	default:
 	}
-
-	// Hook will transition to running, just reset output
-	s.output.Reset()
 
 	// Release lock during long-running operations so state can be read
 	s.mu.Unlock()
@@ -561,10 +389,6 @@ func (s *Session) stopInternal(ctx context.Context) error {
 	// Lock is held by caller
 	if s.state == "stopped" || s.state == "killed" {
 		return nil // Already stopped
-	}
-
-	if s.fifo == nil {
-		return fmt.Errorf("session not running")
 	}
 
 	// Signal waiters first
@@ -727,7 +551,6 @@ func (s *Session) Restart(ctx context.Context) error {
 	s.mu.Lock()
 	target := s.target()
 	cwd := s.cwd
-	fifoPath := s.fifoPath
 	environment := s.environment
 	backendName := s.backendName
 	backendCommand := s.backendCommand
@@ -800,48 +623,7 @@ func (s *Session) Restart(ctx context.Context) error {
 	}
 	debug.Log("[session %s] restart with updated sandbox: %v", s.id, command)
 
-	// 2. Close old FIFO if still open
-	s.mu.Lock()
-	if s.fifo != nil {
-		s.fifo.Close()
-		s.fifo = nil
-	}
-	s.mu.Unlock()
-
-	// 3. Close existing pipe-pane
-	if err := closePipePane(target); err != nil {
-		debug.Log("[session %s] warning: failed to close pipe-pane: %v", s.id, err)
-	}
-
-	// 4. Remove old FIFO file
-	os.Remove(fifoPath)
-
-	// Small delay to ensure cleanup
-	time.Sleep(100 * time.Millisecond)
-
-	// 5. Recreate FIFO
-	if err := syscall.Mkfifo(fifoPath, 0600); err != nil && !os.IsExist(err) {
-		return fmt.Errorf("failed to create FIFO: %w", err)
-	}
-
-	// 6. Re-setup pipe-pane for output capture
-	if err := setupPipePane(target, fifoPath); err != nil {
-		return fmt.Errorf("failed to re-setup pipe-pane: %w", err)
-	}
-
-	// 7. Open FIFO for reading (this blocks until writer connects)
-	fifoOpenCh := make(chan *os.File, 1)
-	fifoErrCh := make(chan error, 1)
-	go func() {
-		f, err := os.OpenFile(fifoPath, os.O_RDONLY, 0600)
-		if err != nil {
-			fifoErrCh <- err
-			return
-		}
-		fifoOpenCh <- f
-	}()
-
-	// 8. Change to working directory (may have changed in shell)
+	// 2. Change to working directory (may have changed in shell)
 	if err := sendKeys(target, fmt.Sprintf("cd \"%s\"", cwd), "C-m"); err != nil {
 		return fmt.Errorf("failed to change directory: %w", err)
 	}
@@ -849,7 +631,7 @@ func (s *Session) Restart(ctx context.Context) error {
 	// Small delay for cd to complete
 	time.Sleep(100 * time.Millisecond)
 
-	// 9. Restore environment variables
+	// 3. Restore environment variables
 	for k, v := range environment {
 		if err := setEnvironment(target, k, v); err != nil {
 			return fmt.Errorf("failed to set environment: %w", err)
@@ -859,23 +641,12 @@ func (s *Session) Restart(ctx context.Context) error {
 		}
 	}
 
-	// 10. Send the original command to tmux
+	// 4. Send the command to tmux
 	if err := sendKeys(target, cmdStr, "C-m"); err != nil {
 		return fmt.Errorf("failed to start command: %w", err)
 	}
 
-	// 11. Wait for FIFO to open
-	var fifo *os.File
-	select {
-	case fifo = <-fifoOpenCh:
-		// Success
-	case err := <-fifoErrCh:
-		return fmt.Errorf("failed to open FIFO: %w", err)
-	case <-time.After(5 * time.Second):
-		return fmt.Errorf("timeout opening FIFO")
-	}
-
-	// 12. Get new PID (find the backend process, not just the bash shell)
+	// 5. Get new PID (find the backend process, not just the bash shell)
 	time.Sleep(500 * time.Millisecond)
 	panePID, err := getPanePID(target)
 	if err != nil {
@@ -896,24 +667,9 @@ func (s *Session) Restart(ctx context.Context) error {
 
 	s.mu.Lock()
 	s.pid = pid
-	s.transitionToLocked("starting")
-	s.fifo = fifo
-	s.dataCh = make(chan []byte, 100)
+	s.transitionToLocked("idle")
 	s.stopCh = make(chan struct{})
-	s.output.Reset()
-	s.readerGeneration++ // Increment to invalidate old reader
 	s.mu.Unlock()
-
-	// 13. Start new reader goroutine
-	go s.reader()
-
-	// 14. Wait for ready (reuse existing waitForReady logic)
-	if err := s.waitForReady(ctx, 30*time.Second); err != nil {
-		s.TransitionTo("error")
-		return fmt.Errorf("restart failed: %w", err)
-	}
-
-	s.TransitionTo("idle")
 
 	debug.Log("[session %s] restarted successfully (pid=%d)", s.id, pid)
 	return nil
@@ -932,28 +688,13 @@ func (s *Session) Close() error {
 
 	debug.Log("[session %s] Close() called, killing window %s:%s", s.id, s.tmuxSession, s.windowName)
 
-	// 1. Kill tmux window first (closes pipe-pane writer)
+	// Kill tmux window
 	if s.tmuxSession != "" && s.windowName != "" {
 		if err := killWindow(s.tmuxSession, s.windowName); err != nil {
 			debug.Log("[session %s] killWindow failed: %v", s.id, err)
 		} else {
 			debug.Log("[session %s] Window %s:%s killed", s.id, s.tmuxSession, s.windowName)
 		}
-	}
-
-	// 2. Give writer time to close, which will send EOF to reader
-	time.Sleep(50 * time.Millisecond)
-
-	// 3. Close FIFO (reader will exit gracefully)
-	if s.fifo != nil {
-		s.fifo.Close()
-		s.fifo = nil
-	}
-
-	// 4. Remove FIFO file
-	if s.fifoPath != "" {
-		os.Remove(s.fifoPath)
-		s.fifoPath = ""
 	}
 
 	s.pid = 0
