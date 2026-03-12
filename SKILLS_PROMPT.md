@@ -112,3 +112,7 @@ sandbox: default
 ## Fallback
 
 If code_explorer.sh is unavailable or errors, fall back to standard tools (grep, find, etc.). Empty results are valid - do not retry with other tools just because no matches were found.
+
+# File Addressing
+
+ALWAYS use absolute paths with acme file addressing: (`/path/to/file:123,125` not `/path/to/file:123-125`)
