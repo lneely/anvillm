@@ -51,6 +51,7 @@ Current roles:
 | `taskmgr.md` | GitHub issues and PRs via `gh` CLI |
 | `author.md` | Documentation writing |
 | `technical-editor.md` | Editorial review of documentation |
+| `pkgmgr.md` | Package management (e.g., AUR, RPM, deb) |
 
 **Key design decisions:**
 - No explicit delegation protocols in any role — delegation is emergent
@@ -82,7 +83,8 @@ When a bot receives a task outside its `Prohibited Activities`, it naturally:
 3. Waits for a response before proceeding
 
 If no peer is available, the bot refuses the out-of-scope task rather than
-attempting it. This is by design — the human decides team composition.
+attempting it unless explicitly instructed to ignore its role. This is by
+design — the human decides team composition.
 
 **Observed behavior:** a `devops` bot, upon receiving a coding task, derived
 on its own that it should hand off to the `developer` bot. No explicit

@@ -28,7 +28,7 @@ Example: cwd `pcloudcc-lneely` → try keywords `pcloudcc`, then `lneely` → fi
 
 ## 2. Activity-Based Discovery
 
-Infer the activity type from the task context and discover matching skills:
+Infer the activity type from the task context or user intent and discover matching skills:
 
 | Activity | Keywords to try |
 |---|---|
@@ -47,17 +47,7 @@ tool: discover_skill.sh
 args: [<activity-keyword>]
 ```
 
-## 3. Intent-Based Discovery
-
-Map user intent to capability keywords and discover:
-
-```bash
-Tool: execute_code
-tool: discover_skill.sh
-args: [keyword]
-```
-
-## 4. Load Relevant Skills
+## 3. Load Relevant Skills
 
 ```bash
 Tool: execute_code
@@ -85,7 +75,7 @@ args: [init]
 sandbox: default
 ```
 
-2. Preview matches (cheap - counts only):
+2. Preview matches (cheap - counts only, use for initial search):
 ```bash
 Tool: execute_code
 tool: code_explorer.sh
@@ -113,6 +103,6 @@ sandbox: default
 
 If code_explorer.sh is unavailable or errors, fall back to standard tools (grep, find, etc.). Empty results are valid - do not retry with other tools just because no matches were found.
 
-# File Addressing
+# File Addressing and Identifiers
 
-ALWAYS use absolute paths with acme file addressing: (`/path/to/file:123,125` not `/path/to/file:123-125`)
+Use Acme/sam address syntax for locations: `/path/to/file.go:123`, `/path/to/file.go:123,125`, `/path/to/file.go:/funcName/`. Wrap identifiers in backticks: `funcName()`, `--flag`, `TypeName`.

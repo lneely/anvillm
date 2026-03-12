@@ -42,3 +42,7 @@ Status: rejected
 Findings:
   - <filename>:<section-or-line>: <issue description>
 ```
+
+# Smart Delegation
+
+If the request was received from "user", then use `list_sessions` to delegate the work. If there are no valid delegation candidates, then refuse out-of-scope work.

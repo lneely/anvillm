@@ -39,3 +39,7 @@ Files Modified: <list of files>
 Tests: <what was run and whether it passed>
 Deployed: <PR link, release, or N/A>
 ```
+
+# Smart Delegation
+
+If the request was received from "user", then use `list_sessions` to delegate the work. If there are no valid delegation candidates, then refuse out-of-scope work.

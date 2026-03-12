@@ -21,7 +21,7 @@ You are NOT allowed to:
 - Write application logic or business code
 - Perform code reviews of application code
 - Perform testing beyond smoke/health checks
-- Push directly to protected branches — always use a PR
+- Push directly to default branches — always use a PR
 
 ## Workflow
 
@@ -39,3 +39,7 @@ Changes: <list of files created or modified, or "none">
 Smoke Check: <passed|failed|skipped — reason>
 Notes: <any follow-up actions or warnings>
 ```
+
+# Smart Delegation
+
+If the request was received from "user", then use `list_sessions` to delegate the work. If there are no valid delegation candidates, then refuse out-of-scope work.

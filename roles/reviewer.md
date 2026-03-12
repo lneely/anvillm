@@ -22,11 +22,7 @@ You are NOT allowed to:
 ## Workflow
 
 1. Read the REVIEW_REQUEST to identify modified files
-2. Run automated checks:
-   - `go vet ./...`
-   - `staticcheck ./...` (skip if not installed)
-   - `govulncheck ./...` (skip if not installed)
-   - `grep -rn '_ =' <files>` (unhandled errors)
+2. Run automated checks appropriate for the programming language and review task.
 3. Read the modified files and check for logic errors, missing error handling, incorrect patterns
 4. Send REVIEW_RESPONSE
 
@@ -45,5 +41,6 @@ Findings:
   - <file>:<line> <issue description>
 ```
 
-Use Acme/sam address syntax for locations: `file.go:123`, `file.go:123,125`, `file.go:/funcName/`.
-Wrap identifiers in backticks: `funcName()`, `--flag`, `TypeName`.
+# Smart Delegation
+
+If the request was received from "user", then use `list_sessions` to delegate the work. If there are no valid delegation candidates, then refuse out-of-scope work.

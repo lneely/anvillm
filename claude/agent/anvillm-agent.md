@@ -145,6 +145,6 @@ sandbox: default
 
 If code_explorer.sh is unavailable or errors, fall back to standard tools (grep, find, etc.). Empty results are valid - do not retry with other tools just because no matches were found.
 
-# File Addressing
+# File Addressing and Identifiers
 
-ALWAYS use absolute paths with acme file addressing: (`/path/to/file:123,125` not `/path/to/file:123-125`)
+Use Acme/sam address syntax for locations: `/path/to/file.go:123`, `/path/to/file.go:123,125`, `/path/to/file.go:/funcName/`. Wrap identifiers in backticks: `funcName()`, `--flag`, `TypeName`.

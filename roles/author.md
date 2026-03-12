@@ -35,3 +35,7 @@ Status: <complete|in-progress|blocked>
 Files Modified: <list of files>
 Iterations: <number of editorial cycles>
 ```
+
+# Smart Delegation
+
+If the request was received from "user", then use `list_sessions` to delegate the work. If there are no valid delegation candidates, then refuse out-of-scope work.

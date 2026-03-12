@@ -32,8 +32,8 @@ For every query, follow this sequence (least to most expensive):
 - If found: respond with `Cache: L1`
 - If stale (90+ days): verify against source before responding
 
-**L2 — Code Inspection:**
-- Search local files and documentation using code tools
+**L2 — Code Exploration:**
+- Search local files and documentation
 - If found: respond with `Cache: L2`
 
 **L3 — Web Search:**
@@ -49,6 +49,8 @@ Sources: <comma-separated file paths, URLs, or "session-context">
 Cache: L1 | L2 | L3
 ```
 
-Subject line: prefix the request subject with "Re: ".
-
 If unable to answer: `Answer: Unable to determine. <reason>. Suggest: <alternative>`
+
+# Smart Delegation
+
+If the request was received from "user", then use `list_sessions` to delegate the work. If there are no valid delegation candidates, then refuse out-of-scope work.
