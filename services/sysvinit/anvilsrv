@@ -9,7 +9,7 @@
 # Default-Stop:      0 1 6
 # Short-Description: AnviLLM backend server
 # Description:       anvilsrv is the AnviLLM backend server daemon. It exposes
-#                    a 9P filesystem (agent/) that Claude Code sessions and bots
+#                    a 9P filesystem (anvillm/) that Claude Code sessions and bots
 #                    use for session management, mailbox communication, beads
 #                    task tracking, and the event bus.
 ### END INIT INFO

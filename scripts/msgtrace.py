@@ -108,7 +108,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def event_reader():
     os.environ["NAMESPACE"] = NAMESPACE
-    proc = subprocess.Popen(["9p", "read", "agent/events"], stdout=subprocess.PIPE, text=True)
+    proc = subprocess.Popen(["9p", "read", "anvillm/events"], stdout=subprocess.PIPE, text=True)
     for line in proc.stdout:
         try:
             ev = json.loads(line.strip())
@@ -122,7 +122,7 @@ def refresh_sessions():
     global sessions
     while True:
         try:
-            p = subprocess.run(["9p", "read", "agent/list"], capture_output=True, text=True, timeout=5, env={**os.environ, "NAMESPACE": NAMESPACE})
+            p = subprocess.run(["9p", "read", "anvillm/list"], capture_output=True, text=True, timeout=5, env={**os.environ, "NAMESPACE": NAMESPACE})
             if p.returncode == 0:
                 new_sessions = {}
                 for line in p.stdout.strip().split("\n"):

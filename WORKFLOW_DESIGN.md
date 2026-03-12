@@ -19,9 +19,9 @@ anvilspawn <backend> <role> <workdir>
 ```
 
 - Computes an 8-character hex hash of `$WORKDIR` using md5sum
-- Spawns a new session: `echo "new $BACKEND $WORKDIR" | 9p write agent/ctl`
+- Spawns a new session: `echo "new $BACKEND $WORKDIR" | 9p write anvillm/ctl`
 - Sets alias to `$HASH-$ROLE` (e.g. `a3f2b1c4-developer`)
-- Assigns role via `echo "$ROLE" | 9p write agent/$ID/role`
+- Assigns role via `echo "$ROLE" | 9p write anvillm/$ID/role`
 
 Bots spawned for the same `$WORKDIR` share the same hash prefix, making them
 discoverable to each other via `list_sessions`. This is what enables organic
@@ -119,7 +119,7 @@ touches what it has been told to dispatch.
 ```sh
 # When creating a bead that should be dispatched to a reviewer:
 echo "new 'Review: auth module' 'description' bd-123 claimable-by:reviewer" \
-  | 9p write agent/beads/ctl
+  | 9p write anvillm/beads/ctl
 ```
 
 The `capability` label is now optional and orthogonal to `claimable-by`.
@@ -150,7 +150,7 @@ The existing Supervisor (`bot-templates/Supervisor`, now deleted):
 - Session matching by hash prefix AND role:
   1. Compute `HASH=$(echo -n "$WORKDIR" | md5sum | cut -c1-8)`
   2. For each session: check alias starts with `$HASH-`
-  3. AND: `9p read agent/<id>/role` == required role
+  3. AND: `9p read anvillm/<id>/role` == required role
 - Inbox delivery after claiming: write a PROMPT_REQUEST to the matched
   session's inbox notifying it of the bead assignment
 - Skip (don't dispatch) if no matching session exists — leave bead queued
@@ -184,11 +184,11 @@ find_session() {
     local want_role="$1"
     while read -r sess_id backend state alias cwd; do
         [[ "$alias" == "$HASH-"* ]] || continue
-        sess_role=$(9p read "agent/$sess_id/role" 2>/dev/null)
+        sess_role=$(9p read "anvillm/$sess_id/role" 2>/dev/null)
         [ "$sess_role" = "$want_role" ] || continue
         echo "$sess_id"
         return
-    done < <(9p read agent/list)
+    done < <(9p read anvillm/list)
 }
 ```
 

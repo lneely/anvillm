@@ -14,4 +14,4 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-9p read "agent/beads/$1/list" 2>/dev/null | jq '[.[] | {id, priority, title, status}]' || echo "[]"
+9p read "anvillm/beads/$1/list" 2>/dev/null | jq '[.[] | {id, priority, title, status}]' || echo "[]"

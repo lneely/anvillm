@@ -12,10 +12,10 @@ Loading 100 tools upfront costs ~9,000 tokens (45% of a 200k context window). Wi
 
 ```bash
 # List available tools (~30 tokens)
-9p ls agent/tools/anvilmcp
+9p ls anvillm/tools/anvilmcp
 
 # Read only the tool you need (~90 tokens)
-9p read agent/tools/anvilmcp/read_inbox.sh
+9p read anvillm/tools/anvilmcp/read_inbox.sh
 ```
 
 **Savings**: 97% (120 tokens vs 9,000 tokens)
@@ -40,17 +40,17 @@ echo "Found $count pending orders"
 
 1. **List available tools**:
 ```bash
-9p ls agent/tools/anvilmcp
+9p ls anvillm/tools/anvilmcp
 ```
 
 2. **Read tool documentation**:
 ```bash
-9p read agent/tools/anvilmcp/read_inbox.sh
+9p read anvillm/tools/anvilmcp/read_inbox.sh
 ```
 
 3. **Call tool via MCP**:
 ```bash
-echo '{"name":"read_inbox","arguments":{"agent_id":"82b93a8a"}}' | 9p write agent/mcp/call
+echo '{"name":"read_inbox","arguments":{"agent_id":"82b93a8a"}}' | 9p write anvillm/mcp/call
 ```
 
 ### Calling 9P Operations
@@ -58,7 +58,7 @@ echo '{"name":"read_inbox","arguments":{"agent_id":"82b93a8a"}}' | 9p write agen
 You can also call 9P operations directly:
 
 ```bash
-beads=$(9p read agent/beads/list)
+beads=$(9p read anvillm/beads/list)
 count=$(echo "$beads" | jq 'length')
 echo "Found $count beads"
 ```
@@ -69,7 +69,7 @@ echo "Found $count beads"
 
 ```bash
 # Call read_inbox via MCP
-result=$(echo '{"name":"read_inbox","arguments":{"agent_id":"82b93a8a"}}' | 9p write agent/mcp/call)
+result=$(echo '{"name":"read_inbox","arguments":{"agent_id":"82b93a8a"}}' | 9p write anvillm/mcp/call)
 total=$(echo "$result" | jq -r '.content[0].text' | wc -l)
 urgent=$(echo "$result" | jq -r '.content[0].text' | grep -c "URGENT")
 
@@ -83,7 +83,7 @@ found=false
 attempts=0
 
 while [ $attempts -lt 10 ] && [ "$found" = false ]; do
-  sessions=$(agent/tools/anvilmcp/list_sessions.sh)
+  sessions=$(anvillm/tools/anvilmcp/list_sessions.sh)
   if echo "$sessions" | jq -e '.[] | select(.state == "completed")' > /dev/null; then
     found=true
   else
@@ -107,7 +107,7 @@ agents=("agent-1" "agent-2" "agent-3")
 total_messages=0
 
 for agent_id in "${agents[@]}"; do
-  result=$(agent/tools/anvilmcp/read_inbox.sh "$agent_id")
+  result=$(anvillm/tools/anvilmcp/read_inbox.sh "$agent_id")
   count=$(echo "$result" | wc -l)
   total_messages=$((total_messages + count))
 done
@@ -121,7 +121,7 @@ Process sensitive data without exposing it to the model:
 
 ```bash
 # Read PII from one system
-emails=$(9p read agent/data/customer-emails)
+emails=$(9p read anvillm/data/customer-emails)
 
 # Write to another system without PII entering context
 echo "$emails" | jq -c '.[]' | while read -r email; do
@@ -129,7 +129,7 @@ echo "$emails" | jq -c '.[]' | while read -r email; do
   name=$(echo "$email" | jq -r '.name')
   
   echo "{\"email\":\"$address\",\"name\":\"$name\"}" | \
-    9p write agent/crm/contacts
+    9p write anvillm/crm/contacts
 done
 
 count=$(echo "$emails" | jq 'length')
@@ -141,7 +141,7 @@ echo "Processed $count contacts"
 All tools are accessed via 9P commands. Read tool documentation first:
 
 ```bash
-9p read agent/tools/anvilmcp/read_inbox.sh
+9p read anvillm/tools/anvilmcp/read_inbox.sh
 ```
 
 ### Communication
@@ -149,28 +149,28 @@ All tools are accessed via 9P commands. Read tool documentation first:
 **read_inbox**: Read messages from agent's inbox
 ```bash
 # List inbox messages
-9p ls agent/AGENT_ID/inbox
+9p ls anvillm/AGENT_ID/inbox
 
 # Read specific message
-9p read agent/AGENT_ID/inbox/MESSAGE_ID.json
+9p read anvillm/AGENT_ID/inbox/MESSAGE_ID.json
 ```
 
 **send_message**: Send message to another agent or user
 ```bash
 echo '{"from":"agent-1","to":"agent-2","type":"PROMPT_REQUEST","subject":"Task","body":"Do work"}' | \
-  9p write agent/agent-1/mail
+  9p write anvillm/agent-1/mail
 ```
 
 ### Session Management
 
 **list_sessions**: List all active sessions
 ```bash
-9p read agent/list
+9p read anvillm/list
 ```
 
 **set_state**: Set agent state
 ```bash
-echo "running" | 9p write agent/AGENT_ID/state
+echo "running" | 9p write anvillm/AGENT_ID/state
 ```
 
 ### Skills
@@ -185,7 +185,7 @@ anvillm-skills list
 Always handle errors in your scripts:
 
 ```bash
-if output=$(9p read agent/beads/list 2>&1); then
+if output=$(9p read anvillm/beads/list 2>&1); then
   echo "$output"
 else
   echo "9P command failed: $output" >&2
@@ -198,7 +198,7 @@ fi
 Your code runs in a isolated subprocess with limited permissions:
 
 ### Allowed
-- Read from `./agent/tools/` directory
+- Read from `./anvillm/tools/` directory
 - Execute `/usr/bin/9p` command
 - Access environment variables: `NAMESPACE`, `AGENT_ID`
 - Standard bash utilities (jq, grep, sed, awk)
@@ -218,12 +218,12 @@ Cache tool paths instead of re-reading:
 ```bash
 # Bad: Re-read every time
 for i in {1..10}; do
-  9p read agent/tools/anvilmcp/read_inbox.sh
+  9p read anvillm/tools/anvilmcp/read_inbox.sh
 done
 
 # Good: Call directly
 for i in {1..10}; do
-  agent/tools/anvilmcp/read_inbox.sh "82b93a8a"
+  anvillm/tools/anvilmcp/read_inbox.sh "82b93a8a"
 done
 ```
 
@@ -232,7 +232,7 @@ done
 ```bash
 agents=("agent-1" "agent-2" "agent-3")
 for agent_id in "${agents[@]}"; do
-  agent/tools/anvilmcp/read_inbox.sh "$agent_id" &
+  anvillm/tools/anvilmcp/read_inbox.sh "$agent_id" &
 done
 wait
 echo "Processed ${#agents[@]} inboxes"
@@ -242,11 +242,11 @@ echo "Processed ${#agents[@]} inboxes"
 
 ```bash
 # Bad: Return all data
-result=$(agent/tools/anvilmcp/read_inbox.sh "82b93a8a")
+result=$(anvillm/tools/anvilmcp/read_inbox.sh "82b93a8a")
 echo "$result"  # Could be 50,000 tokens
 
 # Good: Return summary
-result=$(agent/tools/anvilmcp/read_inbox.sh "82b93a8a")
+result=$(anvillm/tools/anvilmcp/read_inbox.sh "82b93a8a")
 count=$(echo "$result" | wc -l)
 echo "Inbox has $count messages"  # ~10 tokens
 ```
@@ -265,7 +265,7 @@ echo "Warning: This is a warning" >&2
 ### Check 9P Command Results
 
 ```bash
-if output=$(9p read agent/beads/list 2>&1); then
+if output=$(9p read anvillm/beads/list 2>&1); then
   count=$(echo "$output" | jq 'length')
   echo "Found $count beads"
 else
@@ -311,7 +311,7 @@ MCP: { "content": [{"type": "text", "text": "Message sent"}] }
 
 ```
 Agent: TOOL CALL execute_code(code: "
-  result=$(agent/tools/anvilmcp/read_inbox.sh '82b93a8a')
+  result=$(anvillm/tools/anvilmcp/read_inbox.sh '82b93a8a')
   urgent=$(echo \"$result\" | grep -c 'URGENT')
   echo \"Found $urgent urgent messages\"
 ", language: "bash")

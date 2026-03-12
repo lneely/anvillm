@@ -19,7 +19,7 @@ BEAD_ID="$2"
 ASSIGNEE="${3:-}"
 
 if [ -n "$ASSIGNEE" ]; then
-    echo "claim $BEAD_ID $ASSIGNEE" | 9p write agent/beads/$MOUNT/ctl
+    echo "claim $BEAD_ID $ASSIGNEE" | 9p write anvillm/beads/$MOUNT/ctl
 else
-    echo "claim $BEAD_ID" | 9p write agent/beads/$MOUNT/ctl
+    echo "claim $BEAD_ID" | 9p write anvillm/beads/$MOUNT/ctl
 fi

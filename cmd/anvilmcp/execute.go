@@ -25,7 +25,7 @@ func readTool(name string) (string, error) {
 	}
 
 	ns := fmt.Sprintf("/tmp/ns.%s.:0", os.Getenv("USER"))
-	fsys, err := client.Mount("unix", filepath.Join(ns, "agent"))
+	fsys, err := client.Mount("unix", filepath.Join(ns, "anvillm"))
 	if err != nil {
 		return "", fmt.Errorf("failed to mount 9P: %v", err)
 	}

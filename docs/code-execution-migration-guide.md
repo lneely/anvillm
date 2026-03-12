@@ -26,7 +26,7 @@ MCP: { "content": [{"type": "text", "text": "[Message 1]\n[Message 2]\n..."}] }
 
 **After**:
 ```
-execute_code with code: "bash <(9p read agent/tools/anvilmcp/read_inbox.sh) 82b93a8a"
+execute_code with code: "bash <(9p read anvillm/tools/anvilmcp/read_inbox.sh) 82b93a8a"
 ```
 
 **Token savings**: Minimal for single calls, but enables further optimization
@@ -49,7 +49,7 @@ MCP: { "content": [...] }  // 5,000 tokens
 ```
 execute_code with code: "
 for agent_id in agent-1 agent-2 agent-3; do
-  bash <(9p read agent/tools/anvilmcp/read_inbox.sh) \$agent_id | wc -l
+  bash <(9p read anvillm/tools/anvilmcp/read_inbox.sh) \$agent_id | wc -l
 done | awk '{sum+=\$1} END {print \"Total messages:\", sum}'
 "
 ```
@@ -72,7 +72,7 @@ Agent: [Processes in context, filters to 47 pending orders]
 **After**:
 ```
 execute_code with code: "
-rows=\$(9p read agent/sheets/abc123)
+rows=\$(9p read anvillm/sheets/abc123)
 pending=\$(echo \"\$rows\" | jq '[.[] | select(.Status == \"pending\")]')
 count=\$(echo \"\$pending\" | jq 'length')
 total=\$(echo \"\$rows\" | jq 'length')
@@ -106,7 +106,7 @@ status=running
 attempts=0
 
 while [ \"\$status\" = \"running\" ] && [ \$attempts -lt 10 ]; do
-  status=\$(9p read agent/jobs/\$job_id/status)
+  status=\$(9p read anvillm/jobs/\$job_id/status)
   if [ \"\$status\" = \"running\" ]; then
     sleep 5
   fi
@@ -139,14 +139,14 @@ MCP: { "content": "State updated" }
 **After**:
 ```
 execute_code with code: "
-inbox=\$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) 82b93a8a)
+inbox=\$(bash <(9p read anvillm/tools/anvilmcp/read_inbox.sh) 82b93a8a)
 urgent_count=\$(echo \"\$inbox\" | grep -c URGENT || echo 0)
 
 if [ \$urgent_count -gt 0 ]; then
-  bash <(9p read agent/tools/anvilmcp/send_message.sh) 82b93a8a manager NOTIFICATION 'Urgent messages' \"\$urgent_count urgent messages in inbox\"
+  bash <(9p read anvillm/tools/anvilmcp/send_message.sh) 82b93a8a manager NOTIFICATION 'Urgent messages' \"\$urgent_count urgent messages in inbox\"
 fi
 
-bash <(9p read agent/tools/anvilmcp/set_state.sh) 82b93a8a idle
+bash <(9p read anvillm/tools/anvilmcp/set_state.sh) 82b93a8a idle
 echo \"Processed inbox: \$urgent_count urgent messages\"
 "
 ```
@@ -166,12 +166,12 @@ TOOL CALL read_inbox(agent_id: "82b93a8a")
 
 **After**:
 ```
-execute_code with code: "bash <(9p read agent/tools/anvilmcp/read_inbox.sh) 82b93a8a"
+execute_code with code: "bash <(9p read anvillm/tools/anvilmcp/read_inbox.sh) 82b93a8a"
 ```
 
 **Or use 9P directly**:
 ```
-execute_code with code: "9p read agent/inbox/82b93a8a/json"
+execute_code with code: "9p read anvillm/inbox/82b93a8a/json"
 ```
 
 ### send_message
@@ -183,7 +183,7 @@ TOOL CALL send_message(from: "agent-1", to: "agent-2", type: "PROMPT_REQUEST", s
 
 **After**:
 ```bash
-bash <(9p read agent/tools/anvilmcp/send_message.sh) agent-1 agent-2 PROMPT_REQUEST 'Task' 'Do X'
+bash <(9p read anvillm/tools/anvilmcp/send_message.sh) agent-1 agent-2 PROMPT_REQUEST 'Task' 'Do X'
 ```
 
 ### list_sessions
@@ -195,7 +195,7 @@ TOOL CALL list_sessions()
 
 **After**:
 ```
-execute_code with code: "bash <(9p read agent/tools/anvilmcp/list_sessions.sh)"
+execute_code with code: "bash <(9p read anvillm/tools/anvilmcp/list_sessions.sh)"
 ```
 
 ### set_state
@@ -207,7 +207,7 @@ TOOL CALL set_state(agent_id: "82b93a8a", state: "running")
 
 **After**:
 ```
-execute_code with code: "bash <(9p read agent/tools/anvilmcp/set_state.sh) 82b93a8a running"
+execute_code with code: "bash <(9p read anvillm/tools/anvilmcp/set_state.sh) 82b93a8a running"
 ```
 
 ### list_skills
@@ -219,7 +219,7 @@ TOOL CALL list_skills()
 
 **After**:
 ```
-execute_code with code: "bash <(9p read agent/tools/anvilmcp/list_skills.sh) | jq -r '.[].name' | paste -sd, -"
+execute_code with code: "bash <(9p read anvillm/tools/anvilmcp/list_skills.sh) | jq -r '.[].name' | paste -sd, -"
 ```
 
 ## Compatibility Notes
@@ -261,13 +261,13 @@ Code execution is better for:
 
 **Bad**:
 ```bash
-result=$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) 82b93a8a)
+result=$(bash <(9p read anvillm/tools/anvilmcp/read_inbox.sh) 82b93a8a)
 echo "$result"  # Could be 50,000 tokens
 ```
 
 **Good**:
 ```bash
-result=$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) 82b93a8a)
+result=$(bash <(9p read anvillm/tools/anvilmcp/read_inbox.sh) 82b93a8a)
 count=$(echo "$result" | wc -l)
 echo "Inbox has $count messages"  # ~10 tokens
 ```
@@ -276,18 +276,18 @@ echo "Inbox has $count messages"  # ~10 tokens
 
 **Bad**:
 ```bash
-result1=$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) agent-1)
+result1=$(bash <(9p read anvillm/tools/anvilmcp/read_inbox.sh) agent-1)
 echo "$result1"
-result2=$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) agent-2)
+result2=$(bash <(9p read anvillm/tools/anvilmcp/read_inbox.sh) agent-2)
 echo "$result2"
-result3=$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) agent-3)
+result3=$(bash <(9p read anvillm/tools/anvilmcp/read_inbox.sh) agent-3)
 echo "$result3"
 ```
 
 **Good**:
 ```bash
 for agent_id in agent-1 agent-2 agent-3; do
-  result=$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) "$agent_id")
+  result=$(bash <(9p read anvillm/tools/anvilmcp/read_inbox.sh) "$agent_id")
   count=$(echo "$result" | wc -l)
   echo "$agent_id: $count messages"
 done
@@ -297,13 +297,13 @@ done
 
 **Bad**:
 ```bash
-result=$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) invalid-id)
+result=$(bash <(9p read anvillm/tools/anvilmcp/read_inbox.sh) invalid-id)
 echo "$result"  # May fail silently
 ```
 
 **Good**:
 ```bash
-if result=$(bash <(9p read agent/tools/anvilmcp/read_inbox.sh) invalid-id 2>&1); then
+if result=$(bash <(9p read anvillm/tools/anvilmcp/read_inbox.sh) invalid-id 2>&1); then
   echo "$result"
 else
   echo "Failed to read inbox: $result" >&2
@@ -315,7 +315,7 @@ fi
 **Bad**:
 ```bash
 for i in {1..10}; do
-  tool=$(9p read agent/tools/anvilmcp/read_inbox.sh)
+  tool=$(9p read anvillm/tools/anvilmcp/read_inbox.sh)
   # Parse and use...
 done
 ```
@@ -324,7 +324,7 @@ done
 ```bash
 # Call tool directly each time
 for i in {1..10}; do
-  bash <(9p read agent/tools/anvilmcp/read_inbox.sh) 82b93a8a
+  bash <(9p read anvillm/tools/anvilmcp/read_inbox.sh) 82b93a8a
 done
 ```
 

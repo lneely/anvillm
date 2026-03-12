@@ -138,11 +138,11 @@ func (s *SkillsFS) listAllSkills() ([]*SkillMeta, error) {
 	return skills, nil
 }
 
-// List returns directory entries for the flat skills root: agent/skills → <name>.md files.
+// List returns directory entries for the flat skills root: anvillm/skills → <name>.md files.
 func (s *SkillsFS) List(path string) ([]plan9.Dir, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
-	if len(parts) == 2 && parts[0] == "agent" && parts[1] == "skills" {
+	if len(parts) == 2 && parts[0] == "anvillm" && parts[1] == "skills" {
 		skills, err := s.listAllSkills()
 		if err != nil {
 			return nil, err
@@ -161,12 +161,12 @@ func (s *SkillsFS) List(path string) ([]plan9.Dir, error) {
 	return nil, fmt.Errorf("not found")
 }
 
-// Read returns SKILL.md content for agent/skills/<name>.md.
+// Read returns SKILL.md content for anvillm/skills/<name>.md.
 func (s *SkillsFS) Read(path string) ([]byte, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
-	// agent/skills/<name>.md
-	if len(parts) == 3 && parts[0] == "agent" && parts[1] == "skills" {
+	// anvillm/skills/<name>.md
+	if len(parts) == 3 && parts[0] == "anvillm" && parts[1] == "skills" {
 		fileName := parts[2]
 		if !strings.HasSuffix(fileName, ".md") {
 			return nil, fmt.Errorf("not found")

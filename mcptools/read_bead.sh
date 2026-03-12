@@ -14,4 +14,4 @@ if [ $# -lt 3 ]; then
     exit 1
 fi
 
-9p read "agent/beads/$1/$2/$3" 2>/dev/null || echo "Property not found: $3"
+9p read "anvillm/beads/$1/$2/$3" 2>/dev/null || echo "Property not found: $3"

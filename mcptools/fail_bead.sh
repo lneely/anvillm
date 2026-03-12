@@ -19,4 +19,4 @@ BEAD_ID="$2"
 shift 2
 REASON="$*"
 
-printf "fail %s '%s'\n" "$BEAD_ID" "$REASON" | 9p write agent/beads/$MOUNT/ctl
+printf "fail %s '%s'\n" "$BEAD_ID" "$REASON" | 9p write anvillm/beads/$MOUNT/ctl

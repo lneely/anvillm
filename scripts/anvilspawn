@@ -21,7 +21,7 @@ if [ -z "$NAMESPACE" ]; then
     exit 1
 fi
 
-AGENT_MOUNT="agent"
+AGENT_MOUNT="anvillm"
 HASH=$(echo -n "$WORKDIR" | md5sum | cut -c1-8)
 ALIAS="$HASH-$ROLE"
 

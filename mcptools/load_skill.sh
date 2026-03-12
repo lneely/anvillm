@@ -17,4 +17,4 @@ fi
 # Use the last path component as the skill name
 name="${1##*/}"
 
-9p read "agent/skills/${name}.md"
+9p read "anvillm/skills/${name}.md"

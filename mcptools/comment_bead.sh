@@ -19,4 +19,4 @@ BEAD_ID="$2"
 shift 2
 TEXT="$*"
 
-printf "comment %s '%s'\n" "$BEAD_ID" "$TEXT" | 9p write agent/beads/$MOUNT/ctl
+printf "comment %s '%s'\n" "$BEAD_ID" "$TEXT" | 9p write anvillm/beads/$MOUNT/ctl

@@ -155,7 +155,7 @@ func (t *ToolsFS) List(path string) ([]plan9.Dir, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
 	// /tools - list all tools flat
-	if len(parts) == 2 && parts[0] == "agent" && parts[1] == "tools" {
+	if len(parts) == 2 && parts[0] == "anvillm" && parts[1] == "tools" {
 		tools, err := t.listAllTools()
 		if err != nil {
 			return nil, err

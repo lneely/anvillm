@@ -14,4 +14,4 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-echo "umount $1" | 9p write agent/beads/ctl
+echo "umount $1" | 9p write anvillm/beads/ctl

@@ -31,4 +31,4 @@ CMD="new '$TITLE' '$DESC'"
 [ -n "$NOLINT" ] && CMD="$CMD $NOLINT"
 [ -n "$CAP" ] && CMD="$CMD $CAP"
 
-echo "$CMD" | 9p write agent/beads/$MOUNT/ctl
+echo "$CMD" | 9p write anvillm/beads/$MOUNT/ctl

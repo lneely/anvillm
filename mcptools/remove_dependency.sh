@@ -14,4 +14,4 @@ if [ $# -lt 3 ]; then
     exit 1
 fi
 
-echo "undep $2 $3" | 9p write agent/beads/$1/ctl
+echo "undep $2 $3" | 9p write anvillm/beads/$1/ctl

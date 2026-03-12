@@ -17,4 +17,4 @@ fi
 mount="$1"
 query="$2"
 
-9p read "agent/beads/$mount/search/$query" 2>/dev/null | jq '[.[] | {id, title, status, match_in: (if .id | test("'"$query"'"; "i") then "id" elif .title | test("'"$query"'"; "i") then "title" else "description" end)}]' || echo "[]"
+9p read "anvillm/beads/$mount/search/$query" 2>/dev/null | jq '[.[] | {id, title, status, match_in: (if .id | test("'"$query"'"; "i") then "id" elif .title | test("'"$query"'"; "i") then "title" else "description" end)}]' || echo "[]"

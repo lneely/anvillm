@@ -25,7 +25,7 @@ fi
 # Helper for anvillm state transitions
 anvillm_set_state() {
     local agent_id=${AGENT_ID:-}
-    [[ $agent_id ]] && echo "$1" | 9p write "agent/$agent_id/state" 2>/dev/null || true
+    [[ $agent_id ]] && echo "$1" | 9p write "anvillm/$agent_id/state" 2>/dev/null || true
 }
 
 case "$event" in

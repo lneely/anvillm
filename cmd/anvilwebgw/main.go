@@ -278,7 +278,7 @@ func connect() (*client.Fsys, error) {
 	if ns == "" {
 		ns = fmt.Sprintf("/tmp/ns.%s.:0", os.Getenv("USER"))
 	}
-	return client.Mount("unix", filepath.Join(ns, "agent"))
+	return client.Mount("unix", filepath.Join(ns, "anvillm"))
 }
 
 // --- Session types ---

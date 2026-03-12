@@ -14,4 +14,4 @@ if [ $# -lt 2 ]; then
     exit 1
 fi
 
-echo "unclaim $2" | 9p write agent/beads/$1/ctl
+echo "unclaim $2" | 9p write anvillm/beads/$1/ctl

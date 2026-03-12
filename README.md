@@ -98,7 +98,7 @@ NAMESPACE=/tmp/ns.$USER.:1 Assist
 
 ### Skills System
 
-Skills are loaded from multiple directories via the `agent/skills` 9pfs. By default, searches:
+Skills are loaded from multiple directories via the `anvillm/skills` 9pfs. By default, searches:
 1. `$CLAUDE_CONFIG_DIR/skills` (if `CLAUDE_CONFIG_DIR` set)
 2. `~/.kiro/skills`
 3. `~/.config/anvillm/skills`
@@ -107,9 +107,9 @@ Override with `ANVILLM_SKILLS_DIR` (colon-separated paths). Skills are organized
 
 **Usage:**
 ```sh
-9p ls agent/skills                    # list intents
-9p read agent/skills/help             # search index
-9p read agent/skills/tasks/beads/SKILL.md
+9p ls anvillm/skills                    # list intents
+9p read anvillm/skills/help             # search index
+9p read anvillm/skills/tasks/beads/SKILL.md
 ```
 
 ### Sandbox Config Templates
@@ -184,12 +184,12 @@ Run local LLMs via Ollama.
 
 **Usage:**
 ```sh
-echo 'new ollama /path/to/project' | 9p write agent/ctl
+echo 'new ollama /path/to/project' | 9p write anvillm/ctl
 ```
 
 **Configuration:** Set model via `ANVILLM_OLLAMA_MODEL` (default: `qwen3:8b`)
 ```sh
-ANVILLM_OLLAMA_MODEL=llama3.2 echo 'new ollama /path' | 9p write agent/ctl
+ANVILLM_OLLAMA_MODEL=llama3.2 echo 'new ollama /path' | 9p write anvillm/ctl
 ```
 
 ## 9P Filesystem
@@ -197,7 +197,7 @@ ANVILLM_OLLAMA_MODEL=llama3.2 echo 'new ollama /path' | 9p write agent/ctl
 `$NAMESPACE/agent`:
 
 ```
-agent/
+anvillm/
 ├── ctl             # "new <backend> <cwd>" creates session
 ├── list            # id, alias, state, pid, cwd
 ├── events          # Event stream (state changes, messages)
@@ -239,12 +239,12 @@ Different clients interact with different parts of the filesystem: frontends rea
 Persistent task tracking via [beads](https://github.com/steveyegge/beads) — Dependency-aware graph
 
 ```sh
-echo 'init' | 9p write agent/beads/ctl
-echo 'new "Implement login" "Add JWT auth"' | 9p write agent/beads/ctl
-echo 'claim bd-a1b2' | 9p write agent/beads/ctl
-echo 'complete bd-a1b2' | 9p write agent/beads/ctl
-echo 'dep bd-child bd-parent' | 9p write agent/beads/ctl  # child blocks parent
-9p read agent/beads/ready | jq -r '.[] | "\(.id): \(.title)"'
+echo 'init' | 9p write anvillm/beads/ctl
+echo 'new "Implement login" "Add JWT auth"' | 9p write anvillm/beads/ctl
+echo 'claim bd-a1b2' | 9p write anvillm/beads/ctl
+echo 'complete bd-a1b2' | 9p write anvillm/beads/ctl
+echo 'dep bd-child bd-parent' | 9p write anvillm/beads/ctl  # child blocks parent
+9p read anvillm/beads/ready | jq -r '.[] | "\(.id): \(.title)"'
 ```
 
 Config: `~/.beads/` (override: `ANVILLM_BEADS_PATH`) — Shared across namespaces — See `internal/beads/README.md`
@@ -261,31 +261,31 @@ Cross-backend communication: messages route between any participants (user, Clau
 
 ```sh
 # Events
-9p read agent/events  # {"type":"state_change","session_id":"...","state":"running",...}
+9p read anvillm/events  # {"type":"state_change","session_id":"...","state":"running",...}
 
 # Mailbox
-echo '{"to":"a3f2b9d1","type":"REVIEW_REQUEST","subject":"...","body":"..."}' | 9p write agent/b4e3c8f2/mail
-9p read agent/a3f2b9d1/inbox
-9p read agent/a3f2b9d1/completed
+echo '{"to":"a3f2b9d1","type":"REVIEW_REQUEST","subject":"...","body":"..."}' | 9p write anvillm/b4e3c8f2/mail
+9p read anvillm/a3f2b9d1/inbox
+9p read anvillm/a3f2b9d1/completed
 ```
 
 ### Basic Session Example
 
 ```sh
 # Create session
-echo 'new claude /home/user/project' | 9p write agent/ctl
+echo 'new claude /home/user/project' | 9p write anvillm/ctl
 
 # List sessions (newest first)
-9p read agent/list
+9p read anvillm/list
 
 # Get most recent session ID
-ID=$(9p read agent/list | head -1 | awk '{print $1}')
+ID=$(9p read anvillm/list | head -1 | awk '{print $1}')
 
 # Send prompt via mailbox
 echo '{"to":"'$ID'","type":"PROMPT_REQUEST","subject":"User prompt","body":"Hello"}' | 9p write user/mail
 
 # Check state
-9p read agent/$ID/state
+9p read anvillm/$ID/state
 
 # Read response from inbox
 9p read user/inbox
@@ -309,7 +309,7 @@ Bot templates provide pre-configured agents for common tasks. Templates are shel
 
 Templates set up context, roles, and initial configuration. Interact via any client (Assist, TUI, Emacs, Web) or directly via 9P mailbox.
 
-**Creating Templates:** Shell scripts that write to `agent/ctl` and configure `context`, `role`, `tasks`. See existing templates for examples.
+**Creating Templates:** Shell scripts that write to `anvillm/ctl` and configure `context`, `role`, `tasks`. See existing templates for examples.
 
 ## Autonomous Workflows
 
@@ -327,20 +327,20 @@ Examples use raw 9P calls. These actions can also be performed from any front-en
 
 ```sh
 ./bot-templates/Taskmaster kiro /path/to/project
-TASKMASTER_ID=$(9p read agent/list | head -1 | awk '{print $1}')
+TASKMASTER_ID=$(9p read anvillm/list | head -1 | awk '{print $1}')
 
 # Send project plan
 echo '{"to":"'$TASKMASTER_ID'","type":"PROMPT_REQUEST","subject":"Create tasks","body":"<your project plan>"}' | 9p write user/mail
 
 # Get top-level bead ID
-BEAD_ID=$(9p read agent/beads/list | jq -r '.[0].id')
+BEAD_ID=$(9p read anvillm/beads/list | jq -r '.[0].id')
 ```
 
 **2. Conductor: Execute work**
 
 ```sh
 ./bot-templates/Conductor kiro /path/to/project
-CONDUCTOR_ID=$(9p read agent/list | head -1 | awk '{print $1}')
+CONDUCTOR_ID=$(9p read anvillm/list | head -1 | awk '{print $1}')
 
 # Send work request
 echo '{"to":"'$CONDUCTOR_ID'","type":"WORK_REQUEST","subject":"Execute","body":"Complete bead '$BEAD_ID'"}' | 9p write user/mail
@@ -368,7 +368,7 @@ Enables code execution pattern for 80-99% token reduction:
 
 See [Code Execution User Guide](docs/code-execution-user-guide.md) for details.
 
-**Legacy tools removed**: Direct tool calls (read_inbox, send_message, etc.) replaced by bash scripts accessible via `9p read agent/tools/anvilmcp/*.sh`
+**Legacy tools removed**: Direct tool calls (read_inbox, send_message, etc.) replaced by bash scripts accessible via `9p read anvillm/tools/anvilmcp/*.sh`
 
 ## Troubleshooting
 

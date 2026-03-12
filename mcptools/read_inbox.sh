@@ -10,7 +10,7 @@ if cat /etc/shadow >/dev/null 2>&1; then
 fi
 
 agent_id="${1:?Usage: read_inbox <agent_id>}"
-inbox_path="agent/${agent_id}/inbox"
+inbox_path="anvillm/${agent_id}/inbox"
 
 files=$(9p ls "$inbox_path" 2>/dev/null | grep '\.json$' || true)
 if [ -z "$files" ]; then
@@ -28,7 +28,7 @@ type=$(echo "$data" | jq -r '.type // "unknown"')
 subject=$(echo "$data" | jq -r '.subject // ""')
 body=$(echo "$data" | jq -r '.body // ""')
 
-echo "complete ${msg_id}" | 9p write "agent/${agent_id}/ctl" 2>/dev/null || true
+echo "complete ${msg_id}" | 9p write "anvillm/${agent_id}/ctl" 2>/dev/null || true
 
 echo "[Message from ${from}]"
 echo "Type: ${type}"

@@ -6,12 +6,12 @@ The events system provides a real-time text stream of all AnviLLM activity using
 
 <p align="center"><img src="diagrams/events.svg?v=2" width="400"></p>
 
-Multiple clients can read from `agent/events` simultaneously, each consuming the same event stream for different purposes: notifications (desktop, SMS, WhatsApp), logging/auditing, custom integrations, etc.
+Multiple clients can read from `anvillm/events` simultaneously, each consuming the same event stream for different purposes: notifications (desktop, SMS, WhatsApp), logging/auditing, custom integrations, etc.
 
 ## Reading Events
 
 ```sh
-9p read agent/events
+9p read anvillm/events
 ```
 
 This blocks and streams JSON events as they occur, one per line.
@@ -39,21 +39,21 @@ Pipe to any tool:
 
 ```sh
 # Log to file
-9p read agent/events >> anvillm.log
+9p read anvillm/events >> anvillm.log
 
 # Filter specific events
-9p read agent/events | grep StateChange
+9p read anvillm/events | grep StateChange
 
 # Parse with jq
-9p read agent/events | jq 'select(.type == "UserRecv")'
+9p read anvillm/events | jq 'select(.type == "UserRecv")'
 
 # Custom notification script
-9p read agent/events | while read event; do
+9p read anvillm/events | while read event; do
   echo "$event" | jq -r '"\(.type): \(.agent)"'
 done
 
 # Desktop notifications on state changes
-9p read agent/events | jq -r 'select(.type == "StateChange") | "\(.agent): \(.data.state)"' | \
+9p read anvillm/events | jq -r 'select(.type == "StateChange") | "\(.agent): \(.data.state)"' | \
   while read msg; do notify-send "AnviLLM" "$msg"; done
 ```
 

@@ -52,14 +52,14 @@ Brief, actionable instructions.
 
 ```bash
 # Find skills directory
-9p ls agent/skills
+9p ls anvillm/skills
 
 # Create
 mkdir -p ./skills/skill-name
 # Write SKILL.md with frontmatter
 
 # Verify
-9p ls agent/skills | grep skill-name
+9p ls anvillm/skills | grep skill-name
 ```
 
 ## Validation

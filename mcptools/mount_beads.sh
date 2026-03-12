@@ -14,4 +14,4 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-echo "mount $*" | 9p write agent/beads/ctl
+echo "mount $*" | 9p write anvillm/beads/ctl

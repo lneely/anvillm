@@ -13,7 +13,7 @@ SysV init scripts for AnviLLM services, in two flavours:
 
 ## anvilsrv — AnviLLM backend server
 
-`anvilsrv` is the core backend daemon.  It exposes the `agent/` 9P filesystem
+`anvilsrv` is the core backend daemon.  It exposes the `anvillm/` 9P filesystem
 used by Claude Code sessions, bots, the beads task store, and the event bus.
 
 The binary (`~/bin/anvilsrv`) handles daemonization, PID file management, and

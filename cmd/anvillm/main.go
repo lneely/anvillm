@@ -186,7 +186,7 @@ func setupUI() {
 }
 
 func connectToServer() (*client.Fsys, error) {
-	return client.MountService("agent")
+	return client.MountService("anvillm")
 }
 
 func refreshLoop() {
@@ -1822,7 +1822,7 @@ func showHelp() {
   r       Refresh / clear search
 
 [yellow]9P Filesystem:[-]
-All operations read/write the 9P filesystem at $NAMESPACE/agent
+All operations read/write the 9P filesystem at $NAMESPACE/anvillm
 
 [yellow]Backends & Models:[-]
 Press 's' to start a new session and choose from:

@@ -38,10 +38,10 @@ Start anvilsrv and create an Ollama session:
 
 ```bash
 # Via 9P interface
-echo "new ollama" | 9p write agent/sessions/ctl
+echo "new ollama" | 9p write anvillm/sessions/ctl
 
 # Send prompts
-echo "prompt <session-id> What is 2+2?" | 9p write agent/sessions/ctl
+echo "prompt <session-id> What is 2+2?" | 9p write anvillm/sessions/ctl
 ```
 
 ## Known Limitations
@@ -81,5 +81,5 @@ cp cfg/mcphost.json ~/.config/anvillm/mcphost.json
 
 **Check backend status:**
 ```bash
-9p read agent/sessions/list
+9p read anvillm/sessions/list
 ```

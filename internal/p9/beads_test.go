@@ -88,7 +88,7 @@ func TestBeadsFS_MountRouting(t *testing.T) {
 	defer beadsFS.Umount("test-project")
 	
 	// Test cwd endpoint
-	data, err := beadsFS.Read("agent/beads/test-project/cwd")
+	data, err := beadsFS.Read("anvillm/beads/test-project/cwd")
 	if err != nil {
 		t.Fatalf("Read cwd failed: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestBeadsFS_MountRouting(t *testing.T) {
 	}
 	
 	// Test non-existent mount
-	_, err = beadsFS.Read("agent/beads/nonexistent/cwd")
+	_, err = beadsFS.Read("anvillm/beads/nonexistent/cwd")
 	if err == nil {
 		t.Fatal("Should have failed on non-existent mount")
 	}

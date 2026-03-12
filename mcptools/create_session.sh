@@ -14,4 +14,4 @@ if [ $# -lt 2 ]; then
     exit 1
 fi
 
-echo "new $*" | 9p write agent/ctl
+echo "new $*" | 9p write anvillm/ctl

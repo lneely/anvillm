@@ -42,7 +42,7 @@ func TestValidateCode(t *testing.T) {
 		{"su", "su - root", true},
 		{"etc passwd", "cat /etc/passwd", true},
 		{"etc shadow", "cat /etc/shadow", true},
-		{"safe 9p", "9p read agent/inbox/user", false},
+		{"safe 9p", "9p read anvillm/inbox/user", false},
 		{"safe jq", "echo '{}' | jq .field", false},
 		{"safe rm", "rm file.txt", false},
 		{"rm -rf ./", "rm -rf ./", true},

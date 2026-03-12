@@ -39,15 +39,15 @@ const (
 //
 // Usage (add to a bead):
 //
-//	echo "label bd-abc capability:low" | 9p write agent/beads/ctl
+//	echo "label bd-abc capability:low" | 9p write anvillm/beads/ctl
 //
 // Usage (set at creation time):
 //
-//	echo "new 'title' 'desc' '' capability=low" | 9p write agent/beads/ctl
+//	echo "new 'title' 'desc' '' capability=low" | 9p write anvillm/beads/ctl
 //
 // Usage (read via JSON):
 //
-//	9p read agent/beads/bd-abc/json | jq -r .capability_level
+//	9p read anvillm/beads/bd-abc/json | jq -r .capability_level
 //
 // Refs: bd-frk.7, bd-frk.14.
 const (
@@ -921,9 +921,9 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 		// Usage: pending-approval <bead-id> [assignee]
 		// Canonical workflow:
 		//   1. Bot sends APPROVAL_REQUEST to user mailbox
-		//   2. Bot calls: echo "pending-approval <id>" | 9p write agent/beads/ctl
-		//   3. Human approves → bot calls: echo "resume <id> <bot-id>" | 9p write agent/beads/ctl
-		//   4. Human rejects → bot calls: echo "fail <id> 'rejected'" | 9p write agent/beads/ctl
+		//   2. Bot calls: echo "pending-approval <id>" | 9p write anvillm/beads/ctl
+		//   3. Human approves → bot calls: echo "resume <id> <bot-id>" | 9p write anvillm/beads/ctl
+		//   4. Human rejects → bot calls: echo "fail <id> 'rejected'" | 9p write anvillm/beads/ctl
 		if len(args) < 1 {
 			return fmt.Errorf("usage: pending-approval <bead-id> [assignee]")
 		}
@@ -942,9 +942,9 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 		// Usage: pending-review <bead-id> [assignee]
 		// Canonical workflow:
 		//   1. Bot sends REVIEW_REQUEST to user mailbox
-		//   2. Bot calls: echo "pending-review <id>" | 9p write agent/beads/ctl
-		//   3. Human responds → bot calls: echo "resume <id> <bot-id>" | 9p write agent/beads/ctl
-		//   4. Human rejects → bot calls: echo "fail <id> 'review failed'" | 9p write agent/beads/ctl
+		//   2. Bot calls: echo "pending-review <id>" | 9p write anvillm/beads/ctl
+		//   3. Human responds → bot calls: echo "resume <id> <bot-id>" | 9p write anvillm/beads/ctl
+		//   4. Human rejects → bot calls: echo "fail <id> 'review failed'" | 9p write anvillm/beads/ctl
 		if len(args) < 1 {
 			return fmt.Errorf("usage: pending-review <bead-id> [assignee]")
 		}

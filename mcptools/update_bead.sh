@@ -20,4 +20,4 @@ FIELD="$3"
 shift 3
 VALUE="$*"
 
-printf "update %s %s '%s'\n" "$BEAD_ID" "$FIELD" "$VALUE" | 9p write agent/beads/$MOUNT/ctl
+printf "update %s %s '%s'\n" "$BEAD_ID" "$FIELD" "$VALUE" | 9p write anvillm/beads/$MOUNT/ctl

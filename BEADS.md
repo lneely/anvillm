@@ -11,7 +11,7 @@ Beads provides persistent, structured task memory for coding agents. Tasks persi
 ## Filesystem Structure
 
 ```
-agent/beads/
+anvillm/beads/
 ├── ctl                    # Control file for commands
 ├── query                  # Filtered query endpoint (write JSON filter, read results)
 ├── list                   # All beads (JSON)
@@ -72,112 +72,112 @@ agent/beads/
 
 ```sh
 # Create bead
-echo "new 'Implement auth' 'Add OAuth support'" | 9p write agent/beads/ctl
+echo "new 'Implement auth' 'Add OAuth support'" | 9p write anvillm/beads/ctl
 
 # Claim bead
-echo "claim bd-a1b2" | 9p write agent/beads/ctl
+echo "claim bd-a1b2" | 9p write anvillm/beads/ctl
 
 # Complete bead
-echo "complete bd-a1b2" | 9p write agent/beads/ctl
+echo "complete bd-a1b2" | 9p write anvillm/beads/ctl
 
 # List ready beads
-9p read agent/beads/ready
+9p read anvillm/beads/ready
 
 # List blocked beads
-9p read agent/beads/blocked
+9p read anvillm/beads/blocked
 
 # List stale beads (not updated in 30+ days)
-9p read agent/beads/stale
+9p read anvillm/beads/stale
 
 # Get statistics
-9p read agent/beads/stats
+9p read anvillm/beads/stats
 
 # Get all configuration
-9p read agent/beads/config
+9p read anvillm/beads/config
 
 # Search for beads
-9p read agent/beads/search/authentication
+9p read anvillm/beads/search/authentication
 
 # Get bead by external reference
-9p read agent/beads/by-ref/JIRA-123
+9p read anvillm/beads/by-ref/JIRA-123
 
 # Batch lookup multiple beads
-9p read agent/beads/batch/bd-a1b2,bd-c3d4,bd-e5f6
+9p read anvillm/beads/batch/bd-a1b2,bd-c3d4,bd-e5f6
 
 # Get beads with specific label
-9p read agent/beads/label/backend
+9p read anvillm/beads/label/backend
 
 # Get children of a parent bead
-9p read agent/beads/children/bd-a1b2
+9p read anvillm/beads/children/bd-a1b2
 
 # Read bead status
-9p read agent/beads/bd-a1b2/status
+9p read anvillm/beads/bd-a1b2/status
 
 # Read full bead with blockers
-9p read agent/beads/bd-a1b2/json
+9p read anvillm/beads/bd-a1b2/json
 
 # Read bead comments
-9p read agent/beads/bd-a1b2/comments
+9p read anvillm/beads/bd-a1b2/comments
 
 # Read bead labels
-9p read agent/beads/bd-a1b2/labels
+9p read anvillm/beads/bd-a1b2/labels
 
 # Read bead dependents
-9p read agent/beads/bd-a1b2/dependents
+9p read anvillm/beads/bd-a1b2/dependents
 
 # Read dependencies with metadata
-9p read agent/beads/bd-a1b2/dependencies-meta
+9p read anvillm/beads/bd-a1b2/dependencies-meta
 
 # Read dependents with metadata
-9p read agent/beads/bd-a1b2/dependents-meta
+9p read anvillm/beads/bd-a1b2/dependents-meta
 
 # Read dependency tree
-9p read agent/beads/bd-a1b2/tree
+9p read anvillm/beads/bd-a1b2/tree
 
 # Read event history
-9p read agent/beads/bd-a1b2/events
+9p read anvillm/beads/bd-a1b2/events
 
 # Add dependency (parent blocks child)
-echo "dep bd-child bd-parent" | 9p write agent/beads/ctl
+echo "dep bd-child bd-parent" | 9p write anvillm/beads/ctl
 
 # Update bead field
-echo "update bd-a1b2 priority 1" | 9p write agent/beads/ctl
+echo "update bd-a1b2 priority 1" | 9p write anvillm/beads/ctl
 
 # Add comment
-echo "comment bd-a1b2 'Work in progress'" | 9p write agent/beads/ctl
+echo "comment bd-a1b2 'Work in progress'" | 9p write anvillm/beads/ctl
 
 # Add label
-echo "label bd-a1b2 'backend'" | 9p write agent/beads/ctl
+echo "label bd-a1b2 'backend'" | 9p write anvillm/beads/ctl
 
 # Set capability level
-echo "set-capability bd-a1b2 high" | 9p write agent/beads/ctl
+echo "set-capability bd-a1b2 high" | 9p write anvillm/beads/ctl
 
 # Initialize with custom prefix
-echo "init myprefix" | 9p write agent/beads/ctl
+echo "init myprefix" | 9p write anvillm/beads/ctl
 ```
 
 ## Filtered Queries
 
-The `agent/beads/query` endpoint accepts JSON filter criteria for complex queries.
+The `anvillm/beads/query` endpoint accepts JSON filter criteria for complex queries.
 
 **Note:** The query endpoint is stateful per session. Write a filter to set the query, then read to retrieve results. The filter persists until overwritten.
 
 ```sh
 # Query by assignee and priority
-echo '{"assignee":"alice","priority":1}' | 9p write agent/beads/query
-9p read agent/beads/query
+echo '{"assignee":"alice","priority":1}' | 9p write anvillm/beads/query
+9p read anvillm/beads/query
 
 # Query by status and type
-echo '{"status":"open","issue_type":"bug"}' | 9p write agent/beads/query
-9p read agent/beads/query
+echo '{"status":"open","issue_type":"bug"}' | 9p write anvillm/beads/query
+9p read anvillm/beads/query
 
 # Query by labels (all must match)
-echo '{"labels":["backend","urgent"]}' | 9p write agent/beads/query
-9p read agent/beads/query
+echo '{"labels":["backend","urgent"]}' | 9p write anvillm/beads/query
+9p read anvillm/beads/query
 
 # Query by parent ID
-echo '{"parent_id":"bd-abc"}' | 9p write agent/beads/query
-9p read agent/beads/query
+echo '{"parent_id":"bd-abc"}' | 9p write anvillm/beads/query
+9p read anvillm/beads/query
 ```
 
 Available filter fields:
@@ -201,7 +201,7 @@ Two statuses mark beads awaiting a human response:
 | `pending_approval` | Bot sent `APPROVAL_REQUEST`; waiting for human `APPROVAL_RESPONSE` |
 | `pending_review` | Bot sent `REVIEW_REQUEST`; waiting for human `REVIEW_RESPONSE` |
 
-Beads in either status are **not** surfaced by `agent/beads/ready` — bots will not accidentally claim them. Use `agent/beads/pending` to list all beads awaiting human input.
+Beads in either status are **not** surfaced by `anvillm/beads/ready` — bots will not accidentally claim them. Use `anvillm/beads/pending` to list all beads awaiting human input.
 
 ### Label Conventions
 
@@ -212,7 +212,7 @@ Add these labels to beads that should trigger a human gate at completion:
 | `requires_approval` | Completion requires an `APPROVAL_REQUEST`/`APPROVAL_RESPONSE` exchange |
 | `requires_review` | Completion requires a `REVIEW_REQUEST`/`REVIEW_RESPONSE` exchange |
 
-Example: `echo "label bd-abc requires_approval" | 9p write agent/beads/ctl`
+Example: `echo "label bd-abc requires_approval" | 9p write anvillm/beads/ctl`
 
 ### Approval Workflow
 
@@ -224,32 +224,32 @@ Example: `echo "label bd-abc requires_approval" | 9p write agent/beads/ctl`
 #    body:    "I am about to run: DROP TABLE backups. Reason: cleanup task bd-xyz. Approve?"
 
 # 2. Bot atomically marks bead pending and assigns to user for review
-echo "pending-approval bd-xyz" | 9p write agent/beads/ctl
+echo "pending-approval bd-xyz" | 9p write anvillm/beads/ctl
 # (optionally assign to a specific agent: "pending-approval bd-xyz agent-id")
 
 # 3. Human reviews in their inbox (Assist, anvilweb, TUI, or Emacs)
 #    and clicks Approve or Reject
 
 # 4a. On APPROVAL_RESPONSE (approved) — bot resumes and reassigns to itself:
-echo "resume bd-xyz $AGENT_ID" | 9p write agent/beads/ctl
+echo "resume bd-xyz $AGENT_ID" | 9p write anvillm/beads/ctl
 # ... continue work ...
-echo "complete bd-xyz" | 9p write agent/beads/ctl
+echo "complete bd-xyz" | 9p write anvillm/beads/ctl
 
 # 4b. On APPROVAL_RESPONSE (rejected) — bot stops:
-echo "fail bd-xyz 'human rejected: too risky'" | 9p write agent/beads/ctl
+echo "fail bd-xyz 'human rejected: too risky'" | 9p write anvillm/beads/ctl
 ```
 
 ### Monitoring Pending Approvals
 
 ```sh
 # List all beads awaiting human input
-9p read agent/beads/pending | jq .
+9p read anvillm/beads/pending | jq .
 
 # Filter only approval-pending
-9p read agent/beads/pending | jq '[.[] | select(.status == "pending_approval")]'
+9p read anvillm/beads/pending | jq '[.[] | select(.status == "pending_approval")]'
 
 # Filter only review-pending
-9p read agent/beads/pending | jq '[.[] | select(.status == "pending_review")]'
+9p read anvillm/beads/pending | jq '[.[] | select(.status == "pending_review")]'
 ```
 
 ## Initialization
@@ -262,16 +262,16 @@ import "anvillm/internal/beads"
 err := beads.InitBeads("/path/to/project")
 ```
 
-Agents access via 9P at `agent/beads/`:
+Agents access via 9P at `anvillm/beads/`:
 
 ```sh
-cat agent/beads/ready
-echo 'claim bd-xyz' > agent/beads/ctl
+cat anvillm/beads/ready
+echo 'claim bd-xyz' > anvillm/beads/ctl
 ```
 
 ## MCP Integration
 
-anvilmcp exposes beads operations as MCP tools (calls `9p write agent/beads/ctl`):
+anvilmcp exposes beads operations as MCP tools (calls `9p write anvillm/beads/ctl`):
 
 ```json
 {

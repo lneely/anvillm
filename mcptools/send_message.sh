@@ -23,4 +23,4 @@ json=$(jq -n \
   --arg body "$body" \
   '{from: $from, to: $to, type: $type, subject: $subject, body: $body}')
 
-echo "$json" | 9p write "agent/${from}/mail"
+echo "$json" | 9p write "anvillm/${from}/mail"

@@ -131,11 +131,11 @@ func (r *RolesFS) listAllRoles() ([]*RoleMeta, error) {
 	return roles, nil
 }
 
-// List returns directory entries for the flat roles root: agent/roles → <name>.md files.
+// List returns directory entries for the flat roles root: anvillm/roles → <name>.md files.
 func (r *RolesFS) List(path string) ([]plan9.Dir, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
-	if len(parts) == 2 && parts[0] == "agent" && parts[1] == "roles" {
+	if len(parts) == 2 && parts[0] == "anvillm" && parts[1] == "roles" {
 		roles, err := r.listAllRoles()
 		if err != nil {
 			return nil, err
@@ -154,12 +154,12 @@ func (r *RolesFS) List(path string) ([]plan9.Dir, error) {
 	return nil, fmt.Errorf("not found")
 }
 
-// Read returns file content for agent/roles/<name>.md.
+// Read returns file content for anvillm/roles/<name>.md.
 func (r *RolesFS) Read(path string) ([]byte, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
-	// agent/roles/<name>.md
-	if len(parts) == 3 && parts[0] == "agent" && parts[1] == "roles" {
+	// anvillm/roles/<name>.md
+	if len(parts) == 3 && parts[0] == "anvillm" && parts[1] == "roles" {
 		fileName := parts[2]
 		if !strings.HasSuffix(fileName, ".md") {
 			return nil, fmt.Errorf("not found")

@@ -14,4 +14,4 @@ if [ $# -lt 2 ]; then
     exit 1
 fi
 
-9p read "agent/beads/$1/$2/comments" 2>/dev/null || echo "[]"
+9p read "anvillm/beads/$1/$2/comments" 2>/dev/null || echo "[]"

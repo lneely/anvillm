@@ -24,7 +24,7 @@ while [ "$ELAPSED" -lt "$MAX_WAIT" ]; do
     ALL_READY=true
     for role in $REQUIRED_ROLES; do
         alias="${HASH}-${role}"
-        state=$(9p read agent/list 2>/dev/null | awk -F'\t' -v a="$alias" '$4 == a {print $3}')
+        state=$(9p read anvillm/list 2>/dev/null | awk -F'\t' -v a="$alias" '$4 == a {print $3}')
         if [ "$state" != "idle" ]; then
             ALL_READY=false
             break

@@ -13,12 +13,12 @@ else
   prompt="${2:-}"
 fi
 
-backend=$(9p read "agent/$agent_id/backend")
-echo "new $backend $cwd" | 9p write agent/ctl
+backend=$(9p read "anvillm/$agent_id/backend")
+echo "new $backend $cwd" | 9p write anvillm/ctl
 
 if [ -n "$prompt" ]; then
-  session_id=$(9p read agent/list 2>/dev/null | awk -F'\t' -v cwd="$cwd" '$5 == cwd {print $1; exit}')
+  session_id=$(9p read anvillm/list 2>/dev/null | awk -F'\t' -v cwd="$cwd" '$5 == cwd {print $1; exit}')
   if [ -n "$session_id" ]; then
-    echo "$prompt" | 9p write "agent/$session_id/context"
+    echo "$prompt" | 9p write "anvillm/$session_id/context"
   fi
 fi

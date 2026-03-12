@@ -11,7 +11,7 @@ description: Manage tasks using the beads 9P interface. Use when creating, updat
 Find your project's beads mount:
 ```
 Tool: execute_code
-code: MOUNT=$(bash <(9p read agent/tools/list_mounts.sh) | grep "$(pwd)" | awk '{print $1}'); echo $MOUNT
+code: MOUNT=$(bash <(9p read anvillm/tools/list_mounts.sh) | grep "$(pwd)" | awk '{print $1}'); echo $MOUNT
 ```
 
 If no mount exists, create one (substitute actual path):

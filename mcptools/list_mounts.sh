@@ -8,4 +8,4 @@ if cat /etc/shadow >/dev/null 2>&1; then
   exit 1
 fi
 
-9p read agent/beads/mtab 2>/dev/null || echo "No mounted projects"
+9p read anvillm/beads/mtab 2>/dev/null || echo "No mounted projects"

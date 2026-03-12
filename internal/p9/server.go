@@ -32,7 +32,7 @@ import (
 /*
 Filesystem layout:
 
-agent/
+anvillm/
     ctl                 (write) "new <backend> <cwd>" creates session, returns id
     list                (read)  list sessions: "id alias state pid cwd"
     user/               (dir)   special user mailbox (singleton)
@@ -70,7 +70,7 @@ const (
 	qidCtl
 	qidList
 	qidStatus
-	qidEvents                    // agent/events
+	qidEvents                    // anvillm/events
 	qidUser                      // user directory
 	qidUserInbox                 // user/inbox
 	qidUserOutbox                // user/outbox
@@ -157,7 +157,7 @@ func NewServer(mgr *session.Manager, beadsFS *BeadsFS) (*Server, error) {
 		return nil, fmt.Errorf("no namespace")
 	}
 
-	sockPath := filepath.Join(ns, "agent")
+	sockPath := filepath.Join(ns, "anvillm")
 
 	// Remove stale socket
 	if _, err := os.Stat(sockPath); err == nil {
@@ -193,7 +193,7 @@ func NewServer(mgr *session.Manager, beadsFS *BeadsFS) (*Server, error) {
 }
 
 func loadMCPTools() []Tool {
-	// These tool definitions are exposed via 9P at agent/tools/anvilmcp/
+	// These tool definitions are exposed via 9P at anvillm/tools/anvilmcp/
 	// for progressive discovery by agents using the code execution pattern.
 	// The actual MCP tool (execute_code) is defined in main.go for tools/list.
 	return []Tool{
@@ -1437,7 +1437,7 @@ func (s *Server) readFile(path string) string {
 	// Handle skills paths
 	if strings.HasPrefix(path, "/skills/") {
 		if s.skills != nil {
-			data, err := s.skills.Read("agent/" + strings.TrimPrefix(path, "/"))
+			data, err := s.skills.Read("anvillm/" + strings.TrimPrefix(path, "/"))
 			if err != nil {
 				return ""
 			}
@@ -1449,7 +1449,7 @@ func (s *Server) readFile(path string) string {
 	// Handle roles paths
 	if strings.HasPrefix(path, "/roles/") {
 		if s.roles != nil {
-			data, err := s.roles.Read("agent/" + strings.TrimPrefix(path, "/"))
+			data, err := s.roles.Read("anvillm/" + strings.TrimPrefix(path, "/"))
 			if err != nil {
 				return ""
 			}

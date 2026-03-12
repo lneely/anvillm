@@ -98,9 +98,9 @@ largest→high, middle→standard. If only one model is available, use it for al
 Labels use the portable level name, not the backend-specific model name:
 
 ```sh
-echo "label bd-abc capability:low"      | 9p write agent/beads/ctl
-echo "label bd-abc capability:standard" | 9p write agent/beads/ctl
-echo "label bd-abc capability:high"     | 9p write agent/beads/ctl
+echo "label bd-abc capability:low"      | 9p write anvillm/beads/ctl
+echo "label bd-abc capability:standard" | 9p write anvillm/beads/ctl
+echo "label bd-abc capability:high"     | 9p write anvillm/beads/ctl
 ```
 
 The Conductor and Taskmaster read these labels and resolve the backend-specific model

@@ -71,7 +71,7 @@ anvilsrv status
 ls -la /tmp/ns.$USER/agent
 
 # Test connection
-echo "list" | 9p read agent/list
+echo "list" | 9p read anvillm/list
 ```
 
 ### View Logs

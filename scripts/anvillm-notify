@@ -3,18 +3,18 @@
 # React to anvillm events and notify on running->idle transitions
 
 get_alias() {
-	9p read "agent/$1/alias" 2>/dev/null
+	9p read "anvillm/$1/alias" 2>/dev/null
 }
 
 get_cwd() {
-	9p read "agent/$1/cwd" 2>/dev/null
+	9p read "anvillm/$1/cwd" 2>/dev/null
 }
 
 get_summary() {
-	9p read "agent/$1/summary" 2>/dev/null
+	9p read "anvillm/$1/summary" 2>/dev/null
 }
 
-9p read agent/events | while read -r line; do
+9p read anvillm/events | while read -r line; do
 	type=$(echo "$line" | jq -r '.type // empty')
 	
 	case "$type" in

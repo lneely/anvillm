@@ -137,7 +137,7 @@ JQ_FILTER="
   )
 "
 
-9p read agent/events | jq --unbuffered -c "$JQ_FILTER" | while IFS= read -r event; do
+9p read anvillm/events | jq --unbuffered -c "$JQ_FILTER" | while IFS= read -r event; do
     msg_id=$(printf '%s' "$event"  | jq -r '.data.id // .id')
     from=$(printf '%s' "$event"    | jq -r '.data.from // "unknown"')
     subject=$(printf '%s' "$event" | jq -r '.data.subject // "(no subject)"')

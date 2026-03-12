@@ -8,5 +8,5 @@ echo name /AnviLLM/Audit | 9p write acme/$winid/ctl
 echo clean | 9p write acme/$winid/ctl
 
 # Stream audit log to window
-9p read agent/audit | 9p write acme/$winid/data
+9p read anvillm/audit | 9p write acme/$winid/data
 

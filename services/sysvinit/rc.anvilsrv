@@ -3,7 +3,7 @@
 #
 # Start/stop/restart the AnviLLM backend server (anvilsrv).
 #
-# anvilsrv exposes a 9P filesystem (agent/) used by Claude Code sessions and
+# anvilsrv exposes a 9P filesystem (anvillm/) used by Claude Code sessions and
 # bots for session management, mailbox communication, beads task tracking, and
 # the event bus.
 #

@@ -15,13 +15,13 @@ results=""
 while IFS= read -r file; do
   [ "${file%.md}" = "$file" ] && continue  # skip non-.md entries
   name="${file%.md}"
-  content=$(9p read "agent/skills/$file")
+  content=$(9p read "anvillm/skills/$file")
   if echo "$content" | grep -qi "$keyword"; then
     desc=$(echo "$content" | grep -m1 '^description:' | sed 's/^description: *//')
     results="${results:+$results
 }$name	$desc"
   fi
-done < <(9p ls agent/skills)
+done < <(9p ls anvillm/skills)
 
 if [ -n "$results" ]; then
   echo "$results" | sort -u

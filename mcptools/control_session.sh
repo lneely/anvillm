@@ -14,4 +14,4 @@ if [ $# -lt 2 ]; then
     exit 1
 fi
 
-echo "$2" | 9p write "agent/$1/ctl"
+echo "$2" | 9p write "anvillm/$1/ctl"

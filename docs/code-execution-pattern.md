@@ -12,17 +12,17 @@ Instead of loading all tool definitions upfront, discover tools on-demand:
 
 1. **List available tools**
    ```bash
-   9p ls agent/tools/anvilmcp/
+   9p ls anvillm/tools/anvilmcp/
    ```
 
 2. **Read specific tool definitions**
    ```bash
-   9p read agent/tools/anvilmcp/beads.sh
+   9p read anvillm/tools/anvilmcp/beads.sh
    ```
 
 3. **Import and use in bash**
    ```bash
-   # Call tools from agent/tools/anvilmcp/beads';
+   # Call tools from anvillm/tools/anvilmcp/beads';
    
    const allBeads = await beads.list();
    const open = allBeads.filter(b => b.status === 'open');
@@ -109,8 +109,8 @@ Use direct tool calls when:
 Join data from multiple sources without loading everything into context:
 
 ```bash
-# Call tools from agent/tools/anvilmcp/beads';
-# Call tools from agent/tools/anvilmcp/kb';
+# Call tools from anvillm/tools/anvilmcp/beads';
+# Call tools from anvillm/tools/anvilmcp/kb';
 
 // Load data from both sources
 const allBeads = await beads.list();

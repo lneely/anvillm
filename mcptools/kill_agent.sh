@@ -10,7 +10,7 @@ fi
 
 agent_id="${1:?Usage: kill_agent.sh <agent-id>}"
 
-if echo "kill" | 9p write "agent/$agent_id/ctl" 2>/dev/null; then
+if echo "kill" | 9p write "anvillm/$agent_id/ctl" 2>/dev/null; then
   echo "Killed $agent_id"
 else
   echo "No session found with id $agent_id" >&2

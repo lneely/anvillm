@@ -4,7 +4,7 @@ Runit service for the [`anvillm-inbox-notify`](../../scripts/anvillm-inbox-notif
 
 ## What it does
 
-Streams the AnviLLM event bus (`9p read agent/events`) and fires desktop
+Streams the AnviLLM event bus (`9p read anvillm/events`) and fires desktop
 notifications via `notify-send` when messages of configured types arrive in
 the user's inbox.
 

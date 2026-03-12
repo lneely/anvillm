@@ -351,7 +351,7 @@ func connectToServer() (*client.Fsys, error) {
 	}
 
 	// MountService expects just the service name, it adds the namespace automatically
-	return client.MountService("agent")
+	return client.MountService("anvillm")
 }
 
 func isConnected() bool {
@@ -1080,7 +1080,7 @@ func refreshDaemonWindow(w *acme.Win) {
 	// Check socket
 	ns := client.Namespace()
 	if ns != "" {
-		sockPath := filepath.Join(ns, "agent")
+		sockPath := filepath.Join(ns, "anvillm")
 		if _, err := os.Stat(sockPath); err == nil {
 			buf.WriteString("9P Socket: " + sockPath + " (exists)\n")
 		} else {

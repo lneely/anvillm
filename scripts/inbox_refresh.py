@@ -24,7 +24,7 @@ def find_inbox_window():
 def read_user_inbox():
     """Read and format all messages in user inbox."""
     try:
-        files = subprocess.run(["9p", "ls", "agent/user/inbox"], capture_output=True, text=True,
+        files = subprocess.run(["9p", "ls", "anvillm/user/inbox"], capture_output=True, text=True,
                                env={**os.environ, "NAMESPACE": NAMESPACE}).stdout.strip().split()
         files = [f for f in files if f.endswith(".json")]
     except Exception:
@@ -41,7 +41,7 @@ def read_user_inbox():
     msgs = []
     for f in files:
         try:
-            data = subprocess.run(["9p", "read", f"agent/user/inbox/{f}"], capture_output=True, text=True,
+            data = subprocess.run(["9p", "read", f"anvillm/user/inbox/{f}"], capture_output=True, text=True,
                                   env={**os.environ, "NAMESPACE": NAMESPACE}).stdout
             msg = json.loads(data)
             msgs.append(msg)
@@ -79,7 +79,7 @@ def update_window(wid, content):
 if __name__ == "__main__":
     os.environ["NAMESPACE"] = NAMESPACE
     last_refresh = 0
-    proc = subprocess.Popen(["9p", "read", "agent/events"], stdout=subprocess.PIPE, text=True,
+    proc = subprocess.Popen(["9p", "read", "anvillm/events"], stdout=subprocess.PIPE, text=True,
                             env={**os.environ, "NAMESPACE": NAMESPACE})
     for line in proc.stdout:
         try:

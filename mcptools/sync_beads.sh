@@ -14,4 +14,4 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-echo "sync" | 9p write "agent/beads/$1/ctl"
+echo "sync" | 9p write "anvillm/beads/$1/ctl"

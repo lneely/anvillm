@@ -93,7 +93,7 @@ func main() {
 						InputSchema: InputSchema{
 							Type: "object",
 							Properties: map[string]Property{
-								"tool":     {Type: "string", Description: "Mode 1: named tool from agent/tools/ (e.g. 'list_sessions.sh')"},
+								"tool":     {Type: "string", Description: "Mode 1: named tool from anvillm/tools/ (e.g. 'list_sessions.sh')"},
 								"args":     {Type: "array", Description: "Positional args ($1 $2 …) for the tool or code", Items: &Items{Type: "string"}},
 								"code":     {Type: "string", Description: "Mode 2: inline bash to execute directly"},
 								"language": {Type: "string", Description: "Programming language", Enum: []string{"bash"}},

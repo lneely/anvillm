@@ -87,7 +87,7 @@ For the same query:
 
 1. **Enable token tracking** in agent stats:
    ```bash
-   9p read agent/<agent-id>/stats
+   9p read anvillm/<agent-id>/stats
    ```
 
 2. **Compare before/after**:
@@ -123,7 +123,7 @@ For the same query:
 
 **Cause**: Agent doesn't understand progressive discovery workflow.
 
-**Fix**: Add explicit instructions to list `agent/tools/anvilmcp/` first, then read only needed tool files.
+**Fix**: Add explicit instructions to list `anvillm/tools/anvilmcp/` first, then read only needed tool files.
 
 ### Agent passes large datasets through context
 

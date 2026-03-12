@@ -322,6 +322,7 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 		pid:            pid,
 		state:          "idle",
 		createdAt:      time.Now(),
+		idleSince:      time.Now(),
 		stopCh:         make(chan struct{}),
 		commands:       b.cfg.Commands,
 		stateInspector: b.cfg.StateInspector,
