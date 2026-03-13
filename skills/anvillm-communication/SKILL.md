@@ -9,8 +9,6 @@ when_to_load: Load when you need to send messages to other agents, respond to th
 
 ## Tools
 
-**IMPORTANT:** Read the $AGENT_ID environment variable to get your agent ID
-
 Discover agents:
 ```
 Tool: execute_code
@@ -41,7 +39,7 @@ tool: read_inbox.sh
 
 ### Sending Messages
 
-1. FROM is taken automatically from $AGENT_ID (do not pass it as an argument)
+1. FROM is taken automatically (do not pass it as an argument)
 2. TO is the agent ID of the receiving bot, or "user". If the recipient does not exist, send_message.sh will error.
 3. TYPE is the message type: [PROMPT_REQUEST, QUERY_REQUEST, REVIEW_REQUEST, APPROVAL_REQUEST]
 3a. Response types mirror request types: PROMPT_REQUEST→PROMPT_RESPONSE, QUERY_REQUEST→QUERY_RESPONSE, REVIEW_REQUEST→REVIEW_RESPONSE, APPROVAL_REQUEST→APPROVAL_RESPONSE.
