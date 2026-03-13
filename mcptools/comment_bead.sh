@@ -20,3 +20,4 @@ shift 2
 TEXT="$*"
 
 printf "comment %s '%s'\n" "$BEAD_ID" "$TEXT" | 9p write anvillm/beads/$MOUNT/ctl
+echo "commented on $BEAD_ID"

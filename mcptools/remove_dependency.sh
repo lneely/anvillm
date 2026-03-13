@@ -15,3 +15,4 @@ if [ $# -lt 3 ]; then
 fi
 
 echo "undep $2 $3" | 9p write anvillm/beads/$1/ctl
+echo "$2 no longer depends on $3"

@@ -18,3 +18,4 @@ mount="$1"
 prefix="${2:-bd}"
 
 echo "init $prefix" | 9p write "anvillm/beads/$mount/ctl"
+echo "initialized $mount (prefix: $prefix)"

@@ -15,3 +15,4 @@ if [ $# -lt 3 ]; then
 fi
 
 echo "unlabel $2 $3" | 9p write anvillm/beads/$1/ctl
+echo "unlabeled $2: $3"

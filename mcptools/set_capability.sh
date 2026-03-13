@@ -15,3 +15,4 @@ if [ $# -lt 3 ]; then
 fi
 
 echo "set-capability $2 $3" | 9p write anvillm/beads/$1/ctl
+echo "capability set: $2 → $3"

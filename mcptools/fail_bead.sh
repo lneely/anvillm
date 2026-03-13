@@ -20,3 +20,4 @@ shift 2
 REASON="$*"
 
 printf "fail %s '%s'\n" "$BEAD_ID" "$REASON" | 9p write anvillm/beads/$MOUNT/ctl
+echo "failed $BEAD_ID: $REASON"

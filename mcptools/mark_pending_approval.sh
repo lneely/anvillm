@@ -23,3 +23,4 @@ if [ -n "$ASSIGNEE" ]; then
 else
     echo "pending-approval $BEAD_ID" | 9p write anvillm/beads/$MOUNT/ctl
 fi
+echo "pending-approval: $BEAD_ID${ASSIGNEE:+ → $ASSIGNEE}"

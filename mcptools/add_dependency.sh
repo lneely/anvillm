@@ -15,3 +15,4 @@ if [ $# -lt 3 ]; then
 fi
 
 echo "dep $2 $3" | 9p write anvillm/beads/$1/ctl
+echo "$2 depends on $3"

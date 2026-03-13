@@ -15,3 +15,4 @@ if [ $# -lt 1 ]; then
 fi
 
 echo "umount $1" | 9p write anvillm/beads/ctl
+echo "unmounted $1"

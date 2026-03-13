@@ -21,3 +21,4 @@ shift 3
 VALUE="$*"
 
 printf "update %s %s '%s'\n" "$BEAD_ID" "$FIELD" "$VALUE" | 9p write anvillm/beads/$MOUNT/ctl
+echo "updated $BEAD_ID.$FIELD: $VALUE"

@@ -15,3 +15,4 @@ if [ $# -lt 2 ]; then
 fi
 
 echo "unclaim $2" | 9p write anvillm/beads/$1/ctl
+echo "unclaimed $2"

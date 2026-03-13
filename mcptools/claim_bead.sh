@@ -23,3 +23,4 @@ if [ -n "$ASSIGNEE" ]; then
 else
     echo "claim $BEAD_ID" | 9p write anvillm/beads/$MOUNT/ctl
 fi
+echo "claimed $BEAD_ID${ASSIGNEE:+ → $ASSIGNEE}"
