@@ -1,7 +1,9 @@
 #!/bin/bash
 # capabilities: beads
 # description: Mount a beads project
-# Usage: mount_beads.sh <cwd> [name]
+# Usage: mount_beads.sh <cwd> [friendly-name]
+# Mount name defaults to first segment of a random UUID (8 hex chars, 32-bit entropy).
+# Friendly name is optional and for human display only.
 set -euo pipefail
 
 if cat /etc/shadow >/dev/null 2>&1; then
@@ -10,8 +12,13 @@ if cat /etc/shadow >/dev/null 2>&1; then
 fi
 
 if [ $# -lt 1 ]; then
-    echo "usage: mount_beads.sh <cwd> [name]" >&2
+    echo "usage: mount_beads.sh <cwd> [friendly-name]" >&2
     exit 1
 fi
 
-echo "mount $*" | 9p write anvillm/beads/ctl
+CWD="$1"
+FRIENDLY="${2:-}"
+MOUNT=$(uuidgen | cut -d- -f1)
+
+echo "mount $CWD $MOUNT" | 9p write anvillm/beads/ctl
+echo "$MOUNT${FRIENDLY:+ ($FRIENDLY)}"
