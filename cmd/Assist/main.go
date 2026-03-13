@@ -1993,14 +1993,14 @@ func handleTasksWindow(w *acme.Win) {
 			case "Mount":
 				cwd := strings.TrimSpace(arg)
 				if cwd == "" {
-					fmt.Fprintf(os.Stderr, "Usage: select path, then Mount [mountname]\n")
+					fmt.Fprintf(os.Stderr, "Usage: select path, then Mount [friendly-name]\n")
 				} else {
-					name := filepath.Base(cwd)
 					parts := strings.Fields(string(e.Text))
+					friendly := ""
 					if len(parts) > 1 {
-						name = parts[1]
+						friendly = parts[1]
 					}
-					if err := mountProject(cwd, name); err != nil {
+					if name, err := mountProject(cwd, friendly); err != nil {
 						fmt.Fprintf(os.Stderr, "Error mounting: %v\n", err)
 					} else {
 						windowMount = name
@@ -2649,11 +2649,22 @@ func initBeads(prefix string, mount string) error {
 	return writeFile(filepath.Join("beads", mount, "ctl"), []byte(fmt.Sprintf("init %s", prefix)))
 }
 
-func mountProject(cwd, name string) error {
+// mountProject mounts cwd via mount_beads.sh mcptool and returns the generated mount name.
+// friendly is optional (may be empty); if provided it is passed to the script for display only.
+func mountProject(cwd, friendly string) (string, error) {
 	if !isConnected() {
-		return fmt.Errorf("not connected to anvilsrv")
+		return "", fmt.Errorf("not connected to anvilsrv")
 	}
-	return writeFile("beads/ctl", []byte(fmt.Sprintf("mount %s %s", cwd, name)))
+	args := []string{"-c", "bash <(9p read anvillm/tools/mount_beads.sh) \"$0\" \"$1\"", cwd, friendly}
+	out, err := exec.Command("bash", args...).Output()
+	if err != nil {
+		return "", fmt.Errorf("mount_beads.sh: %w", err)
+	}
+	name := strings.TrimSpace(string(out))
+	if name == "" {
+		return "", fmt.Errorf("mount_beads.sh returned empty mount name")
+	}
+	return name, nil
 }
 
 func umountProject(name string) error {
