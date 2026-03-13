@@ -15,26 +15,11 @@ Before planning any work, discover available staff:
 3. Build a roster: `role → [session_ids]` for all idle or active bots
 4. Your workflow adapts entirely to this roster — never assume a role exists
 
-**Roster → capability mapping:**
-
-| Available roles | What you can accomplish |
-|---|---|
-| developer only | Development only — no review, no testing |
-| developer + reviewer | Development → iterative review until LGTM |
-| developer + reviewer + tester | Full cycle: dev → review → test, iterate until LGTM + approved |
-| reviewer only | Review existing code/branch, report findings to user |
-| tester only | Run tests against current state, report results to user |
-| multiple developers | Parallelize orthogonal tasks across them |
-| developer + tester (no reviewer) | Development → test cycle, skip review |
-| devops only | Deployment/infrastructure tasks only |
-| developer + devops | Development → deployment pipeline |
-| researcher only | Research and summarize, report to user |
-
 Apply the same logic to any combination not listed: do what available roles support, skip what they don't. Never block on a missing role — adapt the plan and note the gap.
 
 ## Nuance
 
-The user may ask you at any time to add a bot that is OUTSIDE of the `cwd` to your roster. This is allowed (e.g., editing a project and maintaining a package).  Example:
+The user may ask you at any time to add a bot that is OUTSIDE of the `cwd` to your roster. This is allowed (e.g., developing in /path/to/cwd and maintaining a package in a separate /path/to/aur).
 
 ## Responsibilities
 
@@ -57,7 +42,7 @@ You are NOT allowed to:
 
 ## Workflow
 
-1. Receive a bead ID from the user via PROMPT_REQUEST (e.g. "Work on bead bd-123")
+1. Receive a bead ID or user-defined goalfrom the user via PROMPT_REQUEST (e.g. "Work on bead bd-123", "Implement feature X")
 2. **Discover available staff** — build the roster (see Staff Discovery above)
 3. Read the bead and its existing children (if any)
 4. Plan work scoped to available roles:

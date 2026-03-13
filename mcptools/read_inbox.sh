@@ -1,6 +1,6 @@
 #!/bin/bash
 # capabilities: messaging
-# description: Read messages from agent inbox: AGENT_ID
+# description: Read messages from agent inbox (uses $AGENT_ID env var)
 set -euo pipefail
 
 # Verify running under landrun (test filesystem restriction)
@@ -9,7 +9,11 @@ if cat /etc/shadow >/dev/null 2>&1; then
   exit 1
 fi
 
-agent_id="${1:?Usage: read_inbox <agent_id>}"
+if [ -z "${AGENT_ID:-}" ]; then
+  echo "Error: \$AGENT_ID is not set. Stop work and inform the user that \$AGENT_ID is not set." >&2
+  exit 1
+fi
+agent_id="$AGENT_ID"
 inbox_path="anvillm/${agent_id}/inbox"
 
 files=$(9p ls "$inbox_path" 2>/dev/null | grep '\.json$' || true)

@@ -24,14 +24,13 @@ Send message:
 ```
 Tool: execute_code
 tool: send_message.sh
-args: ["<from>", "<to>", "<type>", "<subject>", "<body>"]
+args: ["<to>", "<type>", "<subject>", "<body>"]
 ```
 
 Check inbox:
 ```
 Tool: execute_code
 tool: read_inbox.sh
-args: ["<agent_id>"]
 ```
 
 ## Rules
@@ -42,8 +41,8 @@ args: ["<agent_id>"]
 
 ### Sending Messages
 
-1. FROM is your agent ID
-2. TO is the agent ID of the receiving bot, or "user"
+1. FROM is taken automatically from $AGENT_ID (do not pass it as an argument)
+2. TO is the agent ID of the receiving bot, or "user". If the recipient does not exist, send_message.sh will error.
 3. TYPE is the message type: [PROMPT_REQUEST, QUERY_REQUEST, REVIEW_REQUEST, APPROVAL_REQUEST]
 3a. Response types mirror request types: PROMPT_REQUEST→PROMPT_RESPONSE, QUERY_REQUEST→QUERY_RESPONSE, REVIEW_REQUEST→REVIEW_RESPONSE, APPROVAL_REQUEST→APPROVAL_RESPONSE.
 4. SUBJECT is a brief description of what you did
