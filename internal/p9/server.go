@@ -145,6 +145,10 @@ type fid struct {
 	path       string
 	mode       uint8
 	offset     int64
+	// writeBuf accumulates Twrite chunks for a single logical write operation.
+	// The 9P client splits writes larger than msize into multiple Twrite messages
+	// with increasing offsets; we reassemble them here and process on Tclunk.
+	writeBuf []byte
 	// For streaming /events endpoint
 	eventCh    <-chan *eventbus.Event
 	eventUnsub func()
@@ -352,13 +356,20 @@ func (s *Server) handle(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return s.stat(cs, fc)
 	case plan9.Tclunk:
 		cs.mu.Lock()
-		if f, ok := cs.fids[fc.Fid]; ok && f.eventUnsub != nil {
+		f, hasFid := cs.fids[fc.Fid]
+		if hasFid && f.eventUnsub != nil {
 			// Cancel event subscription before dropping the fid.
 			f.eventUnsub()
 			f.eventUnsub = nil
 		}
 		delete(cs.fids, fc.Fid)
 		cs.mu.Unlock()
+		// If the fid has buffered write data, dispatch it now.
+		if hasFid && len(f.writeBuf) > 0 {
+			if rfc := s.dispatchWrite(cs, f, fc.Tag); rfc.Type == plan9.Rerror {
+				return rfc
+			}
+		}
 		return &plan9.Fcall{Type: plan9.Rclunk, Tag: fc.Tag}
 	default:
 		return errFcall(fc, "not supported")
@@ -688,16 +699,32 @@ func (s *Server) read(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 }
 
 func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
-	cs.mu.RLock()
+	cs.mu.Lock()
 	f, ok := cs.fids[fc.Fid]
 	if !ok {
-		cs.mu.RUnlock()
+		cs.mu.Unlock()
 		return errFcall(fc, "bad fid")
 	}
-	path := f.path
-	cs.mu.RUnlock()
+	// Accumulate data into the per-fid write buffer at the given offset.
+	// The 9P client splits writes larger than msize into multiple Twrite messages
+	// with increasing offsets; we reassemble here and dispatch on Tclunk.
+	end := int(fc.Offset) + len(fc.Data)
+	if end > len(f.writeBuf) {
+		grown := make([]byte, end)
+		copy(grown, f.writeBuf)
+		f.writeBuf = grown
+	}
+	copy(f.writeBuf[fc.Offset:], fc.Data)
+	cs.mu.Unlock()
+	return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
+}
 
-	input := strings.TrimSpace(string(fc.Data))
+// dispatchWrite processes the fully-assembled write payload for a given path.
+// Called from Tclunk after all Twrite chunks have been accumulated.
+func (s *Server) dispatchWrite(cs *connState, f *fid, tag uint16) *plan9.Fcall {
+	fc := &plan9.Fcall{Tag: tag, Data: f.writeBuf}
+	path := f.path
+	input := strings.TrimSpace(string(f.writeBuf))
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
 	// Handle beads writes
@@ -706,10 +733,10 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			cs.mu.Lock()
 			sessionID := cs.sessionID
 			cs.mu.Unlock()
-			if err := s.beads.Write(beadsPath, fc.Data, sessionID); err != nil {
+			if err := s.beads.Write(beadsPath, f.writeBuf, sessionID); err != nil {
 				return errFcall(fc, err.Error())
 			}
-			return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(fc.Data))}
+			return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(f.writeBuf))}
 		}
 		return errFcall(fc, "beads not initialized")
 	}
@@ -985,7 +1012,7 @@ func (s *Server) write(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		cs.mu.Unlock()
 
 		// Parse JSON message
-		msg, err := mailbox.FromJSON(fc.Data)
+		msg, err := mailbox.FromJSON(f.writeBuf)
 		if err != nil {
 			return errFcall(fc, fmt.Sprintf("invalid message JSON: %v", err))
 		}
