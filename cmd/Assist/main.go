@@ -1994,14 +1994,9 @@ func handleTasksWindow(w *acme.Win) {
 			case "Mount":
 				cwd := strings.TrimSpace(arg)
 				if cwd == "" {
-					fmt.Fprintf(os.Stderr, "Usage: select path, then Mount [friendly-name]\n")
+					fmt.Fprintf(os.Stderr, "Usage: select path, then Mount\n")
 				} else {
-					parts := strings.Fields(string(e.Text))
-					friendly := ""
-					if len(parts) > 1 {
-						friendly = parts[1]
-					}
-					if name, err := mountProject(cwd, friendly); err != nil {
+					if name, err := mountProject(cwd); err != nil {
 						fmt.Fprintf(os.Stderr, "Error mounting: %v\n", err)
 					} else {
 						windowMount = name
@@ -2651,13 +2646,12 @@ func initBeads(prefix string, mount string) error {
 }
 
 // mountProject mounts cwd via mount_beads.sh mcptool and returns the generated mount name.
-// friendly is optional (may be empty); if provided it is passed to the script for display only.
-func mountProject(cwd, friendly string) (string, error) {
+func mountProject(cwd string) (string, error) {
 	script, err := readFile("tools/mount_beads.sh")
 	if err != nil {
 		return "", fmt.Errorf("read mount_beads.sh: %w", err)
 	}
-	cmd := exec.Command("bash", "-s", "--", cwd, friendly)
+	cmd := exec.Command("bash", "-s", "--", cwd)
 	cmd.Stdin = bytes.NewReader(script)
 	out, err := cmd.Output()
 	if err != nil {
