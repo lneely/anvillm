@@ -1,0 +1,25 @@
+#!/bin/bash
+# capabilities: agent-kb
+# description: View a denote document by identifier
+# Usage: view_denote.sh <denote:identifier>
+set -euo pipefail
+
+if cat /etc/shadow >/dev/null 2>&1; then
+  echo "Error: This script must be run via execute_code tool" >&2
+  exit 1
+fi
+
+if [ $# -lt 1 ]; then
+    echo "usage: view_denote.sh <denote:identifier>" >&2
+    exit 1
+fi
+
+ID="${1#denote:}"
+FILE=$(find "$HOME/doc" -type f -name "${ID}--*" | head -1)
+
+if [ -z "$FILE" ]; then
+    echo "Error: no denote document found for identifier $ID" >&2
+    exit 1
+fi
+
+cat "$FILE"
