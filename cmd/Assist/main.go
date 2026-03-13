@@ -3,6 +3,7 @@ package main
 
 import (
 	"anvillm/internal/logging"
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -2652,11 +2653,13 @@ func initBeads(prefix string, mount string) error {
 // mountProject mounts cwd via mount_beads.sh mcptool and returns the generated mount name.
 // friendly is optional (may be empty); if provided it is passed to the script for display only.
 func mountProject(cwd, friendly string) (string, error) {
-	if !isConnected() {
-		return "", fmt.Errorf("not connected to anvilsrv")
+	script, err := readFile("tools/mount_beads.sh")
+	if err != nil {
+		return "", fmt.Errorf("read mount_beads.sh: %w", err)
 	}
-	args := []string{"-c", "bash <(9p read anvillm/tools/mount_beads.sh) \"$0\" \"$1\"", cwd, friendly}
-	out, err := exec.Command("bash", args...).Output()
+	cmd := exec.Command("bash", "-s", "--", cwd, friendly)
+	cmd.Stdin = bytes.NewReader(script)
+	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("mount_beads.sh: %w", err)
 	}
