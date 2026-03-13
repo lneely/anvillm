@@ -63,6 +63,7 @@ filesystem:
     - "{XDG_CONFIG_HOME}/vim"
     - "{XDG_DATA_HOME}/nvim"
     - "{XDG_STATE_HOME}/nvim"
+    - "{HOME}/.local/share/anvillm"
     - "{HOME}/.vimrc"
     - "{HOME}/.vim"
     - "{HOME}/.emacs.d"
