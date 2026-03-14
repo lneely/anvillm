@@ -21,6 +21,8 @@ build:V:
 	chmod 0755 $INSTALL_PATH/9p-read-inbox
 	cp scripts/anvilspawn $INSTALL_PATH/anvilspawn
 	chmod 0755 $INSTALL_PATH/anvilspawn
+	cp scripts/anvillm-orphan-check $INSTALL_PATH/anvillm-orphan-check
+	chmod 0755 $INSTALL_PATH/anvillm-orphan-check
 	mkdir -p $INSTALL_PATH/Teams
 	cp -f team-templates/* $INSTALL_PATH/Teams/
 	chmod 0755 $INSTALL_PATH/Teams/*
@@ -53,6 +55,15 @@ build:V:
 	cp OUTPUT_PROTOCOL.md $HOME/.config/anvillm/claude
 
 install:V: build
+
+cron-install:V:
+	mkdir -p $HOME/.local/share/anvillm
+	(crontab -l 2>/dev/null | grep -v 'anvillm-orphan-check'; echo "*/5 * * * * $INSTALL_PATH/anvillm-orphan-check >>$HOME/.local/share/anvillm/orphan-check.log 2>&1") | crontab -
+	echo "cron installed: anvillm-orphan-check (every 5 minutes)"
+
+cron-remove:V:
+	(crontab -l 2>/dev/null | grep -v 'anvillm-orphan-check') | crontab -
+	echo "cron removed: anvillm-orphan-check"
 
 clean:V:
 	rm -f $INSTALL_PATH/anvilsrv
