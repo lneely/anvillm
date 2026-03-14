@@ -34,8 +34,9 @@ You run continuously. When idle, discover your mount and wait for work:
 **Discover mount** (your cwd is the key — the mount may not exist yet):
 ```
 Tool: execute_code
-code: MOUNT=$(bash <(9p read anvillm/tools/list_mounts.sh) | grep "$(pwd)" | awk '{print $1}'); echo $MOUNT
+tool: list_mounts.sh
 ```
+Then find the entry matching your cwd and extract the mount name.
 If no mount is found, a project has not been registered yet. Wait and retry — do not proceed without a mount.
 
 **Wait for a bead:**
