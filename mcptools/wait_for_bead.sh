@@ -22,7 +22,7 @@ fi
 
 EXPECTED_SOURCE="beads/$MOUNT"
 
-9p read anvillm/events | while IFS= read -r line; do
+while IFS= read -r line; do
     type=$(echo "$line" | jq -r '.type // empty' 2>/dev/null)
     [ "$type" = "BeadReady" ] || continue
 
@@ -43,4 +43,4 @@ EXPECTED_SOURCE="beads/$MOUNT"
     # Emit full bead data and exit
     echo "$line" | jq '.data'
     exit 0
-done
+done < <(9p read anvillm/events)
