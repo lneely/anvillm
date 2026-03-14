@@ -31,6 +31,22 @@ Tool: execute_code
 tool: read_inbox.sh
 ```
 
+View message history:
+```
+Tool: execute_code
+tool: mail_history.sh
+args: ["<agent-id|user>", "--date", "YYYYMMdd"]
+```
+`--date` is optional. Omit to see all history.
+
+Search message history:
+```
+Tool: execute_code
+tool: mail_search.sh
+args: ["<agent-id|user>", "--pattern", "<regex>", "--date", "YYYYMMdd"]
+```
+`--date` is optional.
+
 ## Rules
 
 ### Discovering Agents

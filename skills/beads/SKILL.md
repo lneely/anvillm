@@ -81,7 +81,7 @@ Claim bead:
 ```
 Tool: execute_code
 tool: claim_bead.sh
-args: ["<mount>", "<id>", "$AGENT_ID"]
+args: ["<mount>", "<id>", "--assignee", "$AGENT_ID"]
 ```
 
 Complete bead:
@@ -95,7 +95,7 @@ Fail bead:
 ```
 Tool: execute_code
 tool: fail_bead.sh
-args: ["<mount>", "<id>", "<reason>"]
+args: ["<mount>", "<id>", "--reason", "<reason>"]
 ```
 
 Create bead (starts deferred — use open_bead.sh when ready):
@@ -154,7 +154,7 @@ Comment on bead:
 ```
 Tool: execute_code
 tool: comment_bead.sh
-args: ["<mount>", "<id>", "<text>"]
+args: ["<mount>", "<id>", "--text", "<text>"]
 ```
 
 Label bead:

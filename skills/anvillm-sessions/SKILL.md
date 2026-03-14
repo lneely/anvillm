@@ -34,9 +34,10 @@ Spawn agent (requires default sandbox):
 ```
 Tool: execute_code
 tool: spawn_agent.sh
-args: ["<agent-id>", "<cwd-path>", "<initial-context-prompt>"]
+args: ["<agent-id>", "--cwd", "<cwd-path>", "--prompt", "<initial-context>"]
 sandbox: default
 ```
+`--cwd` defaults to `$PWD`. `--prompt` is optional.
 
 Kill agent:
 ```
