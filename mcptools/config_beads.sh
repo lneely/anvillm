@@ -1,7 +1,7 @@
 #!/bin/bash
 # capabilities: beads
 # description: Set a beads database configuration key
-# Usage: config_beads.sh <mount> <key> <value>
+# Usage: config_beads.sh --mount <mount> --key <key> --value <value>
 set -euo pipefail
 
 if cat /etc/shadow >/dev/null 2>&1; then
@@ -9,10 +9,23 @@ if cat /etc/shadow >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ $# -lt 3 ]; then
-    echo "usage: config_beads.sh <mount> <key> <value>" >&2
+MOUNT=""
+KEY=""
+VALUE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --mount) MOUNT="$2"; shift 2 ;;
+        --key)   KEY="$2";   shift 2 ;;
+        --value) VALUE="$2"; shift 2 ;;
+        *) echo "unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
+
+if [ -z "$MOUNT" ] || [ -z "$KEY" ]; then
+    echo "usage: config_beads.sh --mount <mount> --key <key> --value <value>" >&2
     exit 1
 fi
 
-echo "config $2 $3" | 9p write anvillm/beads/$1/ctl
-echo "config $2 = $3"
+echo "config $KEY $VALUE" | 9p write anvillm/beads/$MOUNT/ctl
+echo "config $KEY = $VALUE"

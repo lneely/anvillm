@@ -1,7 +1,7 @@
 #!/bin/bash
 # capabilities: beads
 # description: Search beads by id, title, or description content
-# Usage: search_beads.sh <mount> <query>
+# Usage: search_beads.sh --mount <mount> --query <query>
 set -euo pipefail
 
 if cat /etc/shadow >/dev/null 2>&1; then
@@ -9,12 +9,20 @@ if cat /etc/shadow >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ $# -lt 2 ]; then
-    echo "usage: search_beads.sh <mount> <query>" >&2
+MOUNT=""
+QUERY=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --mount) MOUNT="$2"; shift 2 ;;
+        --query) QUERY="$2"; shift 2 ;;
+        *) echo "unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
+
+if [ -z "$MOUNT" ] || [ -z "$QUERY" ]; then
+    echo "usage: search_beads.sh --mount <mount> --query <query>" >&2
     exit 1
 fi
 
-mount="$1"
-query="$2"
-
-9p read "anvillm/beads/$mount/search/$query" 2>/dev/null | jq '[.[] | {id, title, status, match_in: (if .id | test("'"$query"'"; "i") then "id" elif .title | test("'"$query"'"; "i") then "title" else "description" end)}]' || echo "[]"
+9p read "anvillm/beads/$MOUNT/search/$QUERY" 2>/dev/null | jq '[.[] | {id, title, status, match_in: (if .id | test("'"$QUERY"'"; "i") then "id" elif .title | test("'"$QUERY"'"; "i") then "title" else "description" end)}]' || echo "[]"

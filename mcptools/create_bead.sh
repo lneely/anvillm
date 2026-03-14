@@ -1,7 +1,7 @@
 #!/bin/bash
 # capabilities: beads
 # description: Create a new bead
-# Usage: create_bead.sh <mount> --title <title> [--desc <desc>] [--parent <id>] [--no-lint] [--capability low|standard|high]
+# Usage: create_bead.sh --mount <mount> --title <title> [--desc <desc>] [--parent <id>] [--no-lint] [--capability low|standard|high]
 set -euo pipefail
 
 if cat /etc/shadow >/dev/null 2>&1; then
@@ -9,14 +9,7 @@ if cat /etc/shadow >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ $# -lt 2 ]; then
-    echo "usage: create_bead.sh <mount> --title <title> [--desc <desc>] [--parent <id>] [--no-lint] [--capability low|standard|high]" >&2
-    exit 1
-fi
-
-MOUNT="$1"
-shift
-
+MOUNT=""
 TITLE=""
 DESC=""
 PARENT=""
@@ -25,6 +18,7 @@ CAP=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --mount)       MOUNT="$2";      shift 2 ;;
         --title)       TITLE="$2";      shift 2 ;;
         --desc)        DESC="$2";       shift 2 ;;
         --parent)      PARENT="$2";     shift 2 ;;
@@ -34,8 +28,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [ -z "$TITLE" ]; then
-    echo "error: --title is required" >&2
+if [ -z "$MOUNT" ] || [ -z "$TITLE" ]; then
+    echo "usage: create_bead.sh --mount <mount> --title <title> [--desc <desc>] [--parent <id>] [--no-lint] [--capability low|standard|high]" >&2
     exit 1
 fi
 

@@ -1,21 +1,35 @@
 #!/bin/bash
 # capabilities: beads
 # description: Import GitHub issue into beads
-# Usage: github_to_beads.sh <mount> <owner/repo> <issue-number>
+# Usage: github_to_beads.sh --mount <mount> --repo <owner/repo> --issue <issue-number>
 set -euo pipefail
 
-mount="${1:?Usage: github_to_beads.sh <mount> <owner/repo> <issue-number>}"
-repo="${2:?Usage: github_to_beads.sh <mount> <owner/repo> <issue-number>}"
-issue="${3:?Usage: github_to_beads.sh <mount> <owner/repo> <issue-number>}"
+MOUNT=""
+REPO=""
+ISSUE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --mount) MOUNT="$2"; shift 2 ;;
+        --repo)  REPO="$2";  shift 2 ;;
+        --issue) ISSUE="$2"; shift 2 ;;
+        *) echo "unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
+
+if [ -z "$MOUNT" ] || [ -z "$REPO" ] || [ -z "$ISSUE" ]; then
+    echo "usage: github_to_beads.sh --mount <mount> --repo <owner/repo> --issue <issue-number>" >&2
+    exit 1
+fi
 
 # Check if already imported
-if 9p read "anvillm/beads/$mount/list" | jq -e ".[] | select(.title | contains(\"#$issue\"))" >/dev/null 2>&1; then
-    echo "Issue #$issue already imported" >&2
+if 9p read "anvillm/beads/$MOUNT/list" | jq -e ".[] | select(.title | contains(\"#$ISSUE\"))" >/dev/null 2>&1; then
+    echo "Issue #$ISSUE already imported" >&2
     exit 0
 fi
 
 # Fetch issue data
-data=$(gh issue view "$issue" --repo "$repo" --json number,title,body,state,labels 2>/dev/null)
+data=$(gh issue view "$ISSUE" --repo "$REPO" --json number,title,body,state,labels 2>/dev/null)
 
 number=$(echo "$data" | jq -r '.number')
 title=$(echo "$data" | jq -r '.title')
@@ -39,19 +53,19 @@ fi
 bead_title="#$number: $title"
 
 # Create parent bead
-echo "new \"$bead_title\" \"$body\"" | 9p write "anvillm/beads/$mount/ctl"
+echo "new \"$bead_title\" \"$body\"" | 9p write "anvillm/beads/$MOUNT/ctl"
 
 # Get created bead ID
-bead_id=$(9p read "anvillm/beads/$mount/list" | jq -r ".[] | select(.title | contains(\"#$number\")) | .id" | head -1)
+bead_id=$(9p read "anvillm/beads/$MOUNT/list" | jq -r ".[] | select(.title | contains(\"#$number\")) | .id" | head -1)
 
 # Update issue type if not task
 if [[ "$issue_type" != "task" ]]; then
-    echo "update $bead_id issue_type $issue_type" | 9p write "anvillm/beads/$mount/ctl"
+    echo "update $bead_id issue_type $issue_type" | 9p write "anvillm/beads/$MOUNT/ctl"
 fi
 
 # Update status if closed
 if [[ "$status" == "closed" ]]; then
-    echo "update $bead_id status closed" | 9p write "anvillm/beads/$mount/ctl"
+    echo "update $bead_id status closed" | 9p write "anvillm/beads/$MOUNT/ctl"
 fi
 
 # Parse task list from body
@@ -59,7 +73,7 @@ if [[ -n "$body" ]]; then
     # Extract unchecked tasks: - [ ] Task name
     echo "$body" | grep -E '^\s*-\s+\[\s+\]' | sed -E 's/^\s*-\s+\[\s+\]\s*//' | while IFS= read -r task; do
         if [[ -n "$task" ]]; then
-            echo "new \"$task\" \"\" $bead_id" | 9p write "anvillm/beads/$mount/ctl"
+            echo "new \"$task\" \"\" $bead_id" | 9p write "anvillm/beads/$MOUNT/ctl"
         fi
     done
 fi

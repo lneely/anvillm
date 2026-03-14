@@ -1,7 +1,7 @@
 #!/bin/bash
 # capabilities: beads
 # description: Defer a bead, optionally until a specific time
-# Usage: defer_bead.sh <mount> <bead-id> [until <RFC3339-time>]
+# Usage: defer_bead.sh --mount <mount> --id <bead-id> [--until <RFC3339-time>]
 set -euo pipefail
 
 if cat /etc/shadow >/dev/null 2>&1; then
@@ -9,18 +9,27 @@ if cat /etc/shadow >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ $# -lt 2 ]; then
-    echo "usage: defer_bead.sh <mount> <bead-id> [until <RFC3339-time>]" >&2
+MOUNT=""
+BEAD_ID=""
+UNTIL=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --mount) MOUNT="$2";   shift 2 ;;
+        --id)    BEAD_ID="$2"; shift 2 ;;
+        --until) UNTIL="$2";   shift 2 ;;
+        *) echo "unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
+
+if [ -z "$MOUNT" ] || [ -z "$BEAD_ID" ]; then
+    echo "usage: defer_bead.sh --mount <mount> --id <bead-id> [--until <RFC3339-time>]" >&2
     exit 1
 fi
 
-MOUNT="$1"
-BEAD_ID="$2"
-shift 2
-
-if [ $# -ge 2 ] && [ "$1" = "until" ]; then
-    echo "defer $BEAD_ID until $2" | 9p write anvillm/beads/$MOUNT/ctl
-    echo "deferred $BEAD_ID until $2"
+if [ -n "$UNTIL" ]; then
+    echo "defer $BEAD_ID until $UNTIL" | 9p write anvillm/beads/$MOUNT/ctl
+    echo "deferred $BEAD_ID until $UNTIL"
 else
     echo "defer $BEAD_ID" | 9p write anvillm/beads/$MOUNT/ctl
     echo "deferred $BEAD_ID"

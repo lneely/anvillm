@@ -1,7 +1,7 @@
 #!/bin/bash
 # capabilities: beads
 # description: Add a comment to a bead
-# Usage: comment_bead.sh <mount> <bead-id> --text <text>
+# Usage: comment_bead.sh --mount <mount> --id <bead-id> --text <text>
 set -euo pipefail
 
 if cat /etc/shadow >/dev/null 2>&1; then
@@ -9,26 +9,21 @@ if cat /etc/shadow >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ $# -lt 2 ]; then
-    echo "usage: comment_bead.sh <mount> <bead-id> --text <text>" >&2
-    exit 1
-fi
-
-MOUNT="$1"
-BEAD_ID="$2"
-shift 2
-
+MOUNT=""
+BEAD_ID=""
 TEXT=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --text) TEXT="$2"; shift 2 ;;
+        --mount) MOUNT="$2";   shift 2 ;;
+        --id)    BEAD_ID="$2"; shift 2 ;;
+        --text)  TEXT="$2";    shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 1 ;;
     esac
 done
 
-if [ -z "$TEXT" ]; then
-    echo "error: --text is required" >&2
+if [ -z "$MOUNT" ] || [ -z "$BEAD_ID" ] || [ -z "$TEXT" ]; then
+    echo "usage: comment_bead.sh --mount <mount> --id <bead-id> --text <text>" >&2
     exit 1
 fi
 

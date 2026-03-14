@@ -22,7 +22,7 @@ Send message:
 ```
 Tool: execute_code
 tool: send_message.sh
-args: ["<to>", "<type>", "<subject>", "<body>"]
+args: ["--to", "<id|user>", "--type", "<type>", "--subject", "<subject>", "--body", "<body>"]
 ```
 
 Check inbox:
@@ -35,7 +35,7 @@ View message history:
 ```
 Tool: execute_code
 tool: mail_history.sh
-args: ["<agent-id|user>", "--date", "YYYYMMdd"]
+args: ["--agent-id", "<agent-id|user>", "--date", "YYYYMMdd"]
 ```
 `--date` is optional. Omit to see all history.
 
@@ -43,7 +43,7 @@ Search message history:
 ```
 Tool: execute_code
 tool: mail_search.sh
-args: ["<agent-id|user>", "--pattern", "<regex>", "--date", "YYYYMMdd"]
+args: ["--agent-id", "<agent-id|user>", "--pattern", "<regex>", "--date", "YYYYMMdd"]
 ```
 `--date` is optional.
 

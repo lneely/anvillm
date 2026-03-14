@@ -2651,7 +2651,7 @@ func mountProject(cwd string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("read mount_beads.sh: %w", err)
 	}
-	cmd := exec.Command("bash", "-s", "--", cwd)
+	cmd := exec.Command("bash", "-s", "--", "--cwd", cwd)
 	cmd.Stdin = bytes.NewReader(script)
 	out, err := cmd.Output()
 	if err != nil {

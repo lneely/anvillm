@@ -1,7 +1,7 @@
 #!/bin/bash
 # capabilities: beads
 # description: Read comments for a bead
-# Usage: read_comments.sh <mount> <bead-id>
+# Usage: read_bead_comments.sh --mount <mount> --id <bead-id>
 set -euo pipefail
 
 if cat /etc/shadow >/dev/null 2>&1; then
@@ -9,9 +9,20 @@ if cat /etc/shadow >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ $# -lt 2 ]; then
-    echo "usage: read_comments.sh <mount> <bead-id>" >&2
+MOUNT=""
+BEAD_ID=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --mount) MOUNT="$2";   shift 2 ;;
+        --id)    BEAD_ID="$2"; shift 2 ;;
+        *) echo "unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
+
+if [ -z "$MOUNT" ] || [ -z "$BEAD_ID" ]; then
+    echo "usage: read_bead_comments.sh --mount <mount> --id <bead-id>" >&2
     exit 1
 fi
 
-9p read "anvillm/beads/$1/$2/comments" 2>/dev/null || echo "[]"
+9p read "anvillm/beads/$MOUNT/$BEAD_ID/comments" 2>/dev/null || echo "[]"

@@ -20,21 +20,21 @@ Create session:
 ```
 Tool: execute_code
 tool: create_session.sh
-args: ["<backend>", "<cwd>", "sandbox=<sandbox>", "model=<model>"]
+args: ["--backend", "<backend>", "--cwd", "<cwd>", "--sandbox", "<sandbox>", "--model", "<model>"]
 ```
 
 Control session:
 ```
 Tool: execute_code
 tool: control_session.sh
-args: ["<session-id>", "<command>"]
+args: ["--session-id", "<session-id>", "--command", "<stop|restart|kill|refresh>"]
 ```
 
 Spawn agent (requires default sandbox):
 ```
 Tool: execute_code
 tool: spawn_agent.sh
-args: ["<agent-id>", "--cwd", "<cwd-path>", "--prompt", "<initial-context>"]
+args: ["--agent-id", "<agent-id>", "--cwd", "<cwd-path>", "--prompt", "<initial-context>"]
 sandbox: default
 ```
 `--cwd` defaults to `$PWD`. `--prompt` is optional.
@@ -43,7 +43,7 @@ Kill agent:
 ```
 Tool: execute_code
 tool: kill_agent.sh
-args: ["<cwd-path>"]
+args: ["--agent-id", "<agent-id>"]
 ```
 
 ## Backends
@@ -54,9 +54,9 @@ args: ["<cwd-path>"]
 
 ## Session Lifecycle
 
-1. Create: `create_session.sh kiro-cli /path/to/project sandbox=default`
+1. Create: `create_session.sh --backend kiro-cli --cwd /path/to/project --sandbox default`
 2. Monitor: `list_sessions.sh` (check state field)
-3. Control: `control_session.sh <id> stop|restart|kill|refresh`
+3. Control: `control_session.sh --session-id <id> --command stop|restart|kill|refresh`
 
 ## Session States
 

@@ -1,23 +1,23 @@
 #!/bin/bash
 # Display message history for an agent or user.
-# Usage: mail_history.sh <agent-id|user> [--date YYYYMMdd]
+# Usage: mail_history.sh --agent-id <agent-id|user> [--date YYYYMMdd]
 set -euo pipefail
 
-AGENT_ID="${1:-}"
-if [[ -z "$AGENT_ID" ]]; then
-    echo "Usage: $0 <agent-id|user> [--date YYYYMMdd]" >&2
-    exit 1
-fi
-shift
-
+AGENT_ID=""
 DATE_FILTER=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --date) DATE_FILTER="$2"; shift 2 ;;
+        --agent-id) AGENT_ID="$2";    shift 2 ;;
+        --date)     DATE_FILTER="$2"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 1 ;;
     esac
 done
+
+if [[ -z "$AGENT_ID" ]]; then
+    echo "usage: mail_history.sh --agent-id <agent-id|user> [--date YYYYMMdd]" >&2
+    exit 1
+fi
 
 MAIL_DIR="$HOME/.local/share/anvillm/mail/$AGENT_ID"
 

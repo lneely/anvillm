@@ -1,9 +1,9 @@
 #!/bin/bash
 # capabilities: messaging
-# description: Send message to agent or user: TO TYPE SUBJECT BODY (FROM uses $AGENT_ID)
+# description: Send message to agent or user (FROM uses $AGENT_ID)
+# Usage: send_message.sh --to <id|user> --type <type> --subject <subject> --body <body>
 set -euo pipefail
 
-# Verify running under landrun (test filesystem restriction)
 if cat /etc/shadow >/dev/null 2>&1; then
   echo "Error: This script must be run via execute_code tool" >&2
   exit 1
@@ -15,10 +15,25 @@ if [ -z "${AGENT_ID:-}" ]; then
 fi
 from="$AGENT_ID"
 
-to="${1:?Usage: send_message <to> <type> <subject> <body>}"
-type="${2:?Usage: send_message <to> <type> <subject> <body>}"
-subject="${3:?Usage: send_message <to> <type> <subject> <body>}"
-body="${4:?Usage: send_message <to> <type> <subject> <body>}"
+to=""
+type=""
+subject=""
+body=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --to)      to="$2";      shift 2 ;;
+        --type)    type="$2";    shift 2 ;;
+        --subject) subject="$2"; shift 2 ;;
+        --body)    body="$2";    shift 2 ;;
+        *) echo "unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
+
+if [ -z "$to" ] || [ -z "$type" ] || [ -z "$subject" ] || [ -z "$body" ]; then
+    echo "usage: send_message.sh --to <id|user> --type <type> --subject <subject> --body <body>" >&2
+    exit 1
+fi
 
 # Validate recipient exists (allow "user" as a special recipient)
 if [ "$to" != "user" ]; then
@@ -37,3 +52,4 @@ json=$(jq -n \
   '{from: $from, to: $to, type: $type, subject: $subject, body: $body}')
 
 echo "$json" | 9p write "anvillm/${from}/mail"
+echo "sent: $type → $to"
