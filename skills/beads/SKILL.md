@@ -98,18 +98,49 @@ tool: fail_bead.sh
 args: ["<mount>", "<id>", "<reason>"]
 ```
 
-Create bead:
+Create bead (starts deferred — use open_bead.sh when ready):
 ```
 Tool: execute_code
 tool: create_bead.sh
-args: ["<mount>", "<title>", "<desc>", "<parent>"]
+args: ["<mount>", "--title", "<title>", "--desc", "<desc>", "--parent", "<id>"]
 ```
+`--desc`, `--parent`, `--no-lint`, `--capability low|standard|high` are all optional.
 
-Update bead:
+Update bead field:
 ```
 Tool: execute_code
 tool: update_bead.sh
-args: ["<mount>", "<id>", "<field>", "<value>"]
+args: ["<mount>", "<id>", "--field", "<field>", "--value", "<value>"]
+```
+Valid fields: `title`, `description`, `design`, `acceptance_criteria`, `notes`, `issue_type`, `estimated_minutes`, `external_ref`, `spec_id`, `priority`, `due_at`, `work_type`. Status and assignee are managed by atomic operations only.
+
+Open (promote deferred to ready):
+```
+Tool: execute_code
+tool: open_bead.sh
+args: ["<mount>", "<id>"]
+```
+
+Defer bead:
+```
+Tool: execute_code
+tool: defer_bead.sh
+args: ["<mount>", "<id>"]
+```
+Optional: append `"until", "<RFC3339-time>"` to defer until a specific time.
+
+Reopen closed bead:
+```
+Tool: execute_code
+tool: reopen_bead.sh
+args: ["<mount>", "<id>"]
+```
+
+Relate two beads (soft link, no blocking):
+```
+Tool: execute_code
+tool: relate_beads.sh
+args: ["<mount>", "<id-1>", "<id-2>"]
 ```
 
 Add dependency:
