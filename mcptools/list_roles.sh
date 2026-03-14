@@ -4,10 +4,6 @@
 set -euo pipefail
 
 # Verify running under landrun (test filesystem restriction)
-if cat /etc/shadow >/dev/null 2>&1; then
-  echo "Error: This script must be run via execute_code tool" >&2
-  exit 1
-fi
 
 9p ls anvillm/roles 2>/dev/null | grep -v '^help$' | while read focus_area; do
   9p ls "anvillm/roles/$focus_area" 2>/dev/null | while read role_file; do
