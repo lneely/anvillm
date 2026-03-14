@@ -555,7 +555,7 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 				if _, isMount := mounts[mountName]; isMount {
 					// Check if name is a control file or bead ID
 					switch name {
-					case "cwd", "ctl", "list", "ready", "pending", "stats", "blocked", "stale", "query", "config":
+					case "cwd", "ctl", "list", "ready", "stats", "blocked", "stale", "query", "config":
 						qid = plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+name)}
 						newPath = path + "/" + name
 					default:
@@ -1233,10 +1233,6 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 				})
 				dirs = append(dirs, plan9.Dir{
 					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"ready")}, Mode: 0444, Name: "ready",
-					Uid: "q", Gid: "q", Muid: "q",
-				})
-				dirs = append(dirs, plan9.Dir{
-					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"pending")}, Mode: 0444, Name: "pending",
 					Uid: "q", Gid: "q", Muid: "q",
 				})
 				dirs = append(dirs, plan9.Dir{

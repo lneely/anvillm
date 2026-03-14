@@ -18,15 +18,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// Approval gate statuses extend the beads status set locally.
-// These statuses are not surfaced by GetReadyWork (which only returns
-// open/in_progress), ensuring bots do not claim work that is pending
-// human approval or review.
-const (
-	StatusPendingApproval = bd.Status("pending_approval") // Awaiting APPROVAL_RESPONSE from human
-	StatusPendingReview   = bd.Status("pending_review")   // Awaiting REVIEW_RESPONSE from human
-)
-
 // Capability level labels — portable model-tier hints carried on beads.
 // These are label values of the form "capability:<level>".  The Conductor
 // maps them to backend-specific model names at session-spawn time.
@@ -260,8 +251,6 @@ func (b *BeadsFS) readFromMount(m *MountedProject, endpoint string) ([]byte, err
 			limit = 100
 		}
 		return b.readReadyFromStore(m.store, limit)
-	case len(parts) == 1 && parts[0] == "pending":
-		return b.readPendingFromStore(m.store)
 	case len(parts) == 1 && parts[0] == "blocked":
 		return b.readBlockedFromStore(m.store)
 	case len(parts) == 1 && parts[0] == "stale":
@@ -541,24 +530,6 @@ func (b *BeadsFS) readBlockedFromStore(store bd.Storage) ([]byte, error) {
 	}
 	return json.MarshalIndent(blocked, "", "  ")
 }
-
-// readPending returns beads in pending_approval or pending_review status,
-// i.e. those awaiting a human APPROVAL_RESPONSE or REVIEW_RESPONSE.
-
-func (b *BeadsFS) readPendingFromStore(store bd.Storage) ([]byte, error) {
-	issues, err := store.SearchIssues(b.ctx, "", bd.IssueFilter{})
-	if err != nil {
-		return nil, err
-	}
-	pending := []*bd.Issue{}
-	for _, issue := range issues {
-		if issue.Status == StatusPendingApproval || issue.Status == StatusPendingReview {
-			pending = append(pending, issue)
-		}
-	}
-	return json.MarshalIndent(pending, "", "  ")
-}
-
 
 func (b *BeadsFS) readDependenciesMetaFromStore(store bd.Storage, beadID string) ([]byte, error) {
 	deps, err := store.GetDependenciesWithMetadata(b.ctx, beadID)
@@ -936,71 +907,6 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 			return fmt.Errorf("invalid JSON: %w", err)
 		}
 		return store.CreateIssues(b.ctx, issues, actor)
-
-	// Approval gate commands.
-	// Bots should call these after sending an APPROVAL_REQUEST or REVIEW_REQUEST
-	// to the user.  The human responds via the inbox UI; on approve/reject the
-	// bot calls "resume" or "fail" to continue or abort work.
-
-	case "pending-approval":
-		// Atomically set status=pending_approval and assignee (defaults to "user").
-		// Usage: pending-approval <bead-id> [assignee]
-		// Canonical workflow:
-		//   1. Bot sends APPROVAL_REQUEST to user mailbox
-		//   2. Bot calls: echo "pending-approval <id>" | 9p write anvillm/beads/ctl
-		//   3. Human approves → bot calls: echo "resume <id> <bot-id>" | 9p write anvillm/beads/ctl
-		//   4. Human rejects → bot calls: echo "fail <id> 'rejected'" | 9p write anvillm/beads/ctl
-		if len(args) < 1 {
-			return fmt.Errorf("usage: pending-approval <bead-id> [assignee]")
-		}
-		assignee := "user"
-		if len(args) > 1 {
-			assignee = args[1]
-		}
-		updates := map[string]any{
-			"status":   StatusPendingApproval,
-			"assignee": assignee,
-		}
-		return store.UpdateIssue(b.ctx, args[0], updates, actor)
-
-	case "pending-review":
-		// Atomically set status=pending_review and assignee (defaults to "user").
-		// Usage: pending-review <bead-id> [assignee]
-		// Canonical workflow:
-		//   1. Bot sends REVIEW_REQUEST to user mailbox
-		//   2. Bot calls: echo "pending-review <id>" | 9p write anvillm/beads/ctl
-		//   3. Human responds → bot calls: echo "resume <id> <bot-id>" | 9p write anvillm/beads/ctl
-		//   4. Human rejects → bot calls: echo "fail <id> 'review failed'" | 9p write anvillm/beads/ctl
-		if len(args) < 1 {
-			return fmt.Errorf("usage: pending-review <bead-id> [assignee]")
-		}
-		assignee := "user"
-		if len(args) > 1 {
-			assignee = args[1]
-		}
-		updates := map[string]any{
-			"status":   StatusPendingReview,
-			"assignee": assignee,
-		}
-		return store.UpdateIssue(b.ctx, args[0], updates, actor)
-
-	case "resume":
-		// Atomically set status=in_progress and assignee after human approval/review.
-		// Usage: resume <bead-id> [assignee]
-		// Assignee defaults to "user"; pass the bot's agent ID to hand work back to a bot.
-		// Use "fail" instead if the human rejected.
-		if len(args) < 1 {
-			return fmt.Errorf("usage: resume <bead-id> [assignee]")
-		}
-		assignee := "user"
-		if len(args) > 1 {
-			assignee = args[1]
-		}
-		updates := map[string]any{
-			"status":   bd.StatusInProgress,
-			"assignee": assignee,
-		}
-		return store.UpdateIssue(b.ctx, args[0], updates, actor)
 
 	case "unclaim":
 		// Atomically clear assignee and reset status to open.
