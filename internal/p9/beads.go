@@ -84,13 +84,6 @@ type BeadsFS struct {
 	mounts      map[string]*MountedProject
 	mountsMu    sync.RWMutex
 	eventbus    *eventbus.Bus
-	isAlive     func(agentID string) bool // nil means no liveness check (all agents assumed dead)
-}
-
-// SetSessionLiveness wires a function that reports whether an agent session is alive.
-// Used by the claim handler to allow orphan takeover when the current assignee is dead.
-func (b *BeadsFS) SetSessionLiveness(fn func(agentID string) bool) {
-	b.isAlive = fn
 }
 
 // NewBeadsFS creates a beads filesystem handler from an existing store.
@@ -826,14 +819,8 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, mountName, cmd string) err
 			if issue == nil {
 				return fmt.Errorf("bead not found: %s", beadID)
 			}
-			if issue.Status == bd.StatusInProgress && issue.Assignee != "" {
-				alive := b.isAlive != nil && b.isAlive(issue.Assignee)
-				if alive {
-					return fmt.Errorf("%w: assigned to %s", ErrAlreadyClaimed, issue.Assignee)
-				}
-				// assignee is dead — orphan takeover proceeds
-			} else if issue.Status != bd.StatusOpen {
-				return fmt.Errorf("bead %s is not claimable (status: %s)", beadID, issue.Status)
+			if issue.Status != bd.StatusOpen {
+				return fmt.Errorf("%w: %s (status: %s)", ErrAlreadyClaimed, beadID, issue.Status)
 			}
 			return tx.UpdateIssue(b.ctx, beadID, map[string]any{
 				"assignee": assignee,

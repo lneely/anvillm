@@ -223,10 +223,6 @@ func start(daemonize bool) {
 	// Wire up event bus to session manager and beads filesystem
 	mgr.SetEventBus(srv.Events())
 	beadsFS.SetEventBus(srv.Events())
-	beadsFS.SetSessionLiveness(func(agentID string) bool {
-		sess := mgr.Get(agentID)
-		return sess != nil
-	})
 
 	// Start maildir writer for message persistence
 	mailDir := filepath.Join(os.Getenv("HOME"), ".local", "share", "anvillm", "mail")
