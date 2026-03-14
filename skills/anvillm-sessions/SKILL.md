@@ -46,14 +46,6 @@ tool: kill_agent.sh
 args: ["--agent-id", "<agent-id>"]
 ```
 
-Bootstrap session (build context prompt from a bead for handoff):
-```
-Tool: execute_code
-tool: bootstrap_session.sh
-args: ["--mount", "<mount>", "--id", "<bead-id>"]
-```
-Optional: `"--git-lines", "<n>"` (default 30). Output includes bead details, comments, recent git log, and any referenced denote documents. Feed the output as the initial prompt when spawning a replacement agent.
-
 ## Backends
 
 - `kiro-cli` - Kiro CLI agent
@@ -84,13 +76,7 @@ Optional: `"--git-lines", "<n>"` (default 30). Output includes bead details, com
 
 ## Session Handoff Pattern
 
-Agent A finishes or is killed. Agent B picks up where A left off:
-
-1. Agent B (or supervisor) calls `bootstrap_session.sh --mount <mount> --id <bead-id>`
-2. Feed the output as B's initial prompt (via `--prompt` in `spawn_agent.sh`, or as the first message in `context`)
-3. B reads the bead, claims it, and resumes work
-
-Bootstrap is crash-resilient: state lives in beads + git, not in the agent's memory. No agent-written snapshot required.
+Agent A dies. Orphan cron detects dead assignee, calls `unclaim`. `BeadReady` fires on the event bus with full bead JSON including comments. Any waiting bot receives it via `wait_for_bead.sh`, claims the bead, and resumes — no bootstrap step, no agent-written snapshot. State lives in beads + git.
 
 ## When NOT to Use
 
