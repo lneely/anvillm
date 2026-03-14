@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"anvillm/internal/eventbus"
+	"anvillm/internal/logging"
 	"anvillm/internal/mailbox"
 	"anvillm/internal/p9"
 	"anvillm/internal/session"
+	"go.uber.org/zap"
 )
 
 type Supervisor struct {
@@ -105,8 +107,11 @@ func (s *Supervisor) assignWork() {
 				continue
 			}
 			
-			beadID := bead["id"].(string)
+			beadID, _ := bead["id"].(string)
 			mountName, _ := bead["mount"].(string)
+			if beadID == "" {
+				continue
+			}
 
 			msg := mailbox.NewMessage("supervisor", botID, mailbox.MessageTypePromptRequest, "work", "Work on bead "+beadID+", mount="+mountName+".")
 			s.mailbox.DeliverToInbox(botID, msg)
@@ -116,6 +121,11 @@ func (s *Supervisor) assignWork() {
 }
 
 func (s *Supervisor) Run(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			logging.Logger().Error("supervisor panic", zap.Any("panic", r))
+		}
+	}()
 	events, cancel := s.eventbus.Subscribe()
 	defer cancel()
 	// Fallback ticker: catches anything missed by events (e.g. startup, edge cases).
