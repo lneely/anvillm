@@ -21,7 +21,7 @@ get_summary() {
 		StateChange)
 			old_state=$(echo "$line" | jq -r '.data.old_state // empty')
 			new_state=$(echo "$line" | jq -r '.data.new_state // empty')
-			agent=$(echo "$line" | jq -r '.agent // empty')
+			agent=$(echo "$line" | jq -r '.source // empty')
 			
 			if [ "$old_state" = "running" ] && [ "$new_state" = "idle" ]; then
 				name=$(get_alias "$agent")

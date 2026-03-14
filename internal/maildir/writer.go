@@ -37,7 +37,7 @@ func (w *Writer) run(ch <-chan *eventbus.Event) {
 		default:
 			continue
 		}
-		w.append(ev.Agent, suffix, ev)
+		w.append(ev.Source, suffix, ev)
 	}
 }
 

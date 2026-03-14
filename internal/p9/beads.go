@@ -94,11 +94,29 @@ func (b *BeadsFS) SetEventBus(eb *eventbus.Bus) {
 	b.eventbus = eb
 }
 
-// publishBeadReady emits EventBeadReady if an event bus is wired.
-func (b *BeadsFS) publishBeadReady(beadID string) {
-	if b.eventbus != nil {
-		b.eventbus.Publish("beads", eventbus.EventBeadReady, map[string]string{"bead_id": beadID})
+// publishBeadReady emits EventBeadReady with the full bead and its comments.
+// source is "beads/<mount>" so listeners can filter by mount without a round trip.
+func (b *BeadsFS) publishBeadReady(store bd.Storage, mountName, beadID string) {
+	if b.eventbus == nil {
+		return
 	}
+	issue, err := store.GetIssue(b.ctx, beadID)
+	if err != nil || issue == nil {
+		b.eventbus.Publish("beads/"+mountName, eventbus.EventBeadReady, map[string]string{"bead_id": beadID})
+		return
+	}
+	comments, _ := store.GetIssueComments(b.ctx, beadID)
+	type beadReadyPayload struct {
+		*bd.Issue
+		Mount    string        `json:"mount"`
+		Comments interface{}   `json:"comments,omitempty"`
+	}
+	payload := beadReadyPayload{
+		Issue:    issue,
+		Mount:    mountName,
+		Comments: comments,
+	}
+	b.eventbus.Publish("beads/"+mountName, eventbus.EventBeadReady, payload)
 }
 
 // Close is a no-op since the store is managed externally.
@@ -336,7 +354,7 @@ func (b *BeadsFS) Write(path string, data []byte, sessionID string) error {
 func (b *BeadsFS) writeToMount(m *MountedProject, endpoint string, data []byte, sessionID string) error {
 	parts := strings.Split(endpoint, "/")
 	if len(parts) == 1 && parts[0] == "ctl" {
-		return b.executeCtlOnStore(m.store, string(data))
+		return b.executeCtlOnStore(m.store, m.name, string(data))
 	}
 	return fmt.Errorf("unsupported mount write endpoint: %s", endpoint)
 }
@@ -678,7 +696,7 @@ func (b *BeadsFS) getBlockersFromStore(store bd.Storage, id string) ([]string, e
 }
 
 
-func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
+func (b *BeadsFS) executeCtlOnStore(store bd.Storage, mountName, cmd string) error {
 	command, args, err := parseCtlCommand(cmd)
 	if err != nil {
 		return err
@@ -921,7 +939,7 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 		if err := store.UpdateIssue(b.ctx, args[0], updates, actor); err != nil {
 			return err
 		}
-		b.publishBeadReady(args[0])
+		b.publishBeadReady(store, mountName, args[0])
 		return nil
 
 	case "open":
@@ -933,7 +951,7 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 		if err := store.UpdateIssue(b.ctx, args[0], map[string]any{"status": bd.StatusOpen}, actor); err != nil {
 			return err
 		}
-		b.publishBeadReady(args[0])
+		b.publishBeadReady(store, mountName, args[0])
 		return nil
 
 	case "defer":
@@ -965,7 +983,7 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 		if err := store.UpdateIssue(b.ctx, args[0], updates, actor); err != nil {
 			return err
 		}
-		b.publishBeadReady(args[0])
+		b.publishBeadReady(store, mountName, args[0])
 		return nil
 
 	case "relate":

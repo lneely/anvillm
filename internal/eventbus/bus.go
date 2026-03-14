@@ -29,7 +29,7 @@ const allTopic = "events"
 type Event struct {
 	ID    string `json:"id"`
 	TS    int64  `json:"ts"`
-	Agent string `json:"agent"`
+	Source string `json:"source"`
 	Type  string `json:"type"`
 	Data  any    `json:"data"`
 }
@@ -49,11 +49,11 @@ func New() *Bus {
 // It is non-blocking; slow subscribers will have events dropped.
 func (b *Bus) Publish(agent, eventType string, data any) {
 	e := &Event{
-		ID:    uuid.New().String(),
-		TS:    time.Now().Unix(),
-		Agent: agent,
-		Type:  eventType,
-		Data:  data,
+		ID:     uuid.New().String(),
+		TS:     time.Now().Unix(),
+		Source: agent,
+		Type:   eventType,
+		Data:   data,
 	}
 	b.bus.Publish(allTopic, e)
 }

@@ -21,8 +21,9 @@ This blocks and streams JSON events as they occur, one per line.
 Each line is a JSON object:
 
 ```json
-{"id":"uuid","ts":1708598520,"agent":"a1b2c3d4","type":"StateChange","data":{"state":"running"}}
-{"id":"uuid","ts":1708598525,"agent":"a1b2c3d4","type":"UserRecv","data":{"from":"user","subject":"Review request"}}
+{"id":"uuid","ts":1708598520,"source":"a1b2c3d4","type":"StateChange","data":{"state":"running"}}
+{"id":"uuid","ts":1708598525,"source":"a1b2c3d4","type":"UserRecv","data":{"from":"user","subject":"Review request"}}
+{"id":"uuid","ts":1708598530,"source":"beads/myproject","type":"BeadReady","data":{"id":"bd-abc","title":"...","status":"open","labels":[...],"comments":[...],"mount":"myproject",...}}
 ```
 
 ## Event Types
@@ -32,6 +33,7 @@ Each line is a JSON object:
 - `UserSend` - Message sent by user
 - `BotRecv` - Message received by bot
 - `BotSend` - Message sent by bot
+- `BeadReady` - A bead transitioned to open/ready; `source` is `beads/<mount>`, `data` is full bead JSON including comments
 
 ## Consuming Events
 
@@ -49,11 +51,11 @@ Pipe to any tool:
 
 # Custom notification script
 9p read anvillm/events | while read event; do
-  echo "$event" | jq -r '"\(.type): \(.agent)"'
+  echo "$event" | jq -r '"\(.type): \(.source)"'
 done
 
 # Desktop notifications on state changes
-9p read anvillm/events | jq -r 'select(.type == "StateChange") | "\(.agent): \(.data.state)"' | \
+9p read anvillm/events | jq -r 'select(.type == "StateChange") | "\(.source): \(.data.state)"' | \
   while read msg; do notify-send "AnviLLM" "$msg"; done
 ```
 

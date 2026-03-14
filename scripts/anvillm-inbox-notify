@@ -125,7 +125,7 @@ send_notification() {
 # addressed to the human user whose message type is in the notify_on list.
 #
 # Full event shape:
-#   {"id":"...", "ts":..., "agent":"user", "type":"UserRecv",
+#   {"id":"...", "ts":..., "source":"user", "type":"UserRecv",
 #    "data":{"id":"...", "from":"agent-id", "to":"user",
 #            "type":"APPROVAL_REQUEST", "subject":"...", "body":"..."}}
 
