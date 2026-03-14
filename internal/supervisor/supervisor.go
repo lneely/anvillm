@@ -3,7 +3,6 @@ package supervisor
 import (
 	"context"
 	"encoding/json"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -43,26 +42,15 @@ func (s *Supervisor) assignWork() {
 		return
 	}
 	
-	// Filter for claimable, unassigned tasks
+	// Filter for unassigned tasks
 	claimable := []map[string]interface{}{}
 	for _, bead := range beads {
-		// Skip if already assigned
 		if assignee, ok := bead["assignee"].(string); ok && assignee != "" {
 			continue
 		}
-		// Only consider beads labeled claimable
-		labels, ok := bead["labels"].([]interface{})
-		if !ok {
-			continue
-		}
-		for _, label := range labels {
-			if labelStr, ok := label.(string); ok && labelStr == "claimable" {
-				claimable = append(claimable, bead)
-				break
-			}
-		}
+		claimable = append(claimable, bead)
 	}
-	
+
 	if len(claimable) == 0 {
 		return
 	}
@@ -115,7 +103,7 @@ func (s *Supervisor) assignWork() {
 			}
 			
 			beadID := bead["id"].(string)
-			mountName := filepath.Base(taskCwd)
+			mountName, _ := bead["mount"].(string)
 			
 			// Skip if already assigned
 			if _, assigned := s.assigned[beadID]; assigned {
@@ -142,20 +130,7 @@ func (s *Supervisor) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case event := <-events:
-			if event.Type == eventbus.EventStateChange {
-				if data, ok := event.Data.(map[string]string); ok {
-					if data["new_state"] == "running" {
-						botID := event.Agent
-						sess := s.sessions.Get(botID)
-						if sess != nil {
-							cwd := sess.Metadata().Cwd
-							mountName := filepath.Base(cwd)
-							s.beads.Mount(mountName, cwd)
-						}
-					}
-				}
-			}
+		case <-events:
 		case <-ticker.C:
 			s.assignWork()
 		case <-syncTicker.C:
