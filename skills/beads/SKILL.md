@@ -39,7 +39,7 @@ Tool: execute_code
 tool: list_mounts.sh
 ```
 
-Wait for a bead matching your mount and role (blocks until one is ready, returns full bead JSON including comments, then exits):
+Wait for a bead on your mount (blocks until one is ready, returns full bead JSON including comments, then exits — bot decides whether to claim):
 ```
 Tool: execute_code
 tool: wait_for_bead.sh
