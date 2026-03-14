@@ -1838,8 +1838,10 @@ type beadEdit struct {
 // Recognized prefixes (by 1-based index shown in the list):
 //
 //	- [idx]   Delete bead at that index
-//	~ [idx]   Claim bead at that index (assign to user)
-//	^ [idx]   Unclaim bead: clear assignee, reset status to open
+//	c [idx]   Claim bead at that index (assign to user)
+//	u [idx]   Unclaim bead: clear assignee, reset status to open
+//	o [idx]   Open (promote deferred bead to ready)
+//	d [idx]   Defer bead
 //	x [idx]   Close/complete bead at that index
 //	f [idx]   Fail bead at that index with reason 'user-closed'
 //	+ [title] Create new bead with that title
@@ -1856,15 +1858,25 @@ func parseBeadEdits(content string, beads []Bead) []beadEdit {
 			if idx := parseIndex(rest); idx > 0 && idx <= len(beads) {
 				edits = append(edits, beadEdit{action: "delete", beadID: beads[idx-1].ID})
 			}
-		case strings.HasPrefix(line, "~ "):
+		case strings.HasPrefix(line, "c "):
 			rest := strings.TrimSpace(line[2:])
 			if idx := parseIndex(rest); idx > 0 && idx <= len(beads) {
 				edits = append(edits, beadEdit{action: "claim", beadID: beads[idx-1].ID})
 			}
-		case strings.HasPrefix(line, "^ "):
+		case strings.HasPrefix(line, "u "):
 			rest := strings.TrimSpace(line[2:])
 			if idx := parseIndex(rest); idx > 0 && idx <= len(beads) {
 				edits = append(edits, beadEdit{action: "unclaim", beadID: beads[idx-1].ID})
+			}
+		case strings.HasPrefix(line, "o "):
+			rest := strings.TrimSpace(line[2:])
+			if idx := parseIndex(rest); idx > 0 && idx <= len(beads) {
+				edits = append(edits, beadEdit{action: "open", beadID: beads[idx-1].ID})
+			}
+		case strings.HasPrefix(line, "d "):
+			rest := strings.TrimSpace(line[2:])
+			if idx := parseIndex(rest); idx > 0 && idx <= len(beads) {
+				edits = append(edits, beadEdit{action: "defer", beadID: beads[idx-1].ID})
 			}
 		case strings.HasPrefix(line, "x "):
 			rest := strings.TrimSpace(line[2:])
@@ -1906,6 +1918,14 @@ func applyBeadEdits(w *acme.Win, edits []beadEdit, beads *[]Bead, filter string,
 		case "unclaim":
 			if err := unclaimBead(edit.beadID, mount); err != nil {
 				errs = append(errs, fmt.Sprintf("unclaim %s: %v", edit.beadID, err))
+			}
+		case "open":
+			if err := openBead(edit.beadID, mount); err != nil {
+				errs = append(errs, fmt.Sprintf("open %s: %v", edit.beadID, err))
+			}
+		case "defer":
+			if err := deferBead(edit.beadID, mount); err != nil {
+				errs = append(errs, fmt.Sprintf("defer %s: %v", edit.beadID, err))
 			}
 		case "complete":
 			if err := completeBead(edit.beadID, mount); err != nil {
@@ -2535,6 +2555,20 @@ func failBead(beadID, reason string, mount string) error {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
 	return writeFile(filepath.Join("beads", mount, "ctl"), []byte(fmt.Sprintf("fail %s %s", beadID, reason)))
+}
+
+func openBead(beadID string, mount string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
+	return writeFile(filepath.Join("beads", mount, "ctl"), []byte(fmt.Sprintf("open %s", beadID)))
+}
+
+func deferBead(beadID string, mount string) error {
+	if !isConnected() {
+		return fmt.Errorf("not connected to anvilsrv")
+	}
+	return writeFile(filepath.Join("beads", mount, "ctl"), []byte(fmt.Sprintf("defer %s", beadID)))
 }
 
 func updateBead(beadID, content string, origBlockers []string, mount string) error {

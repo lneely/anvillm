@@ -29,6 +29,10 @@ while IFS=$'\t' read -r MOUNT CWD; do
     while IFS=$'\t' read -r BEAD_ID ASSIGNEE; do
         [ -z "$BEAD_ID" ] && continue
 
+        # Skip if claimed by user (human in the loop — not an orphan)
+        [ "$ASSIGNEE" = "user" ] && continue
+
+        # Skip if assignee session is still alive
         if [ -n "$ASSIGNEE" ] && echo "$LIVE_SESSIONS" | grep -qx "$ASSIGNEE"; then
             continue
         fi
