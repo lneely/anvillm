@@ -24,4 +24,5 @@ fi
 DATE_FLAG=""
 [[ -n "$DATE" ]] && DATE_FLAG="--date $DATE"
 
-bash <(9p read anvillm/tools/mail_history.sh) --agent-id "$AGENT_ID" $DATE_FLAG | grep -E "$PATTERN"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$SCRIPT_DIR/mail_history.sh" --agent-id "$AGENT_ID" $DATE_FLAG | grep -E "$PATTERN"
