@@ -34,6 +34,7 @@ Each line is a JSON object:
 - `BotRecv` - Message received by bot
 - `BotSend` - Message sent by bot
 - `BeadReady` - A bead transitioned to open/ready; `source` is `beads/<mount>`, `data` is full bead JSON including comments
+- `BeadClaimed` - A bead was claimed by an agent; `source` is `beads/<mount>`, `data` is `{"bead_id","assignee","mount"}`
 
 ## Consuming Events
 

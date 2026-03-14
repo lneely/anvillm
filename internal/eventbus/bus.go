@@ -19,7 +19,8 @@ const (
 	EventUserSend    = "UserSend"
 	EventBotRecv     = "BotRecv"
 	EventBotSend     = "BotSend"
-	EventBeadReady   = "BeadReady" // a bead transitioned to open/ready
+	EventBeadReady   = "BeadReady"   // a bead transitioned to open/ready
+	EventBeadClaimed = "BeadClaimed" // a bead was claimed by an agent
 )
 
 // allTopic is the single topic used for all events.

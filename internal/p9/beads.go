@@ -811,7 +811,7 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, mountName, cmd string) err
 			assignee = args[1]
 		}
 		beadID := args[0]
-		return store.RunInTransaction(b.ctx, func(tx bd.Transaction) error {
+		if err := store.RunInTransaction(b.ctx, func(tx bd.Transaction) error {
 			issue, err := tx.GetIssue(b.ctx, beadID)
 			if err != nil {
 				return err
@@ -826,7 +826,17 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, mountName, cmd string) err
 				"assignee": assignee,
 				"status":   bd.StatusInProgress,
 			}, actor)
-		})
+		}); err != nil {
+			return err
+		}
+		if b.eventbus != nil {
+			b.eventbus.Publish("beads/"+mountName, eventbus.EventBeadClaimed, map[string]string{
+				"bead_id":  beadID,
+				"assignee": assignee,
+				"mount":    mountName,
+			})
+		}
+		return nil
 		
 	case "complete", "close":
 		if len(args) < 1 {
