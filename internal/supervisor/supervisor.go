@@ -40,9 +40,14 @@ func (s *Supervisor) assignWork() {
 		return
 	}
 	
-	// Filter for unassigned tasks
+	// Filter for open, unassigned tasks only.
+	// GetReadyWork returns both open and in_progress; we only want open
+	// since in_progress beads are already being worked on.
 	claimable := []map[string]interface{}{}
 	for _, bead := range beads {
+		if status, ok := bead["status"].(string); !ok || status != "open" {
+			continue
+		}
 		if assignee, ok := bead["assignee"].(string); ok && assignee != "" {
 			continue
 		}
