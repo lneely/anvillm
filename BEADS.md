@@ -27,7 +27,7 @@ anvillm/beads/
 ├── label/<label>          # Issues with label (JSON)
 ├── children/<id>          # Direct children of parent (JSON)
 └── <bead-id>/
-    ├── status             # open | in_progress | pending_approval | pending_review | closed
+    ├── status             # open | in_progress | closed
     ├── title              # Bead title
     ├── description        # Bead description
     ├── assignee           # Assigned actor
@@ -62,9 +62,6 @@ anvillm/beads/
 | `label` | `label <bead-id> 'label'` | Add label to bead |
 | `unlabel` | `unlabel <bead-id> 'label'` | Remove label from bead |
 | `set-capability` | `set-capability <bead-id> low\|standard\|high` | Set capability level (replaces existing) |
-| `pending-approval` | `pending-approval <bead-id> [assignee]` | Set status=pending_approval and assignee (default: user) |
-| `pending-review` | `pending-review <bead-id> [assignee]` | Set status=pending_review and assignee (default: user) |
-| `resume` | `resume <bead-id> [assignee]` | Set status=in_progress and assignee after approval (default: user) |
 | `init` | `init [prefix]` | Initialize beads with custom ID prefix (default: bd) |
 | `batch-create` | `batch-create <json-array>` | Create multiple beads from JSON array |
 
@@ -187,70 +184,6 @@ Available filter fields:
 - `priority` (int): Filter by priority (1-5)
 - `labels` (array): Filter by labels (all must match)
 - `parent_id` (string): Filter by parent ID
-
-## Approval Gates (Human in the Loop)
-
-Approval gates allow bots to pause work and request human sign-off before proceeding with critical or irreversible operations.
-
-### Status Values
-
-Two statuses mark beads awaiting a human response:
-
-| Status | Description |
-|--------|-------------|
-| `pending_approval` | Bot sent `APPROVAL_REQUEST`; waiting for human `APPROVAL_RESPONSE` |
-| `pending_review` | Bot sent `REVIEW_REQUEST`; waiting for human `REVIEW_RESPONSE` |
-
-Beads in either status are **not** surfaced by `anvillm/beads/ready` — bots will not accidentally claim them. Use `anvillm/beads/pending` to list all beads awaiting human input.
-
-### Label Conventions
-
-Add these labels to beads that should trigger a human gate at completion:
-
-| Label | Meaning |
-|-------|---------|
-| `requires_approval` | Completion requires an `APPROVAL_REQUEST`/`APPROVAL_RESPONSE` exchange |
-| `requires_review` | Completion requires a `REVIEW_REQUEST`/`REVIEW_RESPONSE` exchange |
-
-Example: `echo "label bd-abc requires_approval" | 9p write anvillm/beads/ctl`
-
-### Approval Workflow
-
-```sh
-# 1. Bot sends approval request to user
-#    (via anvillm-communication skill or send_message MCP tool)
-#    type: APPROVAL_REQUEST
-#    subject: "Approve: delete production database backup?"
-#    body:    "I am about to run: DROP TABLE backups. Reason: cleanup task bd-xyz. Approve?"
-
-# 2. Bot atomically marks bead pending and assigns to user for review
-echo "pending-approval bd-xyz" | 9p write anvillm/beads/ctl
-# (optionally assign to a specific agent: "pending-approval bd-xyz agent-id")
-
-# 3. Human reviews in their inbox (Assist, anvilweb, TUI, or Emacs)
-#    and clicks Approve or Reject
-
-# 4a. On APPROVAL_RESPONSE (approved) — bot resumes and reassigns to itself:
-echo "resume bd-xyz $AGENT_ID" | 9p write anvillm/beads/ctl
-# ... continue work ...
-echo "complete bd-xyz" | 9p write anvillm/beads/ctl
-
-# 4b. On APPROVAL_RESPONSE (rejected) — bot stops:
-echo "fail bd-xyz 'human rejected: too risky'" | 9p write anvillm/beads/ctl
-```
-
-### Monitoring Pending Approvals
-
-```sh
-# List all beads awaiting human input
-9p read anvillm/beads/pending | jq .
-
-# Filter only approval-pending
-9p read anvillm/beads/pending | jq '[.[] | select(.status == "pending_approval")]'
-
-# Filter only review-pending
-9p read anvillm/beads/pending | jq '[.[] | select(.status == "pending_review")]'
-```
 
 ## Initialization
 
