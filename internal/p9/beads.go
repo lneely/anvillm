@@ -844,13 +844,25 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 		return store.RemoveDependency(b.ctx, args[0], args[1], actor)
 
 	case "update":
+		// Update a single bead field directly.
+		// Fields managed by atomic operations are rejected here:
+		//   status, assignee, closed_at, close_reason, defer_until
+		// Use: open, defer, reopen, claim, unclaim, complete, fail,
+		//      pending-approval, pending-review, resume instead.
 		if len(args) < 3 {
 			return fmt.Errorf("usage: update <bead-id> <field> 'value'")
 		}
-		updates := map[string]any{
-			args[1]: args[2],
+		atomicFields := map[string]string{
+			"status":       "use open/defer/reopen/claim/unclaim/complete/fail/pending-approval/pending-review/resume",
+			"assignee":     "use claim/unclaim/resume/pending-approval/pending-review",
+			"closed_at":    "use complete/fail/reopen",
+			"close_reason": "use complete/fail",
+			"defer_until":  "use defer",
 		}
-		return store.UpdateIssue(b.ctx, args[0], updates, actor)
+		if hint, reserved := atomicFields[args[1]]; reserved {
+			return fmt.Errorf("field %q is managed by atomic operations: %s", args[1], hint)
+		}
+		return store.UpdateIssue(b.ctx, args[0], map[string]any{args[1]: args[2]}, actor)
 
 	case "delete", "rm":
 		if len(args) < 1 {
