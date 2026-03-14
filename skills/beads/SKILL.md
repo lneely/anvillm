@@ -45,7 +45,6 @@ Tool: execute_code
 tool: wait_for_bead.sh
 args: ["--mount", "<mount>"]
 ```
-`--role <role>` is optional; defaults to `$AGENT_ROLE` or `developer`.
 
 List ready beads (open, unblocked):
 ```
