@@ -19,6 +19,7 @@ const (
 	EventUserSend    = "UserSend"
 	EventBotRecv     = "BotRecv"
 	EventBotSend     = "BotSend"
+	EventBeadReady   = "BeadReady" // a bead transitioned to open/ready
 )
 
 // allTopic is the single topic used for all events.

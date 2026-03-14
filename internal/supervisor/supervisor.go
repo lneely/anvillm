@@ -122,20 +122,29 @@ func (s *Supervisor) assignWork() {
 func (s *Supervisor) Run(ctx context.Context) {
 	events, cancel := s.eventbus.Subscribe()
 	defer cancel()
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-	syncTicker := time.NewTicker(60 * time.Second)
-	defer syncTicker.Stop()
+	// Fallback ticker: catches anything missed by events (e.g. startup, edge cases).
+	fallback := time.NewTicker(60 * time.Second)
+	defer fallback.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-events:
-		case <-ticker.C:
+		case event := <-events:
+			if event == nil {
+				continue
+			}
+			switch event.Type {
+			case eventbus.EventStateChange:
+				// Session went idle — it may be able to take work.
+				if data, ok := event.Data.(map[string]string); ok && data["new_state"] == "idle" {
+					s.assignWork()
+				}
+			case eventbus.EventBeadReady:
+				// A bead just became open/ready — try to assign it.
+				s.assignWork()
+			}
+		case <-fallback.C:
 			s.assignWork()
-		case <-syncTicker.C:
-			// Sync all mounts - need to add accessor method
-			// s.beads.SyncAll()
 		}
 	}
 }

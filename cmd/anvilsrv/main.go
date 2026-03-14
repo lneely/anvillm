@@ -220,8 +220,9 @@ func start(daemonize bool) {
 	}
 	defer srv.Close()
 
-	// Wire up event bus to session manager
+	// Wire up event bus to session manager and beads filesystem
 	mgr.SetEventBus(srv.Events())
+	beadsFS.SetEventBus(srv.Events())
 
 	// Start maildir writer for message persistence
 	mailDir := filepath.Join(os.Getenv("HOME"), ".local", "share", "anvillm", "mail")

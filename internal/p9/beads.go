@@ -1,6 +1,7 @@
 package p9
 
 import (
+	"anvillm/internal/eventbus"
 	"anvillm/internal/logging"
 	"context"
 	"encoding/json"
@@ -86,6 +87,7 @@ type BeadsFS struct {
 	queryResult []*bd.Issue
 	mounts      map[string]*MountedProject
 	mountsMu    sync.RWMutex
+	eventbus    *eventbus.Bus
 }
 
 // NewBeadsFS creates a beads filesystem handler from an existing store.
@@ -93,6 +95,18 @@ func NewBeadsFS(store bd.Storage, ctx context.Context) *BeadsFS {
 	return &BeadsFS{
 		ctx:    ctx,
 		mounts: make(map[string]*MountedProject),
+	}
+}
+
+// SetEventBus wires an event bus for publishing bead state change events.
+func (b *BeadsFS) SetEventBus(eb *eventbus.Bus) {
+	b.eventbus = eb
+}
+
+// publishBeadReady emits EventBeadReady if an event bus is wired.
+func (b *BeadsFS) publishBeadReady(beadID string) {
+	if b.eventbus != nil {
+		b.eventbus.Publish("beads", eventbus.EventBeadReady, map[string]string{"bead_id": beadID})
 	}
 }
 
@@ -998,7 +1012,11 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 			"assignee": "",
 			"status":   bd.StatusOpen,
 		}
-		return store.UpdateIssue(b.ctx, args[0], updates, actor)
+		if err := store.UpdateIssue(b.ctx, args[0], updates, actor); err != nil {
+			return err
+		}
+		b.publishBeadReady(args[0])
+		return nil
 
 	case "open":
 		// Promote a deferred bead to open (ready for scheduling).
@@ -1006,7 +1024,11 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 		if len(args) < 1 {
 			return fmt.Errorf("usage: open <bead-id>")
 		}
-		return store.UpdateIssue(b.ctx, args[0], map[string]any{"status": bd.StatusOpen}, actor)
+		if err := store.UpdateIssue(b.ctx, args[0], map[string]any{"status": bd.StatusOpen}, actor); err != nil {
+			return err
+		}
+		b.publishBeadReady(args[0])
+		return nil
 
 	case "defer":
 		// Defer a bead, optionally until a specific time (RFC3339).
@@ -1034,7 +1056,11 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 			"status":    bd.StatusOpen,
 			"closed_at": (*time.Time)(nil),
 		}
-		return store.UpdateIssue(b.ctx, args[0], updates, actor)
+		if err := store.UpdateIssue(b.ctx, args[0], updates, actor); err != nil {
+			return err
+		}
+		b.publishBeadReady(args[0])
+		return nil
 
 	case "relate":
 		// Add a bidirectional relates-to dependency between two beads.
