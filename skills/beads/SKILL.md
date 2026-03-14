@@ -179,6 +179,7 @@ Tool: execute_code
 tool: umount_beads.sh
 args: ["--mount", "<mount>"]
 ```
+**Note:** Unmounting is an emergency stop. The orphan recovery cron will not spawn agents for unmounted projects. Remount to resume recovery.
 
 Sync project:
 ```
