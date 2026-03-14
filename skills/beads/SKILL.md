@@ -38,6 +38,14 @@ Tool: execute_code
 tool: list_mounts.sh
 ```
 
+Wait for a bead matching your mount and role (blocks until one is ready, returns full bead JSON including comments, then exits):
+```
+Tool: execute_code
+tool: wait_for_bead.sh
+args: ["--mount", "<mount>"]
+```
+`--role <role>` is optional; defaults to `$AGENT_ROLE` or `developer`.
+
 List ready beads (open, unblocked):
 ```
 Tool: execute_code
