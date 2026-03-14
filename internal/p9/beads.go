@@ -988,8 +988,73 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 		}
 		return store.UpdateIssue(b.ctx, args[0], updates, actor)
 
+	case "open":
+		// Promote a deferred bead to open (ready for scheduling).
+		// Usage: open <bead-id>
+		if len(args) < 1 {
+			return fmt.Errorf("usage: open <bead-id>")
+		}
+		return store.UpdateIssue(b.ctx, args[0], map[string]any{"status": bd.StatusOpen}, actor)
+
+	case "defer":
+		// Defer a bead, optionally until a specific time (RFC3339).
+		// Usage: defer <bead-id> [until <RFC3339-time>]
+		if len(args) < 1 {
+			return fmt.Errorf("usage: defer <bead-id> [until <RFC3339-time>]")
+		}
+		updates := map[string]any{"status": bd.StatusDeferred}
+		if len(args) >= 3 && args[1] == "until" {
+			t, err := time.Parse(time.RFC3339, args[2])
+			if err != nil {
+				return fmt.Errorf("invalid time %q: expected RFC3339 format", args[2])
+			}
+			updates["defer_until"] = t
+		}
+		return store.UpdateIssue(b.ctx, args[0], updates, actor)
+
+	case "reopen":
+		// Reopen a closed bead (reset to open, clear closed_at).
+		// Usage: reopen <bead-id>
+		if len(args) < 1 {
+			return fmt.Errorf("usage: reopen <bead-id>")
+		}
+		updates := map[string]any{
+			"status":    bd.StatusOpen,
+			"closed_at": (*time.Time)(nil),
+		}
+		return store.UpdateIssue(b.ctx, args[0], updates, actor)
+
+	case "relate":
+		// Add a bidirectional relates-to dependency between two beads.
+		// Usage: relate <bead-id-1> <bead-id-2>
+		if len(args) < 2 {
+			return fmt.Errorf("usage: relate <bead-id-1> <bead-id-2>")
+		}
+		dep := &bd.Dependency{
+			IssueID:     args[0],
+			DependsOnID: args[1],
+			Type:        bd.DepRelated,
+		}
+		return store.AddDependency(b.ctx, dep, actor)
+
+	case "unrelate":
+		// Remove a relates-to dependency between two beads.
+		// Usage: unrelate <bead-id-1> <bead-id-2>
+		if len(args) < 2 {
+			return fmt.Errorf("usage: unrelate <bead-id-1> <bead-id-2>")
+		}
+		return store.RemoveDependency(b.ctx, args[0], args[1], actor)
+
+	case "config":
+		// Set a beads configuration key.
+		// Usage: config <key> <value>
+		if len(args) < 2 {
+			return fmt.Errorf("usage: config <key> <value>")
+		}
+		return store.SetConfig(b.ctx, args[0], args[1])
+
 	default:
-		return fmt.Errorf("unknown command: %s (supported: init, new, update, delete, claim, unclaim, complete, fail, dep, undep, pending-approval, pending-review, resume, label, unlabel, set-capability)", command)
+		return fmt.Errorf("unknown command: %s (supported: init, new, update, delete, claim, unclaim, open, defer, reopen, complete, fail, dep, undep, relate, unrelate, pending-approval, pending-review, resume, label, unlabel, set-capability, config)", command)
 	}
 }
 
