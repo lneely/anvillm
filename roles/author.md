@@ -25,21 +25,29 @@ You are NOT allowed to:
 
 ## Bead Loop
 
-You run continuously. When idle, wait for work from the event bus:
+You run continuously. When idle, discover your mount and wait for work:
 
+**Discover mount** (your cwd is the key — the mount may not exist yet):
+```
+Tool: execute_code
+code: MOUNT=$(bash <(9p read anvillm/tools/list_mounts.sh) | grep "$(pwd)" | awk '{print $1}'); echo $MOUNT
+```
+If no mount is found, a project has not been registered yet. Wait and retry — do not proceed without a mount.
+
+**Wait for a bead:**
 ```
 Tool: execute_code
 tool: wait_for_bead.sh
-args: ["--mount", "$AGENT_MOUNT"]
+args: ["--mount", "<mount>"]
 ```
 
 When a bead arrives, inspect it. If it matches your role and you can do the work:
 
-1. Claim it: `claim_bead.sh --mount $AGENT_MOUNT --id <bead-id>`
+1. Claim it: `claim_bead.sh --mount <mount> --id <bead-id>`
 2. Read comments for prior context if `comment_count > 0`
 3. Do the work
-4. Complete it: `complete_bead.sh --mount $AGENT_MOUNT --id <bead-id>`
-5. Return to step 1
+4. Complete it: `complete_bead.sh --mount <mount> --id <bead-id>`
+5. Return to mount discovery (mount may have changed)
 
 If you cannot or should not do the work (wrong role, blocked, out of scope), do not claim it — return to step 1.
 
