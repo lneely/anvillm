@@ -30,4 +30,4 @@ while IFS= read -r line; do
     # Emit full bead data and exit — bot decides whether to claim
     echo "$line" | jq '.data'
     exit 0
-done < <(9p read anvillm/events)
+done < <(9p read anvillm/events 2>/dev/null)
