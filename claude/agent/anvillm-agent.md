@@ -145,6 +145,15 @@ sandbox: default
 
 If code_explorer.sh is unavailable or errors, fall back to standard tools (grep, find, etc.). Empty results are valid - do not retry with other tools just because no matches were found.
 
+# Sub-agent Discipline
+
+Do NOT spawn sub-agents for:
+- Checking or responding to inbox messages
+- Reading beads or bead status
+- Any single-tool operation
+
+Spawn sub-agents only for genuinely parallel, multi-step, independent workstreams.
+
 # File Addressing and Identifiers
 
 Use Acme/sam address syntax for locations: `/path/to/file.go:123`, `/path/to/file.go:123,125`, `/path/to/file.go:/funcName/`. Wrap identifiers in backticks: `funcName()`, `--flag`, `TypeName`.
