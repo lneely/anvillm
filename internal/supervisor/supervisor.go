@@ -13,16 +13,14 @@ import (
 )
 
 type Supervisor struct {
-	sessions     *session.Manager
-	beads        *p9.BeadsFS
-	mailbox      *mailbox.Manager
-	eventbus     *eventbus.Bus
-	lastAssigned map[string]int64
-	assigned     map[string]string // beadID -> botID
+	sessions *session.Manager
+	beads    *p9.BeadsFS
+	mailbox  *mailbox.Manager
+	eventbus *eventbus.Bus
 }
 
 func New(s *session.Manager, b *p9.BeadsFS, m *mailbox.Manager, e *eventbus.Bus) *Supervisor {
-	return &Supervisor{s, b, m, e, make(map[string]int64), make(map[string]string)}
+	return &Supervisor{s, b, m, e}
 }
 
 func (s *Supervisor) assignWork() {
@@ -104,16 +102,9 @@ func (s *Supervisor) assignWork() {
 			
 			beadID := bead["id"].(string)
 			mountName, _ := bead["mount"].(string)
-			
-			// Skip if already assigned
-			if _, assigned := s.assigned[beadID]; assigned {
-				continue
-			}
-			
+
 			msg := mailbox.NewMessage("supervisor", botID, mailbox.MessageTypePromptRequest, "work", "Work on bead "+beadID+", mount="+mountName+".")
 			s.mailbox.DeliverToInbox(botID, msg)
-			s.lastAssigned[botID] = time.Now().Unix()
-			s.assigned[beadID] = botID
 			break
 		}
 	}
