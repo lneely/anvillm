@@ -768,7 +768,7 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, cmd string) error {
 			issue := &bd.Issue{
 				Title:       title,
 				Description: description,
-				Status:      bd.StatusOpen,
+				Status:      bd.StatusDeferred,
 				IssueType:   bd.TypeTask,
 				Priority:    2,
 			}
@@ -1269,7 +1269,7 @@ func (b *BeadsFS) createSubtaskOnStore(store bd.Storage, parentID, title, descri
 		ID:          childID,
 		Title:       title,
 		Description: description,
-		Status:      bd.StatusOpen,
+		Status:      bd.StatusDeferred,
 		IssueType:   bd.TypeTask,
 		Priority:    2,
 	}

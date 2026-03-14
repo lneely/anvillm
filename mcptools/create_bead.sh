@@ -32,4 +32,4 @@ CMD="new '$TITLE' '$DESC'"
 [ -n "$CAP" ] && CMD="$CMD $CAP"
 
 echo "$CMD" | 9p write anvillm/beads/$MOUNT/ctl
-echo "created: $TITLE"
+echo "created (deferred): $TITLE"
