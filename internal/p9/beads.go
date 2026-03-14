@@ -5,6 +5,7 @@ import (
 	"anvillm/internal/logging"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,6 +18,10 @@ import (
 	bd "github.com/steveyegge/beads"
 	"go.uber.org/zap"
 )
+
+// ErrAlreadyClaimed is returned when a claim attempt fails because the bead
+// is in_progress and its current assignee is alive.
+var ErrAlreadyClaimed = errors.New("issue already claimed")
 
 // Capability level labels — portable model-tier hints carried on beads.
 // These are label values of the form "capability:<level>".  The Conductor
@@ -79,6 +84,13 @@ type BeadsFS struct {
 	mounts      map[string]*MountedProject
 	mountsMu    sync.RWMutex
 	eventbus    *eventbus.Bus
+	isAlive     func(agentID string) bool // nil means no liveness check (all agents assumed dead)
+}
+
+// SetSessionLiveness wires a function that reports whether an agent session is alive.
+// Used by the claim handler to allow orphan takeover when the current assignee is dead.
+func (b *BeadsFS) SetSessionLiveness(fn func(agentID string) bool) {
+	b.isAlive = fn
 }
 
 // NewBeadsFS creates a beads filesystem handler from an existing store.
@@ -805,11 +817,29 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, mountName, cmd string) err
 		if len(args) > 1 {
 			assignee = args[1]
 		}
-		updates := map[string]any{
-			"assignee": assignee,
-			"status":   bd.StatusInProgress,
-		}
-		return store.UpdateIssue(b.ctx, args[0], updates, actor)
+		beadID := args[0]
+		return store.RunInTransaction(b.ctx, func(tx bd.Transaction) error {
+			issue, err := tx.GetIssue(b.ctx, beadID)
+			if err != nil {
+				return err
+			}
+			if issue == nil {
+				return fmt.Errorf("bead not found: %s", beadID)
+			}
+			if issue.Status == bd.StatusInProgress && issue.Assignee != "" {
+				alive := b.isAlive != nil && b.isAlive(issue.Assignee)
+				if alive {
+					return fmt.Errorf("%w: assigned to %s", ErrAlreadyClaimed, issue.Assignee)
+				}
+				// assignee is dead — orphan takeover proceeds
+			} else if issue.Status != bd.StatusOpen {
+				return fmt.Errorf("bead %s is not claimable (status: %s)", beadID, issue.Status)
+			}
+			return tx.UpdateIssue(b.ctx, beadID, map[string]any{
+				"assignee": assignee,
+				"status":   bd.StatusInProgress,
+			}, actor)
+		})
 		
 	case "complete", "close":
 		if len(args) < 1 {
