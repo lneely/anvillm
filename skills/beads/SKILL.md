@@ -83,7 +83,6 @@ Tool: execute_code
 tool: claim_bead.sh
 args: ["--mount", "<mount>", "--id", "<id>"]
 ```
-Assignee is taken automatically from `$AGENT_ID` in the environment.
 
 Complete bead:
 ```
