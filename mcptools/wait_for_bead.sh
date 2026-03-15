@@ -20,7 +20,11 @@ fi
 
 EXPECTED_SOURCE="beads/$MOUNT"
 
-while IFS= read -r line; do
+exec 3< <(9p read anvillm/events 2>/dev/null)
+EVENTS_PID=$!
+trap 'kill $EVENTS_PID 2>/dev/null; exec 3<&-' EXIT
+
+while IFS= read -r line <&3; do
     type=$(echo "$line" | jq -r '.type // empty' 2>/dev/null)
     [ "$type" = "BeadReady" ] || continue
 
@@ -30,4 +34,4 @@ while IFS= read -r line; do
     # Emit full bead data and exit — bot decides whether to claim
     echo "$line" | jq '.data'
     exit 0
-done < <(9p read anvillm/events 2>/dev/null)
+done
