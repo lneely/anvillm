@@ -108,13 +108,9 @@ func (s *Supervisor) assignWork() {
 			}
 			
 			beadID, _ := bead["id"].(string)
-			mountName, _ := bead["mount"].(string)
 			if beadID == "" {
 				continue
 			}
-
-			msg := mailbox.NewMessage("supervisor", botID, mailbox.MessageTypePromptRequest, "work", "Work on bead "+beadID+", mount="+mountName+".")
-			s.mailbox.DeliverToInbox(botID, msg)
 			break
 		}
 	}
