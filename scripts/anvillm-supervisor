@@ -70,7 +70,7 @@ if [ "$DO_NUDGE" -eq 1 ]; then
         echo "$ROLE_CONTENT" | grep -q '^worker: true' || continue
 
         log "nudge: $ID (role=$ROLE)"
-        AGENT_ID=user send_message.sh \
+        AGENT_ID=user bash <(9p read anvillm/tools/send_message.sh) \
             --to "$ID" \
             --type prompt_request \
             --subject work \
