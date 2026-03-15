@@ -9,7 +9,6 @@ import (
 	"anvillm/internal/maildir"
 	"anvillm/internal/p9"
 	"anvillm/internal/session"
-	"anvillm/internal/supervisor"
 	"context"
 	"fmt"
 	"os"
@@ -228,11 +227,6 @@ func start(daemonize bool) {
 	mailDir := filepath.Join(os.Getenv("HOME"), ".local", "share", "anvillm", "mail")
 	mdWriter := maildir.New(mailDir, srv.Events())
 	defer mdWriter.Close()
-
-	// Start supervisor
-	ctx := context.Background()
-	sup := supervisor.New(mgr, p9.NewRolesFS())
-	go sup.Run(ctx)
 
 	logging.Logger().Info("anvilsrv started successfully", zap.String("socket", srv.SocketPath()))
 

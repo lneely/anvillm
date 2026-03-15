@@ -21,8 +21,8 @@ build:V:
 	chmod 0755 $INSTALL_PATH/9p-read-inbox
 	cp scripts/anvilspawn $INSTALL_PATH/anvilspawn
 	chmod 0755 $INSTALL_PATH/anvilspawn
-	cp scripts/anvillm-orphan-check $INSTALL_PATH/anvillm-orphan-check
-	chmod 0755 $INSTALL_PATH/anvillm-orphan-check
+	cp scripts/anvillm-supervisor $INSTALL_PATH/anvillm-supervisor
+	chmod 0755 $INSTALL_PATH/anvillm-supervisor
 	mkdir -p $INSTALL_PATH/Teams
 	cp -f team-templates/* $INSTALL_PATH/Teams/
 	chmod 0755 $INSTALL_PATH/Teams/*
@@ -58,12 +58,14 @@ install:V: build
 
 cron-install:V:
 	mkdir -p $HOME/.local/share/anvillm
-	(crontab -l 2>/dev/null | grep -v 'anvillm-orphan-check'; echo "*/5 * * * * $INSTALL_PATH/anvillm-orphan-check >>$HOME/.local/share/anvillm/orphan-check.log 2>&1") | crontab -
-	echo "cron installed: anvillm-orphan-check (every 5 minutes)"
+	(crontab -l 2>/dev/null | grep -v 'anvillm-supervisor'; \
+		echo "*/5 * * * * $INSTALL_PATH/anvillm-supervisor --orphans >>$HOME/.local/share/anvillm/worker-check.log 2>&1"; \
+		echo "*/1 * * * * $INSTALL_PATH/anvillm-supervisor --nudge >>$HOME/.local/share/anvillm/worker-check.log 2>&1") | crontab -
+	echo "cron installed: anvillm-supervisor (orphans: every 5m, nudge: every 1m)"
 
 cron-remove:V:
-	(crontab -l 2>/dev/null | grep -v 'anvillm-orphan-check') | crontab -
-	echo "cron removed: anvillm-orphan-check"
+	(crontab -l 2>/dev/null | grep -v 'anvillm-supervisor') | crontab -
+	echo "cron removed: anvillm-supervisor"
 
 clean:V:
 	rm -f $INSTALL_PATH/anvilsrv

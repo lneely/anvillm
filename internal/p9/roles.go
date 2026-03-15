@@ -22,7 +22,6 @@ type RolesFS struct {
 type RoleMeta struct {
 	Name        string
 	Description string
-	Worker      bool   // true if role should run the work polling loop
 	Path        string // file path
 }
 
@@ -87,9 +86,6 @@ func parseRoleFrontMatter(rolePath string) (*RoleMeta, error) {
 		if desc, ok := strings.CutPrefix(line, "description:"); ok {
 			meta.Description = strings.TrimSpace(desc)
 			hasDescription = true
-		}
-		if worker, ok := strings.CutPrefix(line, "worker:"); ok {
-			meta.Worker = strings.TrimSpace(worker) == "true"
 		}
 	}
 
@@ -183,20 +179,6 @@ func (r *RolesFS) Read(path string) ([]byte, error) {
 	}
 
 	return nil, fmt.Errorf("not found")
-}
-
-// IsWorker reports whether the named role has worker: true in its front-matter.
-func (r *RolesFS) IsWorker(roleName string) bool {
-	roles, err := r.listAllRoles()
-	if err != nil {
-		return false
-	}
-	for _, role := range roles {
-		if role.Name == roleName {
-			return role.Worker
-		}
-	}
-	return false
 }
 
 // ReadRole reads a role by name, searching all roles directories.
