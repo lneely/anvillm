@@ -58,11 +58,9 @@ install:V: build
 
 cron-install:V:
 	mkdir -p $HOME/.local/share/anvillm
-	crontab -l 2>/dev/null | grep -v 'anvillm-supervisor' | grep -v '^PLAN9=' | grep -v '^PATH=' >/tmp/crontab.new || true
-	echo "PLAN9=$HOME/plan9" >>/tmp/crontab.new
-	echo "PATH=$PATH" >>/tmp/crontab.new
-	echo "*/5 * * * * $HOME/bin/anvillm-supervisor --orphans >>$HOME/.local/share/anvillm/worker-check.log 2>&1" >>/tmp/crontab.new
-	echo "*/1 * * * * $HOME/bin/anvillm-supervisor --nudge >>$HOME/.local/share/anvillm/worker-check.log 2>&1" >>/tmp/crontab.new
+	crontab -l 2>/dev/null | grep -v 'anvillm-supervisor' >/tmp/crontab.new || true
+	echo "*/5 * * * * export PLAN9=$HOME/plan9; export PATH=$HOME/bin:$HOME/go/bin:$PLAN9/bin:/usr/local/bin:/usr/bin:/bin; export DISPLAY=$DISPLAY; export NAMESPACE=$NAMESPACE; $HOME/bin/anvillm-supervisor --orphans >>$HOME/.local/share/anvillm/worker-check.log 2>&1" >>/tmp/crontab.new
+	echo "*/1 * * * * export PLAN9=$HOME/plan9; export PATH=$HOME/bin:$HOME/go/bin:$PLAN9/bin:/usr/local/bin:/usr/bin:/bin; export DISPLAY=$DISPLAY; export NAMESPACE=$NAMESPACE; $HOME/bin/anvillm-supervisor --nudge >>$HOME/.local/share/anvillm/worker-check.log 2>&1" >>/tmp/crontab.new
 	crontab /tmp/crontab.new
 	rm /tmp/crontab.new
 	echo "cron installed: anvillm-supervisor (orphans: every 5m, nudge: every 1m)"
