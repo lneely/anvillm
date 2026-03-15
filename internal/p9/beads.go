@@ -72,6 +72,7 @@ type MountedProject struct {
 	dbPath     string
 	jsonlPath  string
 	store      bd.Storage
+	writeMu    sync.Mutex
 }
 
 // BeadsFS handles beads filesystem operations.
@@ -165,7 +166,7 @@ func (b *BeadsFS) Mount(name, cwd string) error {
 		return err
 	}
 	// Import is not available in beads v0.54.0, skip for now
-	b.mounts[name] = &MountedProject{name, cwd, dbPath, jsonlPath, store}
+	b.mounts[name] = &MountedProject{name: name, cwd: cwd, dbPath: dbPath, jsonlPath: jsonlPath, store: store}
 	return nil
 }
 
@@ -357,6 +358,8 @@ func (b *BeadsFS) Write(path string, data []byte, sessionID string) error {
 }
 
 func (b *BeadsFS) writeToMount(m *MountedProject, endpoint string, data []byte, sessionID string) error {
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
 	parts := strings.Split(endpoint, "/")
 	if len(parts) == 1 && parts[0] == "ctl" {
 		return b.executeCtlOnStore(m.store, m.name, string(data))
