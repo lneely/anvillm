@@ -58,9 +58,11 @@ install:V: build
 
 cron-install:V:
 	mkdir -p $HOME/.local/share/anvillm
-	(crontab -l 2>/dev/null | grep -v 'anvillm-supervisor'; \
-		echo "*/5 * * * * $INSTALL_PATH/anvillm-supervisor --orphans >>$HOME/.local/share/anvillm/worker-check.log 2>&1"; \
-		echo "*/1 * * * * $INSTALL_PATH/anvillm-supervisor --nudge >>$HOME/.local/share/anvillm/worker-check.log 2>&1") | crontab -
+	crontab -l 2>/dev/null | grep -v 'anvillm-supervisor' >/tmp/crontab.new || true
+	echo "*/5 * * * * $HOME/bin/anvillm-supervisor --orphans >>$HOME/.local/share/anvillm/worker-check.log 2>&1" >>/tmp/crontab.new
+	echo "*/1 * * * * $HOME/bin/anvillm-supervisor --nudge >>$HOME/.local/share/anvillm/worker-check.log 2>&1" >>/tmp/crontab.new
+	crontab /tmp/crontab.new
+	rm /tmp/crontab.new
 	echo "cron installed: anvillm-supervisor (orphans: every 5m, nudge: every 1m)"
 
 cron-remove:V:
