@@ -231,7 +231,7 @@ func start(daemonize bool) {
 
 	// Start supervisor
 	ctx := context.Background()
-	sup := supervisor.New(mgr, srv.Beads(), mgr.GetMailManager(), srv.Events())
+	sup := supervisor.New(mgr, p9.NewRolesFS())
 	go sup.Run(ctx)
 
 	logging.Logger().Info("anvilsrv started successfully", zap.String("socket", srv.SocketPath()))

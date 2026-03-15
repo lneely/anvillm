@@ -2,116 +2,53 @@ package supervisor
 
 import (
 	"context"
-	"encoding/json"
-	"strings"
 	"time"
 
-	"anvillm/internal/eventbus"
+	"anvillm/internal/backend/tmux"
 	"anvillm/internal/logging"
-	"anvillm/internal/mailbox"
 	"anvillm/internal/p9"
 	"anvillm/internal/session"
 	"go.uber.org/zap"
 )
 
+const idleThreshold = 15 * time.Second
+
 type Supervisor struct {
 	sessions *session.Manager
-	beads    *p9.BeadsFS
-	mailbox  *mailbox.Manager
-	eventbus *eventbus.Bus
+	roles    *p9.RolesFS
 }
 
-func New(s *session.Manager, b *p9.BeadsFS, m *mailbox.Manager, e *eventbus.Bus) *Supervisor {
-	return &Supervisor{s, b, m, e}
+func New(s *session.Manager, r *p9.RolesFS) *Supervisor {
+	return &Supervisor{sessions: s, roles: r}
 }
 
-func (s *Supervisor) assignWork() {
-	// Skip if beads not available
-	if s.beads == nil {
-		return
-	}
-	
-	// Get all ready tasks from all projects
-	ready, err := s.beads.Read("ready")
-	if err != nil || len(ready) == 0 {
-		return
-	}
-	
-	var beads []map[string]interface{}
-	if err := json.Unmarshal(ready, &beads); err != nil {
-		return
-	}
-	
-	// Filter for open, unassigned tasks only.
-	// GetReadyWork returns both open and in_progress; we only want open
-	// since in_progress beads are already being worked on.
-	claimable := []map[string]interface{}{}
-	for _, bead := range beads {
-		if status, ok := bead["status"].(string); !ok || status != "open" {
-			continue
-		}
-		if assignee, ok := bead["assignee"].(string); ok && assignee != "" {
-			continue
-		}
-		claimable = append(claimable, bead)
-	}
-
-	if len(claimable) == 0 {
-		return
-	}
-	
-	// Try to assign to idle bots with matching role
-	bots := s.sessions.List()
-	for _, botID := range bots {
+// nudgeIdleWorkers sends a prompt to any worker-role session that has been
+// idle for longer than idleThreshold, reminding it to run its polling loop.
+func (s *Supervisor) nudgeIdleWorkers() {
+	for _, botID := range s.sessions.List() {
 		sess := s.sessions.Get(botID)
-		state := sess.State()
-		if state != "idle" {
+		if sess == nil || sess.State() != "idle" {
 			continue
 		}
-		botCwd := sess.Metadata().Cwd
-		
-		// Get bot role (default to "developer" if not set)
-		botRole := "developer"
-		if tmuxSess, ok := sess.(interface{ GetRole() string }); ok {
-			if role := tmuxSess.GetRole(); role != "" {
-				botRole = role
-			}
+
+		tmuxSess, ok := sess.(*tmux.Session)
+		if !ok {
+			continue
 		}
-		
-		// Only assign if session CWD is exactly or under task mountpoint
-		for _, bead := range claimable {
-			taskCwd, ok := bead["cwd"].(string)
-			if !ok {
-				continue
-			}
-			
-			if botCwd != taskCwd && !strings.HasPrefix(botCwd, taskCwd+"/") {
-				continue
-			}
-			
-			// Extract role label from bead (format: "role:developer")
-			beadRole := "developer" // default
-			if labels, ok := bead["labels"].([]interface{}); ok {
-				for _, label := range labels {
-					if labelStr, ok := label.(string); ok {
-						if role, found := strings.CutPrefix(labelStr, "role:"); found {
-							beadRole = role
-							break
-						}
-					}
-				}
-			}
-			
-			// Skip if role doesn't match
-			if beadRole != botRole {
-				continue
-			}
-			
-			beadID, _ := bead["id"].(string)
-			if beadID == "" {
-				continue
-			}
-			break
+
+		if tmuxSess.IdleDuration() < idleThreshold {
+			continue
+		}
+
+		role := tmuxSess.GetRole()
+		if role == "" || !s.roles.IsWorker(role) {
+			continue
+		}
+
+		ctx := context.Background()
+		if _, err := sess.Send(ctx, "You are idle. Run your work polling loop to check for available tasks."); err != nil {
+			logging.Logger().Warn("supervisor: failed to nudge idle worker",
+				zap.String("session", botID), zap.Error(err))
 		}
 	}
 }
@@ -122,31 +59,14 @@ func (s *Supervisor) Run(ctx context.Context) {
 			logging.Logger().Error("supervisor panic", zap.Any("panic", r))
 		}
 	}()
-	events, cancel := s.eventbus.Subscribe()
-	defer cancel()
-	// Fallback ticker: catches anything missed by events (e.g. startup, edge cases).
-	fallback := time.NewTicker(60 * time.Second)
-	defer fallback.Stop()
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case event := <-events:
-			if event == nil {
-				continue
-			}
-			switch event.Type {
-			case eventbus.EventStateChange:
-				// Session went idle — it may be able to take work.
-				if data, ok := event.Data.(map[string]string); ok && data["new_state"] == "idle" {
-					s.assignWork()
-				}
-			case eventbus.EventBeadReady:
-				// A bead just became open/ready — try to assign it.
-				s.assignWork()
-			}
-		case <-fallback.C:
-			s.assignWork()
+		case <-ticker.C:
+			s.nudgeIdleWorkers()
 		}
 	}
 }
