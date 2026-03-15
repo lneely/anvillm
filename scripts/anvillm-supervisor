@@ -72,7 +72,7 @@ if [ "$DO_NUDGE" -eq 1 ]; then
         log "nudge: $ID (role=$ROLE)"
         AGENT_ID=user bash <(9p read anvillm/tools/send_message.sh) \
             --to "$ID" \
-            --type prompt_request \
+            --type PROMPT_REQUEST \
             --subject work \
             --body "$BODY" || \
             log "WARNING: nudge failed for $ID"
