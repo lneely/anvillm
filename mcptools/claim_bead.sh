@@ -26,5 +26,8 @@ if [ -z "${AGENT_ID:-}" ]; then
     exit 1
 fi
 
-echo "claim $BEAD_ID $AGENT_ID" | 9p write anvillm/beads/$MOUNT/ctl
+if ! result=$(echo "claim $BEAD_ID $AGENT_ID" | 9p write anvillm/beads/$MOUNT/ctl 2>&1); then
+    echo "error: claim failed: $result" >&2
+    exit 1
+fi
 echo "claimed $BEAD_ID → $AGENT_ID"
