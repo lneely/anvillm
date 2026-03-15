@@ -26,8 +26,11 @@ if [ -z "${AGENT_ID:-}" ]; then
     exit 1
 fi
 
-if ! result=$(echo "claim $BEAD_ID $AGENT_ID" | 9p write anvillm/beads/$MOUNT/ctl 2>&1); then
-    echo "error: claim failed: $result" >&2
+echo "claim $BEAD_ID $AGENT_ID" | 9p write anvillm/beads/$MOUNT/ctl
+
+assignee=$(9p read anvillm/beads/$MOUNT/$BEAD_ID/json 2>/dev/null | jq -r '.assignee // empty')
+if [ "$assignee" != "$AGENT_ID" ]; then
+    echo "error: claim failed (bead is assigned to '$assignee')" >&2
     exit 1
 fi
 echo "claimed $BEAD_ID → $AGENT_ID"
