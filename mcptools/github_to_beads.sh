@@ -1,6 +1,6 @@
 #!/bin/bash
 # capabilities: beads
-# description: Import GitHub issue into beads
+# description: Import GitHub issue into beads. Scope is auto-derived from cwd.
 # Usage: github_to_beads.sh --mount <mount> --repo <owner/repo> --issue <issue-number>
 set -euo pipefail
 
@@ -21,6 +21,17 @@ if [ -z "$MOUNT" ] || [ -z "$REPO" ] || [ -z "$ISSUE" ]; then
     echo "usage: github_to_beads.sh --mount <mount> --repo <owner/repo> --issue <issue-number>" >&2
     exit 1
 fi
+
+# Derive scope from cwd relative to mount's cwd
+MOUNT_CWD=$(9p read "anvillm/beads/$MOUNT/cwd" 2>/dev/null)
+SCOPE=""
+if [ -n "$MOUNT_CWD" ]; then
+    REL_PATH="${PWD#"$MOUNT_CWD"}"
+    REL_PATH="${REL_PATH#/}"
+    SCOPE="${REL_PATH%%/*}"
+fi
+SCOPE_ARG=""
+[ -n "$SCOPE" ] && SCOPE_ARG="scope=$SCOPE"
 
 # Check if already imported
 if 9p read "anvillm/beads/$MOUNT/list" | jq -e ".[] | select(.title | contains(\"#$ISSUE\"))" >/dev/null 2>&1; then
@@ -53,7 +64,7 @@ fi
 bead_title="#$number: $title"
 
 # Create parent bead
-echo "new \"$bead_title\" \"$body\"" | 9p write "anvillm/beads/$MOUNT/ctl"
+echo "new \"$bead_title\" \"$body\" '' $SCOPE_ARG" | 9p write "anvillm/beads/$MOUNT/ctl"
 
 # Get created bead ID
 bead_id=$(9p read "anvillm/beads/$MOUNT/list" | jq -r ".[] | select(.title | contains(\"#$number\")) | .id" | head -1)
@@ -73,7 +84,7 @@ if [[ -n "$body" ]]; then
     # Extract unchecked tasks: - [ ] Task name
     echo "$body" | grep -E '^\s*-\s+\[\s+\]' | sed -E 's/^\s*-\s+\[\s+\]\s*//' | while IFS= read -r task; do
         if [[ -n "$task" ]]; then
-            echo "new \"$task\" \"\" $bead_id" | 9p write "anvillm/beads/$MOUNT/ctl"
+            echo "new \"$task\" \"\" $bead_id $SCOPE_ARG" | 9p write "anvillm/beads/$MOUNT/ctl"
         fi
     done
 fi

@@ -66,6 +66,11 @@ const (
 	requiresReviewLabel   = "requires_review"
 )
 
+// scopePrefix is the label prefix for bead scope filtering.
+// Scope is the first path component after mount cwd (e.g., "scope:feature-x").
+// Bots filter beads by matching their derived scope from cwd.
+const scopePrefix = "scope:"
+
 // MountedProject represents a project-specific beads instance.
 type MountedProject struct {
 	name       string
@@ -112,15 +117,24 @@ func (b *BeadsFS) publishBeadReady(store bd.Storage, mountName, beadID string) {
 		b.eventbus.Publish("beads/"+mountName, eventbus.EventBeadReady, map[string]string{"bead_id": beadID})
 		return
 	}
+	// Fetch labels for scope extraction
+	if issue.Labels == nil {
+		labels, err := store.GetLabels(b.ctx, beadID)
+		if err == nil {
+			issue.Labels = labels
+		}
+	}
 	comments, _ := store.GetIssueComments(b.ctx, beadID)
 	type beadReadyPayload struct {
 		*bd.Issue
-		Mount    string        `json:"mount"`
-		Comments interface{}   `json:"comments,omitempty"`
+		Mount    string      `json:"mount"`
+		Scope    string      `json:"scope,omitempty"`
+		Comments interface{} `json:"comments,omitempty"`
 	}
 	payload := beadReadyPayload{
 		Issue:    issue,
 		Mount:    mountName,
+		Scope:    extractScope(issue.Labels),
 		Comments: comments,
 	}
 	b.eventbus.Publish("beads/"+mountName, eventbus.EventBeadReady, payload)
@@ -363,6 +377,7 @@ func (b *BeadsFS) writeToMount(m *MountedProject, endpoint string, data []byte, 
 	defer m.writeMu.Unlock()
 	parts := strings.Split(endpoint, "/")
 	if len(parts) == 1 && parts[0] == "ctl" {
+		logging.Logger().Info("ctl command", zap.String("data", string(data)))
 		return b.executeCtlOnStore(m.store, m.name, string(data))
 	}
 	return fmt.Errorf("unsupported mount write endpoint: %s", endpoint)
@@ -402,6 +417,7 @@ func (b *BeadsFS) readListFromStore(store bd.Storage, limit int) ([]byte, error)
 		*bd.Issue
 		Blockers        []string `json:"blockers,omitempty"`
 		CapabilityLevel string   `json:"capability_level,omitempty"`
+		Scope           string   `json:"scope,omitempty"`
 		CommentCount    int      `json:"comment_count,omitempty"`
 	}
 	items := make([]BeadWithBlockers, len(issues))
@@ -421,6 +437,7 @@ func (b *BeadsFS) readListFromStore(store bd.Storage, limit int) ([]byte, error)
 			items[i].Blockers = blockers
 		}
 		items[i].CapabilityLevel = extractCapabilityLevel(issue.Labels)
+		items[i].Scope = extractScope(issue.Labels)
 		comments, err := store.GetIssueComments(b.ctx, issue.ID)
 		if err == nil && len(comments) > 0 {
 			items[i].CommentCount = len(comments)
@@ -642,6 +659,7 @@ func (b *BeadsFS) readBeadPropertyFromStore(store bd.Storage, beadID, property s
 			*bd.Issue
 			Blockers        []string `json:"blockers,omitempty"`
 			CapabilityLevel string   `json:"capability_level,omitempty"`
+			Scope           string   `json:"scope,omitempty"`
 			CommentCount    int      `json:"comment_count,omitempty"`
 		}
 		result := BeadWithBlockers{Issue: issue}
@@ -649,6 +667,7 @@ func (b *BeadsFS) readBeadPropertyFromStore(store bd.Storage, beadID, property s
 			result.Blockers = blockers
 		}
 		result.CapabilityLevel = extractCapabilityLevel(issue.Labels)
+		result.Scope = extractScope(issue.Labels)
 		comments, err := store.GetIssueComments(b.ctx, beadID)
 		if err == nil && len(comments) > 0 {
 			result.CommentCount = len(comments)
@@ -713,6 +732,39 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, mountName, cmd string) err
 	
 	actor := "user"
 	
+	// Handle batch-create specially — needs raw JSON
+	if command == "batch-create" {
+		jsonStr := strings.TrimSpace(strings.TrimPrefix(cmd, "batch-create"))
+		if jsonStr == "" {
+			return fmt.Errorf("usage: batch-create <json-array>")
+		}
+		type issueWithScope struct {
+			Title       string `json:"title"`
+			Description string `json:"description,omitempty"`
+			Scope       string `json:"scope,omitempty"`
+		}
+		var items []issueWithScope
+		if err := json.Unmarshal([]byte(jsonStr), &items); err != nil {
+			return fmt.Errorf("invalid JSON: %w", err)
+		}
+		for _, item := range items {
+			issue := &bd.Issue{
+				Title:       item.Title,
+				Description: item.Description,
+				Status:      bd.StatusDeferred,
+				IssueType:   bd.TypeTask,
+				Priority:    2,
+			}
+			if err := store.CreateIssue(b.ctx, issue, actor); err != nil {
+				return err
+			}
+			if item.Scope != "" {
+				_ = store.AddLabel(b.ctx, issue.ID, scopePrefix+item.Scope, actor)
+			}
+		}
+		return nil
+	}
+
 	switch command {
 	case "init":
 		prefix := "bd"
@@ -723,12 +775,13 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, mountName, cmd string) err
 		
 	case "new", "create":
 		if len(args) < 1 {
-			return fmt.Errorf("usage: new 'title' ['description'] [parent-id] [--no-lint] [capability=low|standard|high] [blockers=id1,id2,...]")
+			return fmt.Errorf("usage: new 'title' ['description'] [parent-id] [--no-lint] [capability=low|standard|high] [scope=<scope>] [blockers=id1,id2,...]")
 		}
 
 		// Strip flags and options from args before positional parsing.
 		noLint := false
 		capLevel := ""
+		scopeVal := ""
 		var blockerIDs []string
 		filtered := args[:0]
 		for _, a := range args {
@@ -736,6 +789,8 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, mountName, cmd string) err
 				noLint = true
 			} else if level, ok := strings.CutPrefix(a, "capability="); ok {
 				capLevel = level
+			} else if s, ok := strings.CutPrefix(a, "scope="); ok {
+				scopeVal = s
 			} else if ids, ok := strings.CutPrefix(a, "blockers="); ok {
 				for _, id := range strings.Split(ids, ",") {
 					if id = strings.TrimSpace(id); id != "" {
@@ -766,6 +821,15 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, mountName, cmd string) err
 			}
 		}
 
+		// Build initial labels
+		var labels []string
+		if capLevel != "" {
+			labels = append(labels, capabilityPrefix+capLevel)
+		}
+		if scopeVal != "" {
+			labels = append(labels, scopePrefix+scopeVal)
+		}
+
 		var newID string
 		if parentID != "" {
 			childID, err := b.createSubtaskOnStore(store, parentID, title, description, actor)
@@ -773,8 +837,8 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, mountName, cmd string) err
 				return err
 			}
 			newID = childID
-			if capLevel != "" {
-				_ = store.AddLabel(b.ctx, childID, capabilityPrefix+capLevel, actor)
+			for _, lbl := range labels {
+				_ = store.AddLabel(b.ctx, childID, lbl, actor)
 			}
 		} else {
 			issue := &bd.Issue{
@@ -784,13 +848,13 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, mountName, cmd string) err
 				IssueType:   bd.TypeTask,
 				Priority:    2,
 			}
-			if capLevel != "" {
-				issue.Labels = []string{capabilityPrefix + capLevel}
-			}
 			if err := store.CreateIssue(b.ctx, issue, actor); err != nil {
 				return err
 			}
 			newID = issue.ID
+			for _, lbl := range labels {
+				_ = store.AddLabel(b.ctx, newID, lbl, actor)
+			}
 		}
 
 		// Add blockers
@@ -946,16 +1010,6 @@ func (b *BeadsFS) executeCtlOnStore(store bd.Storage, mountName, cmd string) err
 			}
 		}
 		return store.AddLabel(b.ctx, beadID, capabilityPrefix+level, actor)
-
-	case "batch-create":
-		if len(args) < 1 {
-			return fmt.Errorf("usage: batch-create <json-array>")
-		}
-		var issues []*bd.Issue
-		if err := json.Unmarshal([]byte(args[0]), &issues); err != nil {
-			return fmt.Errorf("invalid JSON: %w", err)
-		}
-		return store.CreateIssues(b.ctx, issues, actor)
 
 	case "unclaim":
 		// Atomically clear assignee and reset status to open.
@@ -1347,6 +1401,17 @@ func extractCapabilityLevel(labels []string) string {
 			if level == "low" || level == "standard" || level == "high" {
 				return level
 			}
+		}
+	}
+	return ""
+}
+
+// extractScope scans a label slice and returns the scope value from
+// the first "scope:<value>" label found. Returns "" if none.
+func extractScope(labels []string) string {
+	for _, lbl := range labels {
+		if scope, ok := strings.CutPrefix(lbl, scopePrefix); ok {
+			return scope
 		}
 	}
 	return ""

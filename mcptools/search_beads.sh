@@ -1,6 +1,6 @@
 #!/bin/bash
 # capabilities: beads
-# description: Search beads by id, title, or description content
+# description: Search beads by id, title, or description content. Filters by scope derived from cwd.
 # Usage: search_beads.sh --mount <mount> --query <query>
 set -euo pipefail
 
@@ -21,4 +21,13 @@ if [ -z "$MOUNT" ] || [ -z "$QUERY" ]; then
     exit 1
 fi
 
-9p read "anvillm/beads/$MOUNT/search/$QUERY" 2>/dev/null | jq '[.[] | {id, title, status, match_in: (if .id | test("'"$QUERY"'"; "i") then "id" elif .title | test("'"$QUERY"'"; "i") then "title" else "description" end)}]' || echo "[]"
+# Derive scope from cwd relative to mount's cwd
+MOUNT_CWD=$(9p read "anvillm/beads/$MOUNT/cwd" 2>/dev/null)
+MY_SCOPE=""
+if [ -n "$MOUNT_CWD" ]; then
+    REL_PATH="${PWD#"$MOUNT_CWD"}"
+    REL_PATH="${REL_PATH#/}"
+    MY_SCOPE="${REL_PATH%%/*}"
+fi
+
+9p read "anvillm/beads/$MOUNT/search/$QUERY" 2>/dev/null | jq --arg scope "$MY_SCOPE" '[.[] | select((.scope // "") == $scope) | {id, title, status, scope, match_in: (if .id | test("'"$QUERY"'"; "i") then "id" elif .title | test("'"$QUERY"'"; "i") then "title" else "description" end)}]' || echo "[]"

@@ -1,6 +1,6 @@
 #!/bin/bash
 # capabilities: beads
-# description: List all beads across all mounted projects (JSON array)
+# description: List all open beads (JSON array). Filters by scope derived from cwd (strict match).
 # Usage: list_beads.sh --mount <mount>
 set -euo pipefail
 
@@ -19,4 +19,14 @@ if [ -z "$MOUNT" ]; then
     exit 1
 fi
 
-9p read "anvillm/beads/$MOUNT/list" 2>/dev/null | jq '[.[] | {id, priority, title, status}]' || echo "[]"
+# Derive scope from cwd relative to mount's cwd
+MOUNT_CWD=$(9p read "anvillm/beads/$MOUNT/cwd" 2>/dev/null)
+MY_SCOPE=""
+if [ -n "$MOUNT_CWD" ]; then
+    REL_PATH="${PWD#"$MOUNT_CWD"}"
+    REL_PATH="${REL_PATH#/}"
+    MY_SCOPE="${REL_PATH%%/*}"
+fi
+
+# Strict match: scope must equal (both empty or both same value)
+9p read "anvillm/beads/$MOUNT/list" 2>/dev/null | jq --arg scope "$MY_SCOPE" '[.[] | select((.scope // "") == $scope) | {id, priority, title, status, scope}]' || echo "[]"

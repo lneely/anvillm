@@ -1,6 +1,6 @@
 #!/bin/bash
 # capabilities: beads
-# description: Block until a bead is ready on the given mount, then print its full JSON (including comments) and exit. Uses the anvillm/events stream — no polling.
+# description: Block until a bead is ready on the given mount, then print its full JSON (including comments) and exit. Uses the anvillm/events stream — no polling. Filters by scope derived from cwd.
 # Usage: wait_for_bead.sh --mount <mount>
 set -euo pipefail
 
@@ -18,6 +18,16 @@ if [ -z "$MOUNT" ]; then
     exit 1
 fi
 
+# Derive scope from cwd relative to mount's cwd
+MOUNT_CWD=$(9p read "anvillm/beads/$MOUNT/cwd" 2>/dev/null)
+if [ -n "$MOUNT_CWD" ]; then
+    REL_PATH="${PWD#"$MOUNT_CWD"}"
+    REL_PATH="${REL_PATH#/}"
+    MY_SCOPE="${REL_PATH%%/*}"
+else
+    MY_SCOPE=""
+fi
+
 EXPECTED_SOURCE="beads/$MOUNT"
 
 exec 3< <(9p read anvillm/events 2>/dev/null)
@@ -30,6 +40,10 @@ while IFS= read -r line <&3; do
 
     source=$(echo "$line" | jq -r '.source // empty' 2>/dev/null)
     [ "$source" = "$EXPECTED_SOURCE" ] || continue
+
+    # Strict scope match: both must be equal (empty or same value)
+    bead_scope=$(echo "$line" | jq -r '.data.scope // empty' 2>/dev/null)
+    [ "$bead_scope" = "$MY_SCOPE" ] || continue
 
     # Emit full bead data and exit — bot decides whether to claim
     echo "$line" | jq '.data'

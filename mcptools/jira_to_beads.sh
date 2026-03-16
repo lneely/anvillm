@@ -1,6 +1,6 @@
 #!/bin/bash
 # capabilities: beads
-# description: Import Jira ticket hierarchy into beads
+# description: Import Jira ticket hierarchy into beads. Scope is auto-derived from cwd.
 # Usage: jira_to_beads.sh --mount <mount> --ticket <ticket-key>
 set -euo pipefail
 
@@ -19,6 +19,17 @@ if [ -z "$MOUNT" ] || [ -z "$TICKET" ]; then
     echo "usage: jira_to_beads.sh --mount <mount> --ticket <ticket-key>" >&2
     exit 1
 fi
+
+# Derive scope from cwd relative to mount's cwd
+MOUNT_CWD=$(9p read "anvillm/beads/$MOUNT/cwd" 2>/dev/null)
+SCOPE=""
+if [ -n "$MOUNT_CWD" ]; then
+    REL_PATH="${PWD#"$MOUNT_CWD"}"
+    REL_PATH="${REL_PATH#/}"
+    SCOPE="${REL_PATH%%/*}"
+fi
+SCOPE_ARG=""
+[ -n "$SCOPE" ] && SCOPE_ARG="scope=$SCOPE"
 
 # Check if already imported
 if 9p read "anvillm/beads/$MOUNT/list" | jq -e ".[] | select(.title | contains(\"$TICKET\"))" >/dev/null 2>&1; then
@@ -58,9 +69,9 @@ create_bead() {
 
     # Create bead
     if [[ -n "$parent_bead" ]]; then
-        echo "new \"$title\" \"$description\" $parent_bead" | 9p write "anvillm/beads/$MOUNT/ctl"
+        echo "new \"$title\" \"$description\" $parent_bead $SCOPE_ARG" | 9p write "anvillm/beads/$MOUNT/ctl"
     else
-        echo "new \"$title\" \"$description\"" | 9p write "anvillm/beads/$MOUNT/ctl"
+        echo "new \"$title\" \"$description\" '' $SCOPE_ARG" | 9p write "anvillm/beads/$MOUNT/ctl"
     fi
 
     # Get created bead ID

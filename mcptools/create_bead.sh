@@ -1,6 +1,6 @@
 #!/bin/bash
 # capabilities: beads
-# description: Create a new bead
+# description: Create a new bead. Scope is auto-derived from cwd relative to mount.
 # Usage: create_bead.sh --mount <mount> --title <title> [--desc <desc>] [--parent <id>] [--no-lint] [--capability low|standard|high]
 set -euo pipefail
 
@@ -29,10 +29,20 @@ if [ -z "$MOUNT" ] || [ -z "$TITLE" ]; then
     exit 1
 fi
 
+# Derive scope from cwd relative to mount's cwd
+MOUNT_CWD=$(9p read "anvillm/beads/$MOUNT/cwd" 2>/dev/null)
+SCOPE=""
+if [ -n "$MOUNT_CWD" ]; then
+    REL_PATH="${PWD#"$MOUNT_CWD"}"
+    REL_PATH="${REL_PATH#/}"
+    SCOPE="${REL_PATH%%/*}"
+fi
+
 CMD="new '$TITLE' '$DESC'"
 [ -n "$PARENT" ] && CMD="$CMD $PARENT"
 [ -n "$NOLINT" ] && CMD="$CMD $NOLINT"
-[ -n "$CAP" ]    && CMD="$CMD $CAP"
+[ -n "$CAP" ]    && CMD="$CMD capability=$CAP"
+[ -n "$SCOPE" ]  && CMD="$CMD scope=$SCOPE"
 
 echo "$CMD" | 9p write anvillm/beads/$MOUNT/ctl
 echo "created (deferred): $TITLE"
