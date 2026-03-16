@@ -1946,6 +1946,7 @@ func applyBeadEdits(w *acme.Win, edits []beadEdit, beads *[]Bead, filter string,
 	}
 	refreshed, _ := listBeadsWithFilter(filter, mount)
 	*beads = refreshed
+	refreshTasksWindowWithBeads(w, *beads, mount, filter)
 }
 
 func openTasksWindow() error {
