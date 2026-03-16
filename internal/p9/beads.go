@@ -169,6 +169,17 @@ func (b *BeadsFS) Mount(name, cwd string) error {
 	} else if err != nil {
 		return fmt.Errorf("failed to stat directory: %w", err)
 	}
+	// Warn if new mount overlaps with existing mounts
+	for _, m := range b.mounts {
+		if strings.HasPrefix(cwd, m.cwd+"/") {
+			logging.Logger().Warn("mount is child of existing mount — possible misconfiguration",
+				zap.String("new", cwd), zap.String("existing", m.cwd))
+		}
+		if strings.HasPrefix(m.cwd, cwd+"/") {
+			logging.Logger().Warn("mount is parent of existing mount — possible misconfiguration",
+				zap.String("new", cwd), zap.String("existing", m.cwd))
+		}
+	}
 	// Use cwd as db path, replacing / with -
 	cwdHyphenated := strings.ReplaceAll(cwd, "/", "-")
 	dbPath := filepath.Join(os.Getenv("HOME"), ".beads", cwdHyphenated)
