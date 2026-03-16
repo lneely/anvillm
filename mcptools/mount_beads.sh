@@ -20,6 +20,12 @@ if [ -z "$CWD" ]; then
     exit 1
 fi
 
+# Reject if CWD is a git worktree (not the main repo)
+if [ -f "$CWD/.git" ]; then
+    echo "error: $CWD is a git worktree, not a base repo — mount the parent project instead" >&2
+    exit 1
+fi
+
 MOUNT=$(uuidgen | cut -d- -f1)
 
 echo "mount $CWD $MOUNT" | 9p write anvillm/beads/ctl
