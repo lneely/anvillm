@@ -26,6 +26,12 @@ if [ -f "$CWD/.git" ]; then
     exit 1
 fi
 
+# Reject if CWD contains git worktrees (feature workspace, not base workspace)
+if find "$CWD" -maxdepth 2 -name ".git" -type f 2>/dev/null | grep -q .; then
+    echo "error: $CWD contains git worktrees — this is a feature workspace, mount the base workspace instead" >&2
+    exit 1
+fi
+
 MOUNT=$(uuidgen | cut -d- -f1)
 
 echo "mount $CWD $MOUNT" | 9p write anvillm/beads/ctl
