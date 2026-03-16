@@ -188,22 +188,8 @@ func (b *BeadsFS) Mount(name, cwd string) error {
 	}
 	// Reject if cwd is a git worktree (not the main repo)
 	gitPath := filepath.Join(cwd, ".git")
-	gitInfo, gitErr := os.Stat(gitPath)
-	if gitErr == nil && !gitInfo.IsDir() {
+	if info, err := os.Stat(gitPath); err == nil && !info.IsDir() {
 		return fmt.Errorf("mount path is a git worktree, not a base repo — mount the parent project instead")
-	}
-	// Reject if cwd contains git worktrees but is not itself a git repo (feature workspace)
-	hasGitDir := gitErr == nil && gitInfo.IsDir()
-	if !hasGitDir {
-		entries, _ := os.ReadDir(cwd)
-		for _, e := range entries {
-			if e.IsDir() {
-				subGit := filepath.Join(cwd, e.Name(), ".git")
-				if info, err := os.Stat(subGit); err == nil && !info.IsDir() {
-					return fmt.Errorf("mount path contains git worktrees but is not a git repo — this is a feature workspace, mount the base workspace instead")
-				}
-			}
-		}
 	}
 	// Warn if new mount overlaps with existing mounts
 	for _, m := range b.mounts {
