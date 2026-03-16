@@ -16,6 +16,7 @@ import (
 	"time"
 
 	bd "github.com/steveyegge/beads"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -337,7 +338,7 @@ func (b *BeadsFS) Write(path string, data []byte, sessionID string) error {
 			return fmt.Errorf("usage: mount <cwd> [name]")
 		}
 		cwd := args[0]
-		name := filepath.Base(cwd)
+		name := uuid.New().String()[:8]
 		if len(args) >= 2 {
 			name = args[1]
 		}

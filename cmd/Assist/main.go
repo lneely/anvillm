@@ -2301,7 +2301,7 @@ func openViewBeadWindow(beadID string, mount string) error {
 	}
 
 	w.Name(fmt.Sprintf("/AnviLLM/Tasks/%s", beadID))
-	w.Write("tag", []byte("Get Put New Blocks Comments "))
+	w.Write("tag", []byte("Get Put New Blocks Comments Comment "))
 
 	go handleViewBeadWindow(w, beadID, mount)
 	return nil
@@ -2359,6 +2359,10 @@ func handleViewBeadWindow(w *acme.Win, beadID string, mount string) {
 			case "Comments":
 				if err := openCommentsWindow(beadID, mount); err != nil {
 					fmt.Fprintf(os.Stderr, "Error opening comments window: %v\n", err)
+				}
+			case "Comment":
+				if err := openCommentWindow(beadID, mount); err != nil {
+					fmt.Fprintf(os.Stderr, "Error opening comment window: %v\n", err)
 				}
 			default:
 				w.WriteEvent(e)
@@ -2429,6 +2433,50 @@ func openCommentsWindow(beadID string, mount string) error {
 	return nil
 }
 
+func openCommentWindow(beadID string, mount string) error {
+	w, err := acme.New()
+	if err != nil {
+		return err
+	}
+	w.Name(fmt.Sprintf("/AnviLLM/Tasks/%s/comment", beadID))
+	w.Write("tag", []byte("Put "))
+
+	go handleCommentWindow(w, beadID, mount)
+	return nil
+}
+
+func handleCommentWindow(w *acme.Win, beadID string, mount string) {
+	defer w.CloseFiles()
+	for e := range w.EventChan() {
+		switch e.C2 {
+		case 'x', 'X':
+			if string(e.Text) == "Put" {
+				body, err := w.ReadAll("body")
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error reading body: %v\n", err)
+					continue
+				}
+				text := strings.TrimSpace(string(body))
+				if text == "" {
+					continue
+				}
+				cmd := fmt.Sprintf("comment %s '%s'", beadID, text)
+				if err := writeFile(filepath.Join("beads", mount, "ctl"), []byte(cmd)); err != nil {
+					fmt.Fprintf(os.Stderr, "Error adding comment: %v\n", err)
+				} else {
+					w.Addr(",")
+					w.Write("data", nil)
+					w.Ctl("clean")
+				}
+			} else {
+				w.WriteEvent(e)
+			}
+		default:
+			w.WriteEvent(e)
+		}
+	}
+}
+
 func handleCommentsWindow(w *acme.Win, beadID string, mount string) {
 	defer w.CloseFiles()
 	refreshCommentsWindow(w, beadID, mount)
@@ -2458,7 +2506,7 @@ func refreshCommentsWindow(w *acme.Win, beadID string, mount string) {
 
 	var comments []struct {
 		Author    string `json:"author"`
-		Body      string `json:"body"`
+		Text      string `json:"text"`
 		CreatedAt string `json:"created_at"`
 	}
 	if err := json.Unmarshal(data, &comments); err != nil {
@@ -2473,7 +2521,7 @@ func refreshCommentsWindow(w *acme.Win, beadID string, mount string) {
 		buf.WriteString("No comments.\n")
 	} else {
 		for _, c := range comments {
-			buf.WriteString(fmt.Sprintf("--- %s (%s) ---\n%s\n\n", c.Author, c.CreatedAt, c.Body))
+			buf.WriteString(fmt.Sprintf("--- %s (%s) ---\n%s\n\n", c.Author, c.CreatedAt, c.Text))
 		}
 	}
 
