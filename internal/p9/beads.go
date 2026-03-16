@@ -1,6 +1,7 @@
 package p9
 
 import (
+	"anvillm/internal/config"
 	"anvillm/internal/eventbus"
 	"anvillm/internal/logging"
 	"context"
@@ -168,6 +169,22 @@ func (b *BeadsFS) Mount(name, cwd string) error {
 		return fmt.Errorf("directory does not exist: %s", cwd)
 	} else if err != nil {
 		return fmt.Errorf("failed to stat directory: %w", err)
+	}
+	// Validate mount depth: must be exactly 1 level deep from a project dir
+	if len(config.ProjectDirs) > 0 {
+		valid := false
+		for _, dir := range config.ProjectDirs {
+			if strings.HasPrefix(cwd, dir+"/") {
+				rel := strings.TrimPrefix(cwd, dir+"/")
+				if !strings.Contains(rel, "/") && rel != "" {
+					valid = true
+					break
+				}
+			}
+		}
+		if !valid {
+			return fmt.Errorf("mount path must be exactly 1 level deep from project dirs (%v)", config.ProjectDirs)
+		}
 	}
 	// Warn if new mount overlaps with existing mounts
 	for _, m := range b.mounts {
