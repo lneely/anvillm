@@ -191,15 +191,31 @@ anvillm/
 ├── list            # id, alias, state, pid, cwd
 ├── events          # Event stream (state changes, messages)
 ├── beads/          # Task tracking (persistent across namespaces)
-│   ├── ctl         # Commands: init, new, claim, complete, fail, dep
-│   ├── list        # All beads as JSON
+│   ├── ctl         # Commands: init, new, claim, unclaim, complete, fail,
+│   │               #   dep, undep, update, delete, comment, label, unlabel,
+│   │               #   set-capability, open, defer, reopen, mount, umount, sync
+│   ├── mtab        # Mounted projects
+│   ├── list        # All beads as JSON (optional limit arg)
 │   ├── ready       # Ready beads (no blockers) as JSON
+│   ├── deferred    # Deferred beads as JSON
+│   ├── blocked     # Blocked beads as JSON
+│   ├── stale       # Stale beads as JSON
+│   ├── search/     # search/<query> — full-text search
+│   ├── by-ref/     # by-ref/<ref> — lookup by external reference
+│   ├── batch/      # batch/<id1,id2,...> — fetch multiple beads
+│   ├── label/      # label/<name> — filter by label
+│   ├── children/   # children/<id> — subtasks of a bead
 │   └── <bead-id>/
 │       ├── status
 │       ├── title
 │       ├── description
 │       ├── assignee
-│       └── json
+│       ├── json
+│       ├── comments
+│       ├── labels
+│       ├── dependents
+│       ├── tree
+│       └── events
 └── <id>/
     ├── ctl         # "stop", "restart", "kill"
     ├── state       # starting, idle, running, stopped, error, exited
