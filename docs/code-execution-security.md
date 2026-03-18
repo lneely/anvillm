@@ -34,7 +34,7 @@ The code execution pattern allows agents to write and execute bash code in a iso
 ┌─────────────────────────────────────────┐
 │ 9P Operations                           │
 │ - Unix permissions                      │
-│ - Event stream / mailbox archives       │
+│ - Event stream / mailbox archives / debug logs       │
 └─────────────────────────────────────────┘
 ```
 
@@ -248,7 +248,7 @@ if agentID != session.AgentID {
 }
 ```
 
-3. **Observability**: State changes visible via event stream, message history via mailbox archives
+3. **Observability**: State changes visible via event stream, mailbox archives, and debug logs
 
 4. **Operation Whitelist**: Only allowed operations exposed
 ```go
@@ -559,7 +559,7 @@ The code execution pattern provides strong security through multiple layers:
 2. **bash Subprocess**: Process-level isolation
 3. **Landlock LSM**: Kernel-level enforcement
 4. **Resource Limits**: Prevent exhaustion
-5. **Observability**: Event stream and mailbox archives
+5. **Observability**: Event stream, mailbox archives, and debug logs
 
 **Security Posture**: Data isolation and explicit control over information flow via sandboxed subprocesses.
 
