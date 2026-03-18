@@ -25,8 +25,8 @@ update_tool() {
 # send_message.sh
 update_tool "$TOOLS_DIR/send_message.sh" "messaging" "Send message to agent or user: FROM TO TYPE SUBJECT BODY"
 
-# read_inbox.sh  
-update_tool "$TOOLS_DIR/read_inbox.sh" "messaging" "Read agent inbox: AGENT_ID"
+# check_inbox.sh  
+update_tool "$TOOLS_DIR/check_inbox.sh" "messaging" "Read agent inbox: AGENT_ID"
 
 # list_sessions.sh
 update_tool "$TOOLS_DIR/list_sessions.sh" "agents" "List all running agent sessions"

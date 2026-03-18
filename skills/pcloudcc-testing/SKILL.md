@@ -86,7 +86,7 @@ args: ["<your-id>", "<testing-agent-id>", "PROMPT_REQUEST", "Validate fix", "Bug
 Read response (user notifies when ready):
 ```
 Tool: execute_code
-tool: read_inbox.sh
+tool: check_inbox.sh
 args: ["<your-id>"]
 ```
 

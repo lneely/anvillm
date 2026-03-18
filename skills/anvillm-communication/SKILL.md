@@ -28,7 +28,7 @@ args: ["--to", "<id|user>", "--type", "<type>", "--subject", "<subject>", "--bod
 Check inbox:
 ```
 Tool: execute_code
-tool: read_inbox.sh
+tool: check_inbox.sh
 ```
 
 View message history:

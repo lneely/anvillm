@@ -15,7 +15,7 @@ Loading 100 tools upfront costs ~9,000 tokens (45% of a 200k context window). Wi
 9p ls anvillm/tools/anvilmcp
 
 # Read only the tool you need (~90 tokens)
-9p read anvillm/tools/anvilmcp/read_inbox.sh
+9p read anvillm/tools/anvilmcp/check_inbox.sh
 ```
 
 **Savings**: 97% (120 tokens vs 9,000 tokens)
@@ -45,7 +45,7 @@ echo "Found $count pending orders"
 
 2. **Read tool documentation**:
 ```bash
-9p read anvillm/tools/anvilmcp/read_inbox.sh
+9p read anvillm/tools/anvilmcp/check_inbox.sh
 ```
 
 3. **Call tool via MCP**:
@@ -107,7 +107,7 @@ agents=("agent-1" "agent-2" "agent-3")
 total_messages=0
 
 for agent_id in "${agents[@]}"; do
-  result=$(anvillm/tools/anvilmcp/read_inbox.sh "$agent_id")
+  result=$(anvillm/tools/anvilmcp/check_inbox.sh "$agent_id")
   count=$(echo "$result" | wc -l)
   total_messages=$((total_messages + count))
 done
@@ -141,7 +141,7 @@ echo "Processed $count contacts"
 All tools are accessed via 9P commands. Read tool documentation first:
 
 ```bash
-9p read anvillm/tools/anvilmcp/read_inbox.sh
+9p read anvillm/tools/anvilmcp/check_inbox.sh
 ```
 
 ### Communication
@@ -218,12 +218,12 @@ Cache tool paths instead of re-reading:
 ```bash
 # Bad: Re-read every time
 for i in {1..10}; do
-  9p read anvillm/tools/anvilmcp/read_inbox.sh
+  9p read anvillm/tools/anvilmcp/check_inbox.sh
 done
 
 # Good: Call directly
 for i in {1..10}; do
-  anvillm/tools/anvilmcp/read_inbox.sh "82b93a8a"
+  anvillm/tools/anvilmcp/check_inbox.sh "82b93a8a"
 done
 ```
 
@@ -232,7 +232,7 @@ done
 ```bash
 agents=("agent-1" "agent-2" "agent-3")
 for agent_id in "${agents[@]}"; do
-  anvillm/tools/anvilmcp/read_inbox.sh "$agent_id" &
+  anvillm/tools/anvilmcp/check_inbox.sh "$agent_id" &
 done
 wait
 echo "Processed ${#agents[@]} inboxes"
@@ -242,11 +242,11 @@ echo "Processed ${#agents[@]} inboxes"
 
 ```bash
 # Bad: Return all data
-result=$(anvillm/tools/anvilmcp/read_inbox.sh "82b93a8a")
+result=$(anvillm/tools/anvilmcp/check_inbox.sh "82b93a8a")
 echo "$result"  # Could be 50,000 tokens
 
 # Good: Return summary
-result=$(anvillm/tools/anvilmcp/read_inbox.sh "82b93a8a")
+result=$(anvillm/tools/anvilmcp/check_inbox.sh "82b93a8a")
 count=$(echo "$result" | wc -l)
 echo "Inbox has $count messages"  # ~10 tokens
 ```
@@ -311,7 +311,7 @@ MCP: { "content": [{"type": "text", "text": "Message sent"}] }
 
 ```
 Agent: TOOL CALL execute_code(code: "
-  result=$(anvillm/tools/anvilmcp/read_inbox.sh '82b93a8a')
+  result=$(anvillm/tools/anvilmcp/check_inbox.sh '82b93a8a')
   urgent=$(echo \"$result\" | grep -c 'URGENT')
   echo \"Found $urgent urgent messages\"
 ", language: "bash")
