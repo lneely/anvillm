@@ -180,6 +180,8 @@ By default (when the `sandbox` argument is not specified), `execute_code` uses t
 
 For higher-risk scenarios (e.g., running untrusted scripts, processing sensitive data), the `anvilmcp` sandbox should be explicitly specified to ensure the tighter restrictions are enforced — it uses a temporary workspace, minimal filesystem access, and a restricted set of environment variables.
 
+Custom sandbox configurations can be created by adding a YAML file to the `sandbox/` subdirectory in the anvillm config directory (`~/.config/anvillm/sandbox/`). These can be as permissive or restricted as desired.
+
 ### Adjusting Timeout
 
 Default: 30 seconds
