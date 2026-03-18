@@ -417,5 +417,5 @@ See [Code Execution User Guide](docs/code-execution-user-guide.md) for details.
 | 9P not working | `9p ls agent` |
 | Stale PID | `anvilsrv stop` auto-cleans |
 | Daemon won't stop | `anvilsrv fgstart` for logs |
-| Bot stuck in "running" | Send a prompt like "stop work." to interrupt it and return to idle |
+| Bot stuck in "running" | Attach to the session's tmux window and type "stop work." to interrupt it and return to idle |
 See Configuration section for environment variables.
