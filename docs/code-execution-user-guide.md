@@ -21,7 +21,7 @@ Read a script to see its usage:
 Invoke a script:
 
 ```bash
-bash <(9p read anvillm/tools/check_inbox.sh) <agent-id>
+bash <(9p read anvillm/tools/check_inbox.sh)
 ```
 
 ## Common Patterns
@@ -30,7 +30,7 @@ bash <(9p read anvillm/tools/check_inbox.sh) <agent-id>
 
 ```bash
 # Check inbox
-bash <(9p read anvillm/tools/check_inbox.sh) "$AGENT_ID"
+bash <(9p read anvillm/tools/check_inbox.sh)
 
 # Send message
 bash <(9p read anvillm/tools/send_message.sh) \

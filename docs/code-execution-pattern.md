@@ -15,7 +15,7 @@ Discover available helper scripts on-demand via 9P:
 Read and invoke a specific script:
 
 ```bash
-bash <(9p read anvillm/tools/check_inbox.sh) <agent-id>
+bash <(9p read anvillm/tools/check_inbox.sh)
 ```
 
 ## Examples
