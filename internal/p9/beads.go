@@ -191,6 +191,13 @@ func (b *BeadsFS) Mount(name, cwd string) error {
 	if info, err := os.Stat(gitPath); err == nil && !info.IsDir() {
 		return fmt.Errorf("mount path is a git worktree, not a base repo — mount the parent project instead")
 	}
+	// Reject if cwd is already mounted
+	for _, m := range b.mounts {
+		if m.cwd == cwd {
+			logging.Logger().Warn("mount path already mounted", zap.String("cwd", cwd), zap.String("existing", m.name))
+			return fmt.Errorf("path already mounted as %s", m.name)
+		}
+	}
 	// Warn if new mount overlaps with existing mounts
 	for _, m := range b.mounts {
 		if strings.HasPrefix(cwd, m.cwd+"/") {
