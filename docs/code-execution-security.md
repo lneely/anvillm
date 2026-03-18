@@ -314,6 +314,10 @@ import { evil } from "/etc/passwd";
 
 ## Subprocess Configuration
 
+### Sandbox Selection
+
+By default (when the `sandbox` argument is not specified), `execute_code` uses the restricted `anvilmcp` sandbox configuration. If this fails (e.g., due to kernel or permission constraints), it falls back to the `default` sandbox — the same configuration used by the outer landrun invocation. This compromise provides "just works" behavior and avoids surprises, while still applying the tighter sandbox when possible.
+
 ### bash Permissions
 
 ```bash
