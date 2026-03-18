@@ -315,42 +315,70 @@ anvilspawn claude reviewer
 
 If `workdir` is omitted, it defaults to the current directory. The script creates the session, assigns an alias derived from the directory and role, and sets the role. The agent ID is printed to stdout.
 
-## Autonomous Workflows
+## Roles
 
-Automate workflows with Taskmaster and Conductor bots. Input project plan → Taskmaster creates tasks with dependencies → Conductor orchestrates parallel execution.
+Roles define agent behavior and constraints. Each role is a Markdown file in `~/.config/anvillm/roles/` with YAML front-matter:
 
-![Autonomous Workflow](docs/diagrams/automation-workflow.svg?v=3)
+```yaml
+---
+name: Developer
+description: Code implementation agent
+focus-areas: coding, development, implementation
+worker: true
+---
 
-Conductor receives the top-level bead ID, analyzes dependencies, and spawns agents to work in parallel. Agents notify Conductor when blocked; Conductor signals them to resume when dependencies resolve.
-
-### Usage
-
-Examples use raw 9P calls. These actions can also be performed from Assist.
-
-**1. Taskmaster: Create tasks from project plan**
-
-```sh
-./bot-templates/Taskmaster kiro /path/to/project
-TASKMASTER_ID=$(9p read anvillm/list | head -1 | awk '{print $1}')
-
-# Send project plan
-echo '{"to":"'$TASKMASTER_ID'","type":"PROMPT_REQUEST","subject":"Create tasks","body":"<your project plan>"}' | 9p write user/mail
-
-# Get top-level bead ID
-BEAD_ID=$(9p read anvillm/beads/list | jq -r '.[0].id')
+You are a developer. Your ONLY job is to write code. ...
 ```
 
-**2. Conductor: Execute work**
+**Front-matter fields:**
+- `name` — display name
+- `description` — what the agent does
+- `focus-areas` — comma-separated areas of responsibility
+- `worker: true` — marks the role as eligible for autonomous nudging by `anvillm-supervisor`
+
+The body of the file is injected as agent context, defining the agent's responsibilities and constraints. Assign a role to a session by writing to its `role` file:
+
+```sh
+echo "developer" | 9p write anvillm/$ID/role
+```
+
+Or use `anvilspawn`, which sets the role automatically.
+
+**Available roles:** `developer`, `solo-developer`, `reviewer`, `tester`, `researcher`, `devops`, `pkgmgr`, `author`, `technical-editor`, `conductor`
+
+## Autonomous Workflows
+
+There are two approaches to autonomous workflows:
+
+### 1. Supervisor (cron-based)
+
+`anvillm-supervisor` runs as a cron job and performs periodic maintenance:
+
+- `--nudge` — sends work prompts to idle sessions whose role has `worker: true` in its front-matter
+- `--orphans` — unclaims beads assigned to sessions that no longer exist
+- `--auto-mount <workdir>` — mounts a beads database for a working directory
+
+Install the cron jobs:
+```sh
+mk cron-install
+```
+
+This is a lightweight, hands-off approach: spawn workers with `anvilspawn`, and the supervisor keeps them busy as long as there are ready beads.
+
+### 2. Conductor (agent-based)
+
+The Conductor role is an orchestration agent that decomposes goals into beads, spawns workers, and coordinates them to completion. Unlike the supervisor, the Conductor actively plans and adapts.
 
 ```sh
 ./bot-templates/Conductor kiro /path/to/project
 CONDUCTOR_ID=$(9p read anvillm/list | head -1 | awk '{print $1}')
 
-# Send work request
 echo '{"to":"'$CONDUCTOR_ID'","type":"WORK_REQUEST","subject":"Execute","body":"Complete bead '$BEAD_ID'"}' | 9p write user/mail
 ```
 
-Conductor analyzes dependencies, spawns specialized bots, and delegates work in parallel.
+The Conductor analyzes dependencies, spawns specialized bots, and delegates work in parallel. Agents notify the Conductor when blocked; it signals them to resume when dependencies resolve.
+
+![Autonomous Workflow](docs/diagrams/automation-workflow.svg?v=3)
 
 **Monitoring:** Use Assist or any 9P client. For custom integrations, see `EVENTS.md`.
 
