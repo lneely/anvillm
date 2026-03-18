@@ -351,7 +351,7 @@ Conductor analyzes dependencies, spawns specialized bots, and delegates work in 
 **Tool:** `execute_code` — the only tool needed. Executes bash scripts in an isolated subprocess (sandboxed via landrun). Agents discover and invoke all AnviLLM functionality through 9P and helper scripts:
 
 ```sh
-9p read anvillm/tools/anvilmcp/check_inbox.sh   # discover scripts
+9p read anvillm/tools/check_inbox.sh   # discover scripts
 bash <(9p read tools/send_message.sh) ...         # invoke them
 ```
 

@@ -9,13 +9,13 @@
 Discover available helper scripts on-demand via 9P:
 
 ```bash
-9p ls anvillm/tools/anvilmcp/
+9p ls anvillm/tools/
 ```
 
 Read and invoke a specific script:
 
 ```bash
-bash <(9p read anvillm/tools/anvilmcp/check_inbox.sh) <agent-id>
+bash <(9p read anvillm/tools/check_inbox.sh) <agent-id>
 ```
 
 ## Examples
@@ -23,7 +23,7 @@ bash <(9p read anvillm/tools/anvilmcp/check_inbox.sh) <agent-id>
 ### Messaging
 
 ```bash
-bash <(9p read anvillm/tools/anvilmcp/send_message.sh) \
+bash <(9p read anvillm/tools/send_message.sh) \
   --to user --type PROMPT_RESPONSE --subject "Done" --body "Task complete"
 ```
 

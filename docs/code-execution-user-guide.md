@@ -9,19 +9,19 @@
 List available helper scripts:
 
 ```bash
-9p ls anvillm/tools/anvilmcp/
+9p ls anvillm/tools/
 ```
 
 Read a script to see its usage:
 
 ```bash
-9p read anvillm/tools/anvilmcp/check_inbox.sh
+9p read anvillm/tools/check_inbox.sh
 ```
 
 Invoke a script:
 
 ```bash
-bash <(9p read anvillm/tools/anvilmcp/check_inbox.sh) <agent-id>
+bash <(9p read anvillm/tools/check_inbox.sh) <agent-id>
 ```
 
 ## Common Patterns
@@ -30,10 +30,10 @@ bash <(9p read anvillm/tools/anvilmcp/check_inbox.sh) <agent-id>
 
 ```bash
 # Check inbox
-bash <(9p read anvillm/tools/anvilmcp/check_inbox.sh) "$AGENT_ID"
+bash <(9p read anvillm/tools/check_inbox.sh) "$AGENT_ID"
 
 # Send message
-bash <(9p read anvillm/tools/anvilmcp/send_message.sh) \
+bash <(9p read anvillm/tools/send_message.sh) \
   --to user --type PROMPT_RESPONSE --subject "Done" --body "Complete"
 ```
 
