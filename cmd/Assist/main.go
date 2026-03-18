@@ -2162,16 +2162,24 @@ func listBeadsWithFilter(filter string, mount string) ([]Bead, error) {
 		return nil, fmt.Errorf("not connected to anvilsrv")
 	}
 
-	if mount == "" {
+	if mount == "" && filter != "deferred" && filter != "ready" {
 		return nil, nil
 	}
 
 	var endpoint string
 	switch filter {
 	case "deferred":
-		endpoint = filepath.Join("beads", mount, "deferred")
+		if mount == "" {
+			endpoint = "beads/deferred"
+		} else {
+			endpoint = filepath.Join("beads", mount, "deferred")
+		}
 	case "ready":
-		endpoint = filepath.Join("beads", mount, "ready")
+		if mount == "" {
+			endpoint = "beads/ready"
+		} else {
+			endpoint = filepath.Join("beads", mount, "ready")
+		}
 	default:
 		endpoint = filepath.Join("beads", mount, "list")
 	}

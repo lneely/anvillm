@@ -82,6 +82,7 @@ const (
 	qidBeadsList                 // beads/list
 	qidBeadsMtab                 // beads/mtab
 	qidBeadsReady                // beads/ready
+	qidBeadsDeferred             // beads/deferred
 	qidTools                     // tools directory
 	qidSkills                    // skills directory
 	qidRoles                     // roles directory
@@ -422,6 +423,9 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			case "ready":
 				qid = plan9.Qid{Type: QTFile, Path: qidBeadsReady}
 				newPath = "/beads/ready"
+			case "deferred":
+				qid = plan9.Qid{Type: QTFile, Path: qidBeadsDeferred}
+				newPath = "/beads/deferred"
 			default:
 				// Mount directory - verify it exists
 				if s.beads != nil {
@@ -501,7 +505,7 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 				if _, isMount := mounts[mountName]; isMount {
 					// Check if name is a control file or bead ID
 					switch name {
-					case "cwd", "ctl", "list", "ready", "stats", "blocked", "stale", "query", "config":
+					case "cwd", "ctl", "list", "ready", "deferred", "stats", "blocked", "stale", "query", "config":
 						qid = plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+name)}
 						newPath = path + "/" + name
 					default:
@@ -1149,6 +1153,10 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsReady}, Mode: 0444, Name: "ready",
 			Uid: "q", Gid: "q", Muid: "q",
 		})
+		dirs = append(dirs, plan9.Dir{
+			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsDeferred}, Mode: 0444, Name: "deferred",
+			Uid: "q", Gid: "q", Muid: "q",
+		})
 		// Add mounted projects as directories
 		if s.beads != nil {
 			for name := range s.beads.ListMounts() {
@@ -1179,6 +1187,10 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 				})
 				dirs = append(dirs, plan9.Dir{
 					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"ready")}, Mode: 0444, Name: "ready",
+					Uid: "q", Gid: "q", Muid: "q",
+				})
+				dirs = append(dirs, plan9.Dir{
+					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"deferred")}, Mode: 0444, Name: "deferred",
 					Uid: "q", Gid: "q", Muid: "q",
 				})
 				dirs = append(dirs, plan9.Dir{

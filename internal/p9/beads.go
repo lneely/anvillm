@@ -306,6 +306,14 @@ func (b *BeadsFS) Read(path string) ([]byte, error) {
 			return b.readReadyAggregate()
 		}
 		return nil, fmt.Errorf("no mounts")
+	case len(parts) == 1 && parts[0] == "deferred":
+		b.mountsMu.RLock()
+		hasMounts := len(b.mounts) > 0
+		b.mountsMu.RUnlock()
+		if hasMounts {
+			return b.readDeferredAggregate()
+		}
+		return nil, fmt.Errorf("no mounts")
 	default:
 		return nil, fmt.Errorf("invalid path: %s", path)
 	}
@@ -330,6 +338,8 @@ func (b *BeadsFS) readFromMount(m *MountedProject, endpoint string) ([]byte, err
 			limit = 100
 		}
 		return b.readReadyFromStore(m.store, limit)
+	case len(parts) == 1 && parts[0] == "deferred":
+		return b.readDeferredFromStore(m.store)
 	case len(parts) == 1 && parts[0] == "blocked":
 		return b.readBlockedFromStore(m.store)
 	case len(parts) == 1 && parts[0] == "stale":
@@ -513,6 +523,44 @@ func (b *BeadsFS) readReadyFromStore(store bd.Storage, limit int) ([]byte, error
 	}
 
 	return json.MarshalIndent(ready, "", "  ")
+}
+
+func (b *BeadsFS) readDeferredFromStore(store bd.Storage) ([]byte, error) {
+	status := bd.StatusDeferred
+	filter := bd.IssueFilter{Status: &status}
+	issues, err := store.SearchIssues(b.ctx, "", filter)
+	if err != nil {
+		return nil, err
+	}
+	if issues == nil {
+		issues = []*bd.Issue{}
+	}
+	return json.MarshalIndent(issues, "", "  ")
+}
+
+func (b *BeadsFS) readDeferredAggregate() ([]byte, error) {
+	b.mountsMu.RLock()
+	defer b.mountsMu.RUnlock()
+
+	type TaskWithMount struct {
+		*bd.Issue
+		Mount string `json:"mount"`
+		Cwd   string `json:"cwd"`
+	}
+
+	status := bd.StatusDeferred
+	filter := bd.IssueFilter{Status: &status}
+	all := []TaskWithMount{}
+	for name, m := range b.mounts {
+		issues, err := m.store.SearchIssues(b.ctx, "", filter)
+		if err != nil {
+			continue
+		}
+		for _, issue := range issues {
+			all = append(all, TaskWithMount{Issue: issue, Mount: name, Cwd: m.cwd})
+		}
+	}
+	return json.MarshalIndent(all, "", "  ")
 }
 
 func (b *BeadsFS) readReadyAggregate() ([]byte, error) {
