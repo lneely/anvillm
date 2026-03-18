@@ -380,7 +380,10 @@ The Conductor analyzes dependencies, spawns specialized bots, and delegates work
 
 ![Autonomous Workflow](docs/diagrams/automation-workflow.svg?v=3)
 
-**Monitoring:** Use Assist or any 9P client. For custom integrations, see `EVENTS.md`.
+**Monitoring:**
+- Event stream: `9p read anvillm/events` (state changes, messages)
+- Debug logs: `~/.config/anvillm/logs/` (set `ANVILLM_DEBUG=1` for verbose output)
+- Foreground mode: `anvilsrv fgstart` for live stderr output
 
 ## MCP Integration
 
