@@ -298,23 +298,22 @@ echo '{"to":"'$ID'","type":"PROMPT_REQUEST","subject":"User prompt","body":"Hell
 
 See `SECURITY.md`
 
-## Bot Templates
+## Spawning Agents
 
-Bot templates provide pre-configured agents for common tasks. Templates are shell scripts that create sessions with specialized context and configuration.
+`anvilspawn` creates a new agent session with a given backend, role, and working directory:
 
-**Available Templates:**
-- `Taskmaster` — Converts project plans into dependency-aware task graphs (beads)
-- `Conductor` — Orchestrates parallel execution by spawning and coordinating specialized agents
-
-**Usage:**
 ```sh
-./bot-templates/Taskmaster kiro /path/to/project
-./bot-templates/Conductor kiro /path/to/project
+anvilspawn <backend> <role> [workdir]
 ```
 
-Templates set up context, roles, and initial configuration. Interact via Assist or directly via 9P mailbox.
+For example:
 
-**Creating Templates:** Shell scripts that write to `anvillm/ctl` and configure `context`, `role`, `tasks`. See existing templates for examples.
+```sh
+anvilspawn kiro developer /path/to/project
+anvilspawn claude reviewer
+```
+
+If `workdir` is omitted, it defaults to the current directory. The script creates the session, assigns an alias derived from the directory and role, and sets the role. The agent ID is printed to stdout.
 
 ## Autonomous Workflows
 
