@@ -1309,6 +1309,18 @@ func isDigits(s string) bool {
 	return len(s) > 0
 }
 
+func extractArchiveDate(tag string) string {
+	// tag format: "/AnviLLM/archive/20260318 Del Snarf ... | user tagline"
+	name := strings.Fields(tag)[0]
+	if strings.HasPrefix(name, "/AnviLLM/archive/") {
+		d := strings.TrimPrefix(name, "/AnviLLM/archive/")
+		if isDigits(d) {
+			return d
+		}
+	}
+	return ""
+}
+
 func openArchiveWindow(owner, date string) error {
 	w, err := acme.New()
 	if err != nil {
@@ -1347,6 +1359,10 @@ func handleArchiveWindow(w *acme.Win, owner, date string) {
 		case 'x', 'X':
 			switch string(e.Text) {
 			case "Get":
+				// Re-read date from window name
+				tag, _ := w.ReadAll("tag")
+				date = extractArchiveDate(string(tag))
+				messages = nil
 				if date != "" {
 					messages, loadErr = loadMailHistory(owner, date)
 				} else {
