@@ -170,20 +170,33 @@ func (b *BeadsFS) Mount(name, cwd string) error {
 	} else if err != nil {
 		return fmt.Errorf("failed to stat directory: %w", err)
 	}
-	// Validate mount depth: must be exactly 1 level deep from a project dir
+	// Resolve and validate mount path against project dirs.
+	// Must be exactly 1 level deep from a project dir.
+	// If 2 levels deep (immediate child of a valid prjdir), resolve up to the prjdir.
 	if len(config.ProjectDirs) > 0 {
-		valid := false
+		resolved := false
 		for _, dir := range config.ProjectDirs {
-			if strings.HasPrefix(cwd, dir+"/") {
-				rel := strings.TrimPrefix(cwd, dir+"/")
-				if !strings.Contains(rel, "/") && rel != "" {
-					valid = true
-					break
+			if !strings.HasPrefix(cwd, dir+"/") {
+				continue
+			}
+			rel := strings.TrimPrefix(cwd, dir+"/")
+			parts := strings.SplitN(rel, "/", 3)
+			switch len(parts) {
+			case 1:
+				if parts[0] != "" {
+					resolved = true
 				}
+			case 2:
+				// Immediate child of prjdir — resolve up
+				cwd = filepath.Join(dir, parts[0])
+				resolved = true
+			}
+			if resolved {
+				break
 			}
 		}
-		if !valid {
-			return fmt.Errorf("mount path must be exactly 1 level deep from project dirs (%v)", config.ProjectDirs)
+		if !resolved {
+			return fmt.Errorf("mount path must be at most 1 level below a project dir (%v)", config.ProjectDirs)
 		}
 	}
 	// Reject if cwd is a git worktree (not the main repo)
