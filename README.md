@@ -152,6 +152,8 @@ State transitions: `idle` ↔ `running` cycle via CLI hooks (`userPromptSubmit` 
 
 Restored sessions automatically resume the latest conversation (kiro: `-r`, claude: `-c`).
 
+**Daemon recovery:** If the daemon itself crashes but tmux sessions are still running, use the `Recover` tag in Assist (middle-click it) to reload all session data into the server and continue working.
+
 **Add backend:** Implement `CommandHandler`/`StateInspector` in `internal/backends/yourbackend.go`, register in `main.go`
 
 ### Ollama Backend
