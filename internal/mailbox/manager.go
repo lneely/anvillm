@@ -312,4 +312,19 @@ func (m *Manager) DeleteFromCompleted(sessionID, msgID string) error {
 	return fmt.Errorf("message not found in completed")
 }
 
+// DeleteFromInbox permanently removes a message from the inbox
+func (m *Manager) DeleteFromInbox(sessionID, msgID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	inbox := m.inboxes[sessionID]
+	for i, msg := range inbox {
+		if msg.ID == msgID {
+			m.inboxes[sessionID] = append(inbox[:i], inbox[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("message not found in inbox")
+}
+
 
