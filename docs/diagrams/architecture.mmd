@@ -12,7 +12,7 @@ graph TB
         anvilwebgw["anvilwebgw<br/>(HTTP↔9P bridge)"]
     end
     
-    subgraph Backends
+    subgraph tmux["tmux sessions"]
         Claude["Claude"]
         Kiro["Kiro"]
         ollie["ollie"]
@@ -27,5 +27,5 @@ graph TB
     anvilsrv --> Claude
     anvilsrv --> Kiro
     anvilsrv --> ollie
-    anvilmcp --> Backends
+    anvilmcp --> tmux
     ollie --> Ollama
