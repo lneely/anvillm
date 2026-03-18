@@ -50,7 +50,7 @@ echo "Found $count pending orders"
 
 3. **Call tool via MCP**:
 ```bash
-echo '{"name":"read_inbox","arguments":{"agent_id":"82b93a8a"}}' | 9p write anvillm/mcp/call
+echo '{"name":"check_inbox","arguments":{"agent_id":"82b93a8a"}}' | 9p write anvillm/mcp/call
 ```
 
 ### Calling 9P Operations
@@ -68,8 +68,8 @@ echo "Found $count beads"
 ### Pattern 1: Filtering Large Datasets
 
 ```bash
-# Call read_inbox via MCP
-result=$(echo '{"name":"read_inbox","arguments":{"agent_id":"82b93a8a"}}' | 9p write anvillm/mcp/call)
+# Call check_inbox via MCP
+result=$(echo '{"name":"check_inbox","arguments":{"agent_id":"82b93a8a"}}' | 9p write anvillm/mcp/call)
 total=$(echo "$result" | jq -r '.content[0].text' | wc -l)
 urgent=$(echo "$result" | jq -r '.content[0].text' | grep -c "URGENT")
 
@@ -146,7 +146,7 @@ All tools are accessed via 9P commands. Read tool documentation first:
 
 ### Communication
 
-**read_inbox**: Read messages from agent's inbox
+**check_inbox**: Read messages from agent's inbox
 ```bash
 # List inbox messages
 9p ls anvillm/AGENT_ID/inbox
@@ -299,7 +299,7 @@ fi
 ### Before (Direct Tool Calls)
 
 ```
-Agent: TOOL CALL read_inbox(agent_id: "82b93a8a")
+Agent: TOOL CALL check_inbox(agent_id: "82b93a8a")
 MCP: { "content": [{"type": "text", "text": "[50,000 tokens of messages]"}] }
 Agent: TOOL CALL send_message(...)
 MCP: { "content": [{"type": "text", "text": "Message sent"}] }

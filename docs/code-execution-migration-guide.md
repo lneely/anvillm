@@ -20,7 +20,7 @@ This guide shows how to migrate from direct MCP tool calls to the code execution
 
 **Before**:
 ```
-Agent: TOOL CALL read_inbox(agent_id: "82b93a8a")
+Agent: TOOL CALL check_inbox(agent_id: "82b93a8a")
 MCP: { "content": [{"type": "text", "text": "[Message 1]\n[Message 2]\n..."}] }
 ```
 
@@ -35,11 +35,11 @@ execute_code with code: "bash <(9p read anvillm/tools/anvilmcp/check_inbox.sh) 8
 
 **Before**:
 ```
-Agent: TOOL CALL read_inbox(agent_id: "agent-1")
+Agent: TOOL CALL check_inbox(agent_id: "agent-1")
 MCP: { "content": [...] }  // 5,000 tokens
-Agent: TOOL CALL read_inbox(agent_id: "agent-2")
+Agent: TOOL CALL check_inbox(agent_id: "agent-2")
 MCP: { "content": [...] }  // 5,000 tokens
-Agent: TOOL CALL read_inbox(agent_id: "agent-3")
+Agent: TOOL CALL check_inbox(agent_id: "agent-3")
 MCP: { "content": [...] }  // 5,000 tokens
 ```
 
@@ -125,7 +125,7 @@ echo \"Job \$job_id status: \$status (checked \$attempts times)\"
 
 **Before**:
 ```
-Agent: TOOL CALL read_inbox(agent_id: "82b93a8a")
+Agent: TOOL CALL check_inbox(agent_id: "82b93a8a")
 MCP: { "content": [...] }  // 10,000 tokens
 Agent: [Identifies 5 urgent messages]
 Agent: TOOL CALL send_message(to: "manager", body: "5 urgent messages")
@@ -157,11 +157,11 @@ echo \"Processed inbox: \$urgent_count urgent messages\"
 
 ## Tool-Specific Migrations
 
-### read_inbox
+### check_inbox
 
 **Before**:
 ```
-TOOL CALL read_inbox(agent_id: "82b93a8a")
+TOOL CALL check_inbox(agent_id: "82b93a8a")
 ```
 
 **After**:

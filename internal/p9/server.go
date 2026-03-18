@@ -202,60 +202,6 @@ func loadMCPTools() []Tool {
 	// The actual MCP tool (execute_code) is defined in main.go for tools/list.
 	return []Tool{
 		{
-			Name:        "read_inbox",
-			Description: "Read messages from agent's inbox",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"agent_id": {Type: "string", Description: "Agent session ID (or 'user')"},
-				},
-				Required: []string{"agent_id"},
-			},
-		},
-		{
-			Name:        "send_message",
-			Description: "Send message to another agent or user",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"from":    {Type: "string", Description: "Sender agent ID (or 'user')"},
-					"to":      {Type: "string", Description: "Recipient agent ID (or 'user')"},
-					"type":    {Type: "string", Description: "Message type"},
-					"subject": {Type: "string", Description: "Message subject"},
-					"body":    {Type: "string", Description: "Message body"},
-				},
-				Required: []string{"from", "to", "type", "subject", "body"},
-			},
-		},
-		{
-			Name:        "list_sessions",
-			Description: "List all active sessions",
-			InputSchema: InputSchema{
-				Type:       "object",
-				Properties: map[string]Property{},
-			},
-		},
-		{
-			Name:        "set_state",
-			Description: "Set agent state (idle, running, stopped, etc.)",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"agent_id": {Type: "string", Description: "Agent session ID"},
-					"state":    {Type: "string", Description: "State value", Enum: []string{"idle", "running", "stopped", "starting", "error", "exited"}},
-				},
-				Required: []string{"agent_id", "state"},
-			},
-		},
-		{
-			Name:        "list_skills",
-			Description: "List all available skills from $ANVILLM_SKILLS_PATH",
-			InputSchema: InputSchema{
-				Type:       "object",
-				Properties: map[string]Property{},
-			},
-		},
-		{
 			Name:        "execute_code",
 			Description: "Execute bash code as a subprocess with timeout",
 			InputSchema: InputSchema{

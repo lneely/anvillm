@@ -368,7 +368,7 @@ Enables code execution pattern for 80-99% token reduction:
 
 See [Code Execution User Guide](docs/code-execution-user-guide.md) for details.
 
-**Legacy tools removed**: Direct tool calls (read_inbox, send_message, etc.) replaced by bash scripts accessible via `9p read anvillm/tools/anvilmcp/*.sh`
+**Legacy tools removed**: Direct tool calls (check_inbox, send_message, etc.) replaced by bash scripts accessible via `9p read anvillm/tools/anvilmcp/*.sh`
 
 ## Troubleshooting
 
