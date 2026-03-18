@@ -566,5 +566,3 @@ The code execution pattern provides strong security through multiple layers:
 **Security Posture**: Data isolation and explicit control over information flow via sandboxed subprocesses.
 
 **Residual Risks**: Primarily resource exhaustion (MEDIUM) and 9P access control (MEDIUM, inherent to any 9P client). Mitigated by running locally on a trusted network — do not expose the 9P mount over the network, or at minimum, implement access control (e.g., firewall).
-
-**Recommendation**: Proceed with implementation. Security benefits outweigh risks.
