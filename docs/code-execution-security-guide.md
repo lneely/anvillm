@@ -144,7 +144,7 @@ Validation is basic pattern matching. Not comprehensive - relies on sandbox for 
 **Mitigations**:
 1. 9P socket permissions (Unix socket, user-only)
 2. anvilsrv enforces access control
-3. Audit logging in anvilsrv
+3. Observability via event stream and mailbox archives
 
 **Residual risk**: If subprocess has 9P access, it has the same capabilities as any 9P client. This is by design.
 

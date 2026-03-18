@@ -34,7 +34,7 @@ The code execution pattern allows agents to write and execute bash code in a iso
 ┌─────────────────────────────────────────┐
 │ 9P Operations                           │
 │ - Unix permissions                      │
-│ - Audit logging                         │
+│ - Event stream / mailbox archives       │
 └─────────────────────────────────────────┘
 ```
 
@@ -248,10 +248,7 @@ if agentID != session.AgentID {
 }
 ```
 
-3. **Audit Logging**: All 9P operations logged
-```go
-log.Printf("9P: agent=%s op=%s path=%s", agentID, op, path)
-```
+3. **Observability**: State changes visible via event stream, message history via mailbox archives
 
 4. **Operation Whitelist**: Only allowed operations exposed
 ```go
@@ -308,7 +305,7 @@ import { evil } from "/etc/passwd";
 1. **Data Isolation**: Intermediate data stays in subprocess — only stdout/stderr returned to the model
 2. **Privacy Preservation**: PII processed in subprocess, never enters model context
 3. **Explicit Control**: Agent explicitly chooses what to print (and thus what the model sees)
-4. **9P Access Control**: Unix socket permissions, audit logging
+4. **9P Access Control**: Unix socket permissions, event stream for observability
 5. **Process Isolation**: Separate landrun sandbox per execution
 6. **Code Validation**: Pattern matching rejects dangerous constructs
 
@@ -562,7 +559,7 @@ The code execution pattern provides strong security through multiple layers:
 2. **bash Subprocess**: Process-level isolation
 3. **Landlock LSM**: Kernel-level enforcement
 4. **Resource Limits**: Prevent exhaustion
-5. **Audit Logging**: Comprehensive trail
+5. **Observability**: Event stream and mailbox archives
 
 **Security Posture**: Data isolation and explicit control over information flow via sandboxed subprocesses.
 
