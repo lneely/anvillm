@@ -6,8 +6,8 @@ LLM orchestrator using 9P — scriptable, multi-backend, crash-resilient
 
 ![Architecture](docs/diagrams/architecture.svg?v=2)
 
-**Core:** anvilsrv (9P daemon), anvilmcp (MCP server), anvilwebgw (API proxy)
-**Clients:** Assist (Acme), anvillm.el (Emacs), anvillm (TUI), anvilweb (web)
+**Core:** anvilsrv (9P daemon), anvilmcp (MCP server)
+**Frontends:** Any 9P-speaking program — currently Assist (Acme)
 **Benefits:** Shared sessions, crash recovery, scriptable via 9P, cross-backend agent communication
 
 ## Why 9P?
@@ -56,30 +56,19 @@ NAMESPACE=/tmp/ns.$USER.:1 anvilsrv start
 NAMESPACE=/tmp/ns.$USER.:1 Assist
 ```
 
-### Clients
+### Frontends
 
-**TUI:** `anvillm` — Keys: `s` start | `p` prompt | `t` stop | `R` restart | `K` kill | `a` alias | `r` refresh | `d` daemon | `?` help | `q` quit
+Any program that speaks 9P can be a frontend. The 9P filesystem exposes session management, state, messaging, and configuration as plain files — so building a new frontend is just reading and writing files. Past prototypes have included a TUI, a web UI with HTTP gateway, and an Emacs major mode, all built against the same API. The current frontend is:
 
-**Emacs:** `(require 'anvillm)` then `M-x anvillm` — Keys: `s` start | `p` prompt | `P` prompt (minibuffer) | `t` stop | `R` restart | `K` kill | `a` alias | `r`/`g` refresh | `d` daemon | `?` help | `q` quit
+- **Assist** — an Acme client (middle-click `Assist` to launch)
 
-**Web:** `anvilweb` (port :8080) — ⚠️ NO auth, localhost only — Remote: `ssh -L 8080:localhost:8080 user@remote`
+For web frontends that can't speak 9P directly, `anvilwebgw` bridges HTTP to 9P.
 
-**Acme:** Type `Assist` and middle-click
+The `mcptools` scripts (served via 9P at `tools/`) also provide convenient building blocks for frontends:
 
-**Tag commands:** `Get Attach Stop Restart Kill Alias Context Daemon Inbox Archive`
-
-**Interaction:** Right-click ID for prompt window, 2-1 chord for fire-and-forget
-
-| Command | Action |
-|---------|--------|
-| `Get` | Refresh session list |
-| `Kiro <dir>` / `Claude <dir>` / `Ollama <dir>` | Start session |
-| `Attach <id>` | Open tmux |
-| `Stop <id>` / `Restart <id>` / `Kill <id>` | Control session |
-| `Alias <id> <name>` | Name session |
-| `Context <id>` | Edit context |
-| `Daemon` | Manage daemon |
-| `Inbox [id]` / `Archive [id]` | View messages |
+```sh
+bash <(9p read tools/<scriptname>)
+```
 
 ## Configuration
 
@@ -307,7 +296,7 @@ Bot templates provide pre-configured agents for common tasks. Templates are shel
 ./bot-templates/Conductor kiro /path/to/project
 ```
 
-Templates set up context, roles, and initial configuration. Interact via any client (Assist, TUI, Emacs, Web) or directly via 9P mailbox.
+Templates set up context, roles, and initial configuration. Interact via Assist or directly via 9P mailbox.
 
 **Creating Templates:** Shell scripts that write to `anvillm/ctl` and configure `context`, `role`, `tasks`. See existing templates for examples.
 
@@ -321,7 +310,7 @@ Conductor receives the top-level bead ID, analyzes dependencies, and spawns agen
 
 ### Usage
 
-Examples use raw 9P calls. These actions can also be performed from any front-end (Assist, TUI, Emacs, Web).
+Examples use raw 9P calls. These actions can also be performed from Assist.
 
 **1. Taskmaster: Create tasks from project plan**
 
@@ -348,7 +337,7 @@ echo '{"to":"'$CONDUCTOR_ID'","type":"WORK_REQUEST","subject":"Execute","body":"
 
 Conductor analyzes dependencies, spawns specialized bots, and delegates work in parallel.
 
-**Monitoring:** Use any front-end (Assist, TUI, Emacs, Web). For custom integrations, see `EVENTS.md`.
+**Monitoring:** Use Assist or any 9P client. For custom integrations, see `EVENTS.md`.
 
 ## MCP Integration
 
@@ -382,6 +371,4 @@ See [Code Execution User Guide](docs/code-execution-user-guide.md) for details.
 | 9P not working | `9p ls agent` |
 | Stale PID | `anvilsrv stop` auto-cleans |
 | Daemon won't stop | `anvilsrv fgstart` for logs |
-| anvilweb issues | Check anvilsrv running, namespace matches |
-
 See Configuration section for environment variables.

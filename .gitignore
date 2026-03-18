@@ -2,13 +2,10 @@ Q
 Prompt
 Q-Reset
 Q-Login
-/anvillm
-/anvilweb
 /anvilmcp
 .claude
 .kiro
 *.elc
 /Assist
 /anvilsrv
-/anvilwebgw
 *.test

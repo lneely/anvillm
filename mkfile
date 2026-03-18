@@ -5,9 +5,6 @@ all:V: install
 build:V:
 	go build -o $INSTALL_PATH/anvilsrv ./cmd/anvilsrv
 	go build -o $INSTALL_PATH/Assist ./cmd/Assist
-	go build -o $INSTALL_PATH/anvillm ./cmd/anvillm
-	go build -o $INSTALL_PATH/anvilweb ./cmd/anvilweb
-	go build -o $INSTALL_PATH/anvilwebgw ./cmd/anvilwebgw
 	go build -o $INSTALL_PATH/anvilmcp ./cmd/anvilmcp
 	cp scripts/Alog $INSTALL_PATH/Alog
 	chmod 0755 $INSTALL_PATH/Alog
@@ -71,5 +68,4 @@ cron-remove:V:
 
 clean:V:
 	rm -f $INSTALL_PATH/anvilsrv
-	rm -f $INSTALL_PATH/anvilwebgw
 	rm -f $INSTALL_PATH/Assist

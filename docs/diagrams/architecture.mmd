@@ -1,15 +1,15 @@
 graph TB
-    subgraph Clients
+    subgraph Clients["Frontends (any 9P client)"]
         Assist["Assist<br/>(Acme)"]
-        TUI["TUI"]
-        Emacs["Emacs"]
-        Web["Web"]
+        Custom["Custom<br/>(your own)"]
     end
+    
+    WebApp["Web App"]
     
     subgraph Core["Core Services"]
         anvilsrv["anvilsrv<br/>(9P daemon)"]
         anvilmcp["anvilmcp<br/>(MCP server)"]
-        anvilwebgw["anvilwebgw<br/>(API proxy)"]
+        anvilwebgw["anvilwebgw<br/>(HTTP↔9P bridge)"]
     end
     
     subgraph Backends
@@ -20,9 +20,8 @@ graph TB
     end
     
     Assist -->|9P| anvilsrv
-    TUI -->|9P| anvilsrv
-    Emacs -->|9P| anvilsrv
-    Web -->|HTTP| anvilwebgw
+    Custom -->|9P| anvilsrv
+    WebApp -->|HTTP| anvilwebgw
     anvilwebgw -->|9P| anvilsrv
     
     anvilsrv --> Claude

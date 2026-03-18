@@ -1,9 +1,8 @@
 graph TB
-    Assist["Assist"]
-    TUI["TUI"]
+    Frontend["Frontend<br/>(any 9P client)"]
     Script["Script"]
     FS["anvillm/<br/>(9P filesystem)"]
     
-    Assist -->|9p read<br/>anvillm/list| FS
-    TUI -->|9p write<br/>anvillm/ctl| FS
+    Frontend -->|9p read<br/>anvillm/list| FS
+    Frontend -->|9p write<br/>anvillm/ctl| FS
     Script -->|9p read<br/>anvillm/events| FS
