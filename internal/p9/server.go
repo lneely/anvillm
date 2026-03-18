@@ -795,11 +795,8 @@ func (s *Server) dispatchWrite(cs *connState, f *fid, tag uint16) *plan9.Fcall {
 				}
 				msgID := args[1]
 				mailMgr := s.mgr.GetMailManager()
-				// Try inbox first, then completed
 				if err := mailMgr.DeleteFromInbox("user", msgID); err != nil {
-					if err := mailMgr.DeleteFromCompleted("user", msgID); err != nil {
-						return errFcall(fc, err.Error())
-					}
+					return errFcall(fc, err.Error())
 				}
 			default:
 				return errFcall(fc, "unknown command")
