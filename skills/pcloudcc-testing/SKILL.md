@@ -66,7 +66,7 @@ Load pcloudcc-testing skill. Test the affected code path with unit tests, fault 
 
 ### Development Agent Workflow
 
-**Prerequisites**: Load `anvillm-sessions` and `anvillm-communication` skills
+**Prerequisites**: Load `anvillm-sessions` skill
 
 Spawn testing agent:
 ```

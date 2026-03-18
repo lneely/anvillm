@@ -103,6 +103,69 @@ sandbox: default
 
 If code_explorer.sh is unavailable or errors, fall back to standard tools (grep, find, etc.). Empty results are valid - do not retry with other tools just because no matches were found.
 
+# Communication
+
+## Tools
+
+Discover agents:
+```
+Tool: execute_code
+pipe: [
+	{"tool": "list_sessions.sh"},
+	{"code": "grep '<current-working-dir>'"}
+]
+```
+
+Send message:
+```
+Tool: execute_code
+tool: send_message.sh
+args: ["--to", "<id|user>", "--type", "<type>", "--subject", "<subject>", "--body", "<body>"]
+```
+
+Check inbox:
+```
+Tool: execute_code
+tool: check_inbox.sh
+```
+
+View message history:
+```
+Tool: execute_code
+tool: mail_history.sh
+args: ["--agent-id", "<agent-id|user>", "--date", "YYYYMMdd"]
+```
+`--date` is optional. Omit to see all history.
+
+Search message history:
+```
+Tool: execute_code
+tool: mail_search.sh
+args: ["--agent-id", "<agent-id|user>", "--pattern", "<regex>", "--date", "YYYYMMdd"]
+```
+`--date` is optional.
+
+## Rules
+
+### Discovering Agents
+
+1. You communicate only with "user", or other agents working in the same $(pwd) as yourself
+
+### Sending Messages
+
+1. FROM is taken automatically (do not pass it as an argument)
+2. TO is the agent ID of the receiving bot, or "user". If the recipient does not exist, send_message.sh will error.
+3. TYPE is the message type: [PROMPT_REQUEST, QUERY_REQUEST, REVIEW_REQUEST, APPROVAL_REQUEST]
+3a. Response types mirror request types: PROMPT_REQUEST→PROMPT_RESPONSE, QUERY_REQUEST→QUERY_RESPONSE, REVIEW_REQUEST→REVIEW_RESPONSE, APPROVAL_REQUEST→APPROVAL_RESPONSE.
+4. SUBJECT is a brief description of what you did
+5. BODY is a detailed summary of what you did, including actions performed, files changed, diffs, etc.
+
+### Receiving Messages
+
+1. Check your inbox
+2. Follow the instructions in the message
+3. Always respond to the sender (the `from` field of the message), not to "user", unless the sender is "user"
+
 # Sub-agent Discipline
 
 Do NOT spawn sub-agents for:

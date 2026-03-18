@@ -30,7 +30,7 @@ body=$(echo "$data" | jq -r '.body // ""')
 
 echo "complete ${msg_id}" | 9p write "anvillm/${agent_id}/ctl" 2>/dev/null || true
 
-echo "[Message from ${from}]"
+echo "From: ${from}"
 echo "Type: ${type}"
 echo "Subject: ${subject}"
 echo ""

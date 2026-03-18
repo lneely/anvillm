@@ -80,5 +80,5 @@ Agent A dies. Orphan cron detects dead assignee, calls `unclaim`. `BeadReady` fi
 
 ## When NOT to Use
 
-- Sending messages to agents (use anvillm-communication skill)
+- Sending messages to agents (use built-in communication tools: `send_message.sh`, `check_inbox.sh`)
 - Managing tasks (use beads skill)
