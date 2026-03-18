@@ -318,6 +318,8 @@ import { evil } from "/etc/passwd";
 
 By default (when the `sandbox` argument is not specified), `execute_code` uses the restricted `anvilmcp` sandbox configuration. If this fails (e.g., due to kernel or permission constraints), it falls back to the `default` sandbox — the same configuration used by the outer landrun invocation. This compromise provides "just works" behavior and avoids surprises, while still applying the tighter sandbox when possible.
 
+For higher-risk scenarios (e.g., running untrusted scripts, processing sensitive data), the `anvilmcp` sandbox should be explicitly specified to ensure the tighter restrictions are enforced — it uses a temporary workspace, minimal filesystem access, and a restricted set of environment variables.
+
 ### bash Permissions
 
 ```bash
