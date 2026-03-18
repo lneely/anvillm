@@ -553,7 +553,6 @@ func TestSubprocessEscape(t *testing.T) {
 - bash Security: https://bash.land/manual/getting_started/permissions
 - Landlock LSM: https://landlock.io/
 - Anthropic Code Execution: https://www.anthropic.com/engineering/code-execution-with-mcp
-- OWASP Subprocess Guide: https://owasp.org/www-community/Subprocessing
 
 ## Conclusion
 
