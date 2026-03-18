@@ -26,6 +26,7 @@ Reports:
 - Security events (grouped by type, with recent details)
 - Recent errors and validation failures
 
+## msgtrace.py
 
 Real-time message sequence diagram generator. Listens to `anvillm/events` for `UserSend`/`BotSend` events and renders a PlantUML sequence diagram in a local web UI. Useful for visualizing inter-agent communication.
 
