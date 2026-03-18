@@ -556,13 +556,6 @@ func TestSubprocessEscape(t *testing.T) {
 4. **Capability-Based Security**: Fine-grained permissions
 5. **Anomaly Detection**: ML-based threat detection
 
-### Phase 8: Compliance
-
-1. **SOC 2 Compliance**: Audit controls
-2. **GDPR Compliance**: Data protection measures
-3. **HIPAA Compliance**: Healthcare data handling
-4. **PCI DSS Compliance**: Payment data security
-
 ## References
 
 - bash Security: https://bash.land/manual/getting_started/permissions
