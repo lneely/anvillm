@@ -1966,7 +1966,7 @@ func handleTasksWindow(w *acme.Win) {
 	defer w.CloseFiles()
 
 	var beads []Bead
-	filter := "ready"
+	filter := "all"
 	windowMount := ""
 	beads, _ = listBeadsWithFilter(filter, windowMount)
 	refreshTasksWindowWithBeads(w, beads, windowMount, filter)
@@ -2087,12 +2087,16 @@ func handleTasksWindow(w *acme.Win) {
 						}
 					}
 				}
-			case "All":
-				filter = "all"
+			case "Deferred":
+				filter = "deferred"
 				beads, _ = listBeadsWithFilter(filter, windowMount)
 				refreshTasksWindowWithBeads(w, beads, windowMount, filter)
 			case "Ready":
 				filter = "ready"
+				beads, _ = listBeadsWithFilter(filter, windowMount)
+				refreshTasksWindowWithBeads(w, beads, windowMount, filter)
+			case "All":
+				filter = "all"
 				beads, _ = listBeadsWithFilter(filter, windowMount)
 				refreshTasksWindowWithBeads(w, beads, windowMount, filter)
 			default:
@@ -2128,7 +2132,7 @@ func refreshTasksWindowWithBeads(w *acme.Win, beads []Bead, mount string, filter
 		buf.WriteString("  1. Select a directory path, then click Mount\n")
 		buf.WriteString("  2. Or click Select to see available mounts\n\n")
 	} else {
-		buf.WriteString("[All] [Ready]\n\n")
+		buf.WriteString("[Deferred] [Ready] [All]\n\n")
 		buf.WriteString(fmt.Sprintf("%-4s %-12s %-12s %-4s %-8s %s\n", "#", "ID", "Status", "Blk", "Assignee", "Title"))
 		buf.WriteString(fmt.Sprintf("%-4s %-12s %-12s %-4s %-8s %s\n", "----", "------------", "------------", "----", "--------", strings.Repeat("-", 50)))
 
@@ -2163,9 +2167,12 @@ func listBeadsWithFilter(filter string, mount string) ([]Bead, error) {
 	}
 
 	var endpoint string
-	if filter == "ready" {
+	switch filter {
+	case "deferred":
+		endpoint = filepath.Join("beads", mount, "deferred")
+	case "ready":
 		endpoint = filepath.Join("beads", mount, "ready")
-	} else {
+	default:
 		endpoint = filepath.Join("beads", mount, "list")
 	}
 
