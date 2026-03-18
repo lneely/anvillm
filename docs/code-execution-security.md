@@ -546,16 +546,6 @@ func TestSubprocessEscape(t *testing.T) {
 
 **Conclusion**: Code execution is significantly more secure
 
-## Future Enhancements
-
-### Phase 7: Advanced Security
-
-1. **PII Tokenization**: Automatic PII detection and masking
-2. **Network Access**: Controlled network with allowlist
-3. **Cryptographic Signing**: Sign and verify code
-4. **Capability-Based Security**: Fine-grained permissions
-5. **Anomaly Detection**: ML-based threat detection
-
 ## References
 
 - bash Security: https://bash.land/manual/getting_started/permissions
