@@ -125,7 +125,7 @@ Validation is basic pattern matching. Not comprehensive - relies on sandbox for 
 
 **Scenario**: Sensitive data leaked from subprocess
 
-**Risk**: LOW (Improved from direct tools)
+**Risk**: LOW
 
 **Mitigations**:
 1. Data stays in subprocess (not in context)
@@ -133,20 +133,22 @@ Validation is basic pattern matching. Not comprehensive - relies on sandbox for 
 3. No network access (unless explicitly granted)
 4. 9P socket access controlled by outer sandbox
 
-**Residual risk**: Data could be written to workspace, but workspace is deleted. Data could be sent via 9P to other agents - same risk as direct tools.
+**Residual risk**: Data could be written to workspace, but workspace is deleted. Data could be sent via 9P to other agents.
 
 ### Threat 5: 9P Socket Access
 
 **Scenario**: Subprocess abuses 9P access to read/write unauthorized data
 
-**Risk**: MEDIUM (Same as direct tools)
+**Risk**: MEDIUM
 
 **Mitigations**:
 1. 9P socket permissions (Unix socket, user-only)
 2. anvilsrv enforces access control
 3. Audit logging in anvilsrv
 
-**Residual risk**: If subprocess has 9P access, it has same capabilities as direct tool calls. This is by design - code execution is meant to replace direct tools.
+**Residual risk**: If subprocess has 9P access, it has the same capabilities as any 9P client. This is by design.
+
+**Mitigation**: Run locally on a trusted network. On a single-user system, the only processes with socket access are ones the user launched. Do not expose the 9P mount over the network, or at minimum, implement access control (e.g., firewall).
 
 ### Threat 6: Path Traversal
 
@@ -161,25 +163,14 @@ Validation is basic pattern matching. Not comprehensive - relies on sandbox for 
 
 **Residual risk**: None - path traversal blocked at multiple layers.
 
-## Security Benefits vs Direct Tools
+## Security Properties
 
-**Improved**:
-- Data isolation (subprocess)
+- Data isolation (subprocess, not in model context)
 - Privacy preservation (PII doesn't enter context)
 - Explicit control over data flow
 - Workspace isolation
-
-**Same**:
 - 9P socket access control
-- Process isolation
-- Agent trust model
-
-**Additional Considerations**:
-- Code validation required
-- Sandbox configuration complexity
-- Resource limit tuning
-
-**Conclusion**: Code execution improves security posture compared to direct tool calls, with acceptable additional complexity.
+- Process isolation via landrun (Landlock)
 
 ## Configuration
 
@@ -389,4 +380,3 @@ All tests should fail safely without compromising the system.
 - landrun: https://github.com/zouuup/landrun
 - Anthropic code execution pattern: https://www.anthropic.com/engineering/code-execution-with-mcp
 - User guide: ./code-execution-user-guide.md
-- Migration guide: ./code-execution-migration-guide.md

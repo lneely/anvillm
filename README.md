@@ -128,7 +128,7 @@ Templates use `{VARNAME}` syntax. Any environment variable can be referenced.
 
 <p align="center"><img src="docs/diagrams/sandbox-config.svg?v=2" width="250"></p>
 
-- Default role: `roles/default.yaml`
+- Default sandbox: `sandbox/default.yaml`
 
 ```yaml
 network: {enabled: true, unrestricted: true}
@@ -348,16 +348,14 @@ Conductor analyzes dependencies, spawns specialized bots, and delegates work in 
 ./kiro-cli/install-mcp.sh  # Adds to ~/.kiro/settings/cli.json
 ```
 
-**Tool:** `execute_code` - Execute bash scripts in isolated subprocess
+**Tool:** `execute_code` — the only tool needed. Executes bash scripts in an isolated subprocess (sandboxed via landrun). Agents discover and invoke all AnviLLM functionality through 9P and helper scripts:
 
-Enables code execution pattern for 80-99% token reduction:
-- Progressive tool discovery via 9P filesystem
-- Data processing in subprocess (not in context)
-- Loops, conditionals, and complex workflows
+```sh
+9p read anvillm/tools/anvilmcp/check_inbox.sh   # discover scripts
+bash <(9p read tools/send_message.sh) ...         # invoke them
+```
 
 See [Code Execution User Guide](docs/code-execution-user-guide.md) for details.
-
-**Legacy tools removed**: Direct tool calls (check_inbox, send_message, etc.) replaced by bash scripts accessible via `9p read anvillm/tools/anvilmcp/*.sh`
 
 ## Troubleshooting
 

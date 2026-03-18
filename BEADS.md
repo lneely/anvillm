@@ -204,19 +204,18 @@ echo 'claim bd-xyz' > anvillm/beads/ctl
 
 ## MCP Integration
 
-anvilmcp exposes beads operations as MCP tools (calls `9p write anvillm/beads/ctl`):
+Beads are accessed via `execute_code` through 9P:
 
-```json
-{
-  "name": "create_bead",
-  "inputSchema": {
-    "properties": {
-      "title": {"type": "string"},
-      "role": {"type": "string"},
-      "description": {"type": "string"}
-    }
-  }
-}
+```bash
+# Create a bead
+echo 'new "Implement login" "Add JWT auth"' | 9p write anvillm/beads/ctl
+
+# List beads
+9p read anvillm/beads/list | jq '.[] | "\(.id): \(.title)"'
+
+# Claim and complete
+echo 'claim bd-a1b2' | 9p write anvillm/beads/ctl
+echo 'complete bd-a1b2' | 9p write anvillm/beads/ctl
 ```
 
 ## Benefits

@@ -182,7 +182,7 @@ var executionSem = make(chan struct{}, 4)  // Max 4 concurrent
 
 **Description**: Code leaks sensitive data outside the system.
 
-**Risk Level**: LOW (Improved from direct tools)
+**Risk Level**: LOW
 
 **Attack Vectors**:
 - Network exfiltration (blocked)
@@ -219,11 +219,7 @@ for (const email of emails) {
 console.log(`Processed ${emails.length} emails`);  // Summary only
 ```
 
-**Residual Risk**: LOW - Better isolation than direct tools
-
-**Comparison to Direct Tools**:
-- **Direct tools**: All data flows through model context
-- **Code execution**: Data stays in subprocess, only summaries returned
+**Residual Risk**: LOW — data stays in subprocess, only summaries returned to the model
 
 ### Threat 5: 9P Socket Access
 
@@ -263,9 +259,9 @@ log.Printf("9P: agent=%s op=%s path=%s", agentID, op, path)
 allowedOps := []string{"read", "write", "ls"}
 ```
 
-**Residual Risk**: MEDIUM - Same as current system
+**Residual Risk**: MEDIUM — inherent to any 9P client
 
-**Note**: This is not a new risk introduced by code execution. The same 9P access exists with direct tool calls.
+**Mitigation**: Run locally on a trusted network. On a single-user system, the only processes with socket access are ones the user launched — self-inflicted abuse is not a meaningful threat. Do not expose the 9P mount over the network, or at minimum, implement access control (e.g., firewall).
 
 ### Threat 6: Supply Chain
 
@@ -307,33 +303,14 @@ import { evil } from "/etc/passwd";
 
 **Residual Risk**: LOW - No remote imports possible
 
-## Security Benefits vs Direct Tools
+## Security Properties
 
-### Improved Security
-
-1. **Data Isolation**: Intermediate data stays in subprocess
-   - **Direct tools**: All data flows through model context
-   - **Code execution**: Data processed in subprocess, summaries only
-
-2. **Privacy Preservation**: PII doesn't enter model context
-   - **Direct tools**: PII visible to model
-   - **Code execution**: PII stays in subprocess
-
-3. **Explicit Control**: Agent explicitly logs what model sees
-   - **Direct tools**: All tool output visible
-   - **Code execution**: Only console.log output visible
-
-### Same Security
-
-1. **9P Access Control**: Unix permissions, audit logging
-2. **Process Isolation**: Separate processes per agent
-3. **Authentication**: Agent ID validation
-
-### Additional Considerations
-
-1. **Code Validation**: New attack surface (pattern matching)
-2. **Subprocess Configuration**: Complexity in setup
-3. **Resource Limits**: Requires tuning and monitoring
+1. **Data Isolation**: Intermediate data stays in subprocess — only stdout/stderr returned to the model
+2. **Privacy Preservation**: PII processed in subprocess, never enters model context
+3. **Explicit Control**: Agent explicitly chooses what to print (and thus what the model sees)
+4. **9P Access Control**: Unix socket permissions, audit logging
+5. **Process Isolation**: Separate landrun sandbox per execution
+6. **Code Validation**: Pattern matching rejects dangerous constructs
 
 ## Subprocess Configuration
 
@@ -551,18 +528,6 @@ func TestSubprocessEscape(t *testing.T) {
 
 ## Comparison to Alternatives
 
-### vs Direct Tool Calls
-
-| Aspect | Direct Tools | Code Execution |
-|--------|--------------|----------------|
-| Data isolation | Poor (all in context) | Good (subprocess) |
-| Privacy | Poor (PII in context) | Good (PII isolated) |
-| Attack surface | 9P socket | 9P socket + subprocess |
-| Resource control | Limited | Good (timeouts, limits) |
-| Audit trail | 9P logs | 9P + execution logs |
-
-**Conclusion**: Code execution improves security posture
-
 ### vs Unrestricted Execution
 
 | Aspect | Unrestricted | Code Execution |
@@ -609,8 +574,8 @@ The code execution pattern provides strong security through multiple layers:
 4. **Resource Limits**: Prevent exhaustion
 5. **Audit Logging**: Comprehensive trail
 
-**Security Posture**: Code execution improves security compared to direct tool calls by isolating data and providing explicit control over information flow.
+**Security Posture**: Data isolation and explicit control over information flow via sandboxed subprocesses.
 
-**Residual Risks**: Primarily resource exhaustion (MEDIUM) and 9P access control (MEDIUM, same as current system).
+**Residual Risks**: Primarily resource exhaustion (MEDIUM) and 9P access control (MEDIUM, inherent to any 9P client). Mitigated by running locally on a trusted network — do not expose the 9P mount over the network, or at minimum, implement access control (e.g., firewall).
 
 **Recommendation**: Proceed with implementation. Security benefits outweigh risks.

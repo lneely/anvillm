@@ -1,11 +1,9 @@
 graph TB
     global["global.yaml<br/>(Base configuration)"]
     backends["backends/*.yaml<br/>(Backend-specific)"]
-    roles["roles/*.yaml<br/>(Role-specific)<br/>default: roles/default.yaml"]
-    tasks["tasks/*.yaml<br/>(Task-specific)"]
+    sandbox["sandbox/*.yaml<br/>(Sandbox-specific)<br/>default: sandbox/default.yaml"]
     final["Final Config<br/>(most permissive wins)"]
     
-    global -->|override| backends
-    backends -->|override| roles
-    roles -->|override| tasks
-    tasks --> final
+    global -->|merge| backends
+    backends -->|merge| sandbox
+    sandbox --> final

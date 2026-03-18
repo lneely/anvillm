@@ -12,11 +12,10 @@ Install the AnviLLM MCP server to enable agent communication tools:
 ./kiro-cli/install-mcp.sh
 ```
 
-This configures the `anvilmcp` MCP server in `~/.kiro/settings/cli.json`, providing tools:
-- `check_inbox` - Read messages from agent's inbox
-- `send_message` - Send messages to other agents or user
-- `list_sessions` - List all active sessions
-- `set_state` - Set agent state (idle, running, etc.)
+This configures the `anvilmcp` MCP server in `~/.kiro/settings/cli.json`, providing a single tool:
+- `execute_code` - Execute bash scripts in an isolated subprocess (sandboxed via landrun)
+
+All AnviLLM functionality (messaging, sessions, beads, etc.) is accessed through 9P and helper scripts within `execute_code`.
 
 ### Agent Configuration
 
