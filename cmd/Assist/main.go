@@ -1334,7 +1334,7 @@ func openArchiveWindow(owner, date string) error {
 	} else {
 		w.Name(fmt.Sprintf("/AnviLLM/%s/archive", owner))
 	}
-	w.Write("tag", []byte("Get "))
+	w.Write("tag", []byte("Get Search "))
 
 	go handleArchiveWindow(w, owner, date)
 	return nil
@@ -1357,7 +1357,9 @@ func handleArchiveWindow(w *acme.Win, owner, date string) {
 	for e := range w.EventChan() {
 		switch e.C2 {
 		case 'x', 'X':
-			switch string(e.Text) {
+			cmd := string(e.Text)
+			arg := strings.TrimSpace(string(e.Arg))
+			switch cmd {
 			case "Get":
 				// Re-read date from window name
 				tag, _ := w.ReadAll("tag")
@@ -1369,6 +1371,50 @@ func handleArchiveWindow(w *acme.Win, owner, date string) {
 					messages, _, loadErr = listMessages(owner + "/completed")
 				}
 				refreshArchiveWindowWithMessages(w, messages, owner, date, loadErr)
+			case "Search":
+				if arg == "" {
+					w.WriteEvent(e)
+					continue
+				}
+				out, err := exec.Command("bash", "-c", fmt.Sprintf("bash <(9p read anvillm/tools/mail_search.sh) --agent-id user --pattern %q", arg)).CombinedOutput()
+				if err != nil {
+					w.Addr(",")
+					w.Write("data", []byte(fmt.Sprintf("Search error: %v\n%s", err, out)))
+					w.Ctl("clean")
+					continue
+				}
+				var searchResults []Message
+				for _, line := range strings.Split(string(out), "\n") {
+					line = strings.TrimSpace(line)
+					if line == "" {
+						continue
+					}
+					var entry struct {
+						Ts   int64 `json:"ts"`
+						Data struct {
+							ID      string `json:"id"`
+							From    string `json:"from"`
+							To      string `json:"to"`
+							Type    string `json:"type"`
+							Subject string `json:"subject"`
+							Body    string `json:"body"`
+						} `json:"data"`
+					}
+					if err := json.Unmarshal([]byte(line), &entry); err != nil {
+						continue
+					}
+					searchResults = append(searchResults, Message{
+						ID:        entry.Data.ID,
+						From:      entry.Data.From,
+						To:        entry.Data.To,
+						Type:      entry.Data.Type,
+						Subject:   entry.Data.Subject,
+						Body:      entry.Data.Body,
+						Timestamp: entry.Ts,
+					})
+				}
+				messages = searchResults
+				refreshArchiveWindowWithMessages(w, messages, owner, "", nil)
 			default:
 				w.WriteEvent(e)
 			}

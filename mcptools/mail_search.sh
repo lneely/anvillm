@@ -21,7 +21,22 @@ if [[ -z "$AGENT_ID" ]] || [[ -z "$PATTERN" ]]; then
     exit 1
 fi
 
-DATE_FLAG=""
-[[ -n "$DATE" ]] && DATE_FLAG="--date $DATE"
+MAIL_DIR="$HOME/.local/share/anvillm/mail/$AGENT_ID"
 
-bash <(9p read anvillm/tools/mail_history.sh) --agent-id "$AGENT_ID" $DATE_FLAG | grep -E "$PATTERN"
+shopt -s nullglob
+if [[ -n "$DATE" ]]; then
+    SENT="$MAIL_DIR/${DATE}-sent.jsonl"
+    RECV="$MAIL_DIR/${DATE}-recv.jsonl"
+    FILES=()
+    [[ -f "$SENT" ]] && FILES+=("$SENT")
+    [[ -f "$RECV" ]] && FILES+=("$RECV")
+else
+    FILES=("$MAIL_DIR"/*-sent.jsonl "$MAIL_DIR"/*-recv.jsonl)
+fi
+shopt -u nullglob
+
+if [[ ${#FILES[@]} -eq 0 ]]; then
+    exit 0
+fi
+
+cat "${FILES[@]}" | grep -E "$PATTERN"

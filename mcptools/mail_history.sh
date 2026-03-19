@@ -38,8 +38,4 @@ if [[ ${#FILES[@]} -eq 0 ]]; then
     exit 0
 fi
 
-cat "${FILES[@]}" | jq -rs 'sort_by(.ts) | .[] |
-"\(.ts | strftime("%Y-%m-%d %H:%M:%S")) [\(.data.type)] \(.data.from) → \(.data.to)
-  Subject: \(.data.subject)
-  \(.data.body | split("\n") | join("\n  "))
-"'
+cat "${FILES[@]}" | jq -cs 'sort_by(.ts) | .[]'
