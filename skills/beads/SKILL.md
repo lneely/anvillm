@@ -71,7 +71,13 @@ Search beads by id, title, or description (includes closed):
 Tool: execute_code
 tool: search_beads.sh
 args: ["--mount", "<mount>", "--query", "<query>"]
-sandbox: default
+```
+
+Lookup bead by ID:
+```
+Tool: execute_code
+tool: search_beads.sh
+args: ["--mount", "<mount>", "--id", "<id>"]
 ```
 
 **Note:** `list_beads.sh` and `list_ready_beads.sh` only return open beads. To find closed beads, use `search_beads.sh`.

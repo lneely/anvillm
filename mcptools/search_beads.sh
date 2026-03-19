@@ -2,22 +2,38 @@
 # capabilities: beads
 # description: Search beads by id, title, or description content. Filters by scope derived from cwd.
 # Usage: search_beads.sh --mount <mount> --query <query>
+#        search_beads.sh --mount <mount> --id <bead-id>
 set -euo pipefail
 
 
 MOUNT=""
 QUERY=""
+BEAD_ID=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --mount) MOUNT="$2"; shift 2 ;;
         --query) QUERY="$2"; shift 2 ;;
+        --id)    BEAD_ID="$2"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 1 ;;
     esac
 done
 
-if [ -z "$MOUNT" ] || [ -z "$QUERY" ]; then
+if [ -z "$MOUNT" ]; then
     echo "usage: search_beads.sh --mount <mount> --query <query>" >&2
+    echo "       search_beads.sh --mount <mount> --id <bead-id>" >&2
+    exit 1
+fi
+
+# Direct ID lookup
+if [ -n "$BEAD_ID" ]; then
+    9p read "anvillm/beads/$MOUNT/$BEAD_ID/json" 2>/dev/null || echo "null"
+    exit 0
+fi
+
+if [ -z "$QUERY" ]; then
+    echo "usage: search_beads.sh --mount <mount> --query <query>" >&2
+    echo "       search_beads.sh --mount <mount> --id <bead-id>" >&2
     exit 1
 fi
 
