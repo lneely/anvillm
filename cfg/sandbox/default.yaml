@@ -2,10 +2,7 @@
 cwd: "{CWD}"
 filesystem:
   ro:
-    - "{HOME}/.gitconfig"
-    - "{XDG_CONFIG_HOME}/git/config"
-    - "{XDG_CONFIG_HOME}/git/ignore"
-    - "{XDG_CONFIG_HOME}/git/attributes"
+    - "{XDG_CONFIG_HOME}/git"
     - "{HOME}/.ssh"
     - "{HOME}/.netrc"
     - "/etc/gitconfig"
