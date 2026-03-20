@@ -27,9 +27,6 @@ build:V:
 	cp -rf roles/* $HOME/.config/anvillm/roles/
 	mkdir -p $HOME/.config/anvillm/estimation
 	mkdir -p $HOME/.local/share/anvillm/estimation
-	mkdir -p $HOME/.config/anvillm/mcptools
-	cp -rf mcptools/* $HOME/.config/anvillm/mcptools/
-	chmod 0755 $HOME/.config/anvillm/mcptools/*
 	mkdir -p $HOME/.kiro/agents/kiro-cli
 	mkdir -p $HOME/.config/anvillm/claude/agents
 	mkdir -p $HOME/.config/anvillm/claude/hooks
