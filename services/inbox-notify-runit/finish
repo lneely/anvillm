@@ -1,5 +1,0 @@
-#!/bin/sh
-# runit finish script for anvillm-inbox-notify
-# Called when the service stops (daemon exited or was killed).
-
-echo "anvillm-inbox-notify stopped"
