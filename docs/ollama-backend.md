@@ -60,7 +60,7 @@ The default configuration includes:
 - **bash**: Execute bash commands
 - **todo**: Manage ephemeral todos
 - **http**: Fetch web content
-- **anvilmcp**: 9P integration for beads
+- **anvilmcp**: MCP server for tool execution (separate repo: anvillm-mcp)
 
 ## Troubleshooting
 

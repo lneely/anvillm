@@ -12,20 +12,6 @@ python3 scripts/inbox_refresh.py
 
 Requires an open `/AnviLLM/inbox` window in Acme.
 
-## metrics-dashboard.sh
-
-Dashboard for `anvilmcp` execution metrics. Reads JSONL logs from `~/.local/state/anvilmcp/` and reports execution statistics, security events, and validation failures.
-
-```sh
-bash scripts/metrics-dashboard.sh
-```
-
-Reports:
-- Execution counts, success/failure rates, average duration
-- Executions by language
-- Security events (grouped by type, with recent details)
-- Recent errors and validation failures
-
 ## msgtrace.py
 
 Real-time message sequence diagram generator. Listens to `anvillm/events` for `UserSend`/`BotSend` events and renders a PlantUML sequence diagram in a local web UI. Useful for visualizing inter-agent communication.
