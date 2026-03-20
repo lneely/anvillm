@@ -24,9 +24,9 @@ build:V:
 	mkdir -p $HOME/.config/anvillm/claude/agents
 	mkdir -p $HOME/.config/anvillm/claude/hooks
 	cp agents/claude/* $HOME/.config/anvillm/claude/agents/
-	cp claude/hooks/* $HOME/.config/anvillm/claude/hooks/
+	cp hooks/claude/*.sh $HOME/.config/anvillm/claude/hooks/
 	chmod +x $HOME/.config/anvillm/claude/hooks/*.sh
-	bash claude/install-hooks.sh
+	bash hooks/claude/install-hooks.sh
 
 install:V: build
 
