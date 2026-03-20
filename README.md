@@ -16,7 +16,7 @@ LLM orchestrator using 9P — scriptable, multi-backend, crash-resilient
 
 ## Requirements
 
-Go 1.21+, plan9port, tmux, [landrun](https://github.com/zouuup/landrun) (kernel 5.13+), backend ([Claude Code](https://github.com/anthropics/claude-code), [Kiro](https://kiro.dev), or [Ollama](https://ollama.com) + [ollie](https://github.com/lneely/ollie))
+Go 1.21+, plan9port (provides `9pfuse`), tmux, [landrun](https://github.com/zouuup/landrun) (kernel 5.13+), backend ([Claude Code](https://github.com/anthropics/claude-code), [Kiro](https://kiro.dev), or [Ollama](https://ollama.com) + [ollie](https://github.com/lneely/ollie))
 
 ## Installation
 
@@ -47,6 +47,8 @@ anvillm fgstart     # foreground
 anvillm status
 anvillm stop
 ```
+
+On startup, the server automatically mounts at `~/mnt/anvillm` via 9pfuse.
 
 `Assist` auto-starts if needed.
 
