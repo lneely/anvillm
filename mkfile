@@ -16,7 +16,7 @@ build:V:
 	cp -rf roles/* $HOME/.config/anvillm/roles/
 	mkdir -p $HOME/.config/anvillm/estimation
 	mkdir -p $HOME/.local/share/anvillm
-	mkdir -p $HOME/.kiro/agents/kiro-cli
+	mkdir -p $HOME/.kiro/agents
 	cp agents/kiro-cli/*.json $HOME/.kiro/agents/
 	cp agents/OUTPUT_PROTOCOL.md agents/SKILLS_PROMPT.md agents/kiro-cli/USER.md $HOME/.kiro/
 	mkdir -p $HOME/.config/anvillm/claude/agents
@@ -25,6 +25,9 @@ build:V:
 	cp hooks/claude/*.sh $HOME/.config/anvillm/claude/hooks/
 	chmod +x $HOME/.config/anvillm/claude/hooks/*.sh
 	bash hooks/claude/install-hooks.sh
+	mkdir -p $HOME/.config/anvillm/tools
+	cp tools/*.sh $HOME/.config/anvillm/tools/
+	chmod +x $HOME/.config/anvillm/tools/*.sh
 
 install:V: build
 
@@ -43,4 +46,3 @@ cron-remove:V:
 
 clean:V:
 	rm -f $INSTALL_PATH/anvillm
-	rm -f $INSTALL_PATH/Assist
