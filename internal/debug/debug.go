@@ -1,7 +1,7 @@
 package debug
 
 import (
-	"anvillm/internal/logging"
+	"anvillm/pkg/logging"
 )
 
 // Enabled controls whether debug logs are printed

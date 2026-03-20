@@ -3,7 +3,7 @@ package tmux
 import (
 	"anvillm/internal/backend"
 	"anvillm/internal/debug"
-	"anvillm/internal/logging"
+	"anvillm/pkg/logging"
 	"anvillm/pkg/sandbox"
 	"context"
 	"fmt"

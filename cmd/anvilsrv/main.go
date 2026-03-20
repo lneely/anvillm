@@ -5,7 +5,7 @@ import (
 	"anvillm/internal/backend"
 	"anvillm/internal/backend/tmux"
 	"anvillm/internal/backends"
-	"anvillm/internal/logging"
+	"anvillm/pkg/logging"
 	"anvillm/internal/maildir"
 	"anvillm/internal/p9"
 	"anvillm/internal/session"
