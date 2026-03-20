@@ -3,7 +3,7 @@ INSTALL_PATH=$HOME/bin
 all:V: install
 
 build:V:
-	go build -o $INSTALL_PATH/anvilsrv ./cmd/anvilsrv
+	go build -o $INSTALL_PATH/anvillm .
 	cp scripts/anvillm-notify $INSTALL_PATH/anvillm-notify
 	chmod 0755 $INSTALL_PATH/anvillm-notify
 	cp scripts/anvillm-skills $INSTALL_PATH/anvillm-skills
@@ -58,5 +58,5 @@ cron-remove:V:
 	echo "cron removed: anvillm-supervisor"
 
 clean:V:
-	rm -f $INSTALL_PATH/anvilsrv
+	rm -f $INSTALL_PATH/anvillm
 	rm -f $INSTALL_PATH/Assist
