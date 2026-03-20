@@ -1,3 +1,2 @@
-# User Configuration
+# User-Defined Configuration
 
-Add user-specific agent instructions here.
