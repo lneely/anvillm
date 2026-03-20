@@ -20,10 +20,12 @@ build:V:
 	mkdir -p $HOME/.config/anvillm/estimation
 	mkdir -p $HOME/.local/share/anvillm
 	mkdir -p $HOME/.kiro/agents/kiro-cli
-	cp agents/kiro-cli/* $HOME/.kiro/agents/
+	cp agents/kiro-cli/*.json $HOME/.kiro/agents/
+	cp agents/kiro-cli/*.md $HOME/.kiro/
 	mkdir -p $HOME/.config/anvillm/claude/agents
 	mkdir -p $HOME/.config/anvillm/claude/hooks
 	cp agents/claude/* $HOME/.config/anvillm/claude/agents/
+	cp agents/kiro-cli/OUTPUT_PROTOCOL.md $HOME/.config/anvillm/claude/
 	cp hooks/claude/*.sh $HOME/.config/anvillm/claude/hooks/
 	chmod +x $HOME/.config/anvillm/claude/hooks/*.sh
 	bash hooks/claude/install-hooks.sh
