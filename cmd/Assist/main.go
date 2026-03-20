@@ -3,7 +3,6 @@ package main
 
 import (
 	"anvillm/internal/logging"
-	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -1438,10 +1437,10 @@ func handleArchiveWindow(w *acme.Win, owner, date string) {
 					w.WriteEvent(e)
 					continue
 				}
-				out, err := exec.Command("bash", "-c", fmt.Sprintf("bash <(9p read anvillm/tools/mail_search.sh) --agent-id user --pattern %q", arg)).CombinedOutput()
+				out, err := searchMail("user", arg, "")
 				if err != nil {
 					w.Addr(",")
-					w.Write("data", []byte(fmt.Sprintf("Search error: %v\n%s", err, out)))
+					w.Write("data", []byte(fmt.Sprintf("Search error: %v\n", err)))
 					w.Ctl("clean")
 					continue
 				}
@@ -3012,23 +3011,18 @@ func initBeads(prefix string, mount string) error {
 	return writeBeadsFile(filepath.Join( mount, "ctl"), []byte(fmt.Sprintf("init %s", prefix)))
 }
 
-// mountProject mounts cwd via mount_beads.sh mcptool and returns the generated mount name.
+// mountProject mounts cwd via beads ctl and returns the generated mount name.
 func mountProject(cwd string) (string, error) {
-	script, err := readFile("tools/mount_beads.sh")
-	if err != nil {
-		return "", fmt.Errorf("read mount_beads.sh: %w", err)
+	if !isBeadsConnected() {
+		return "", fmt.Errorf("not connected to 9beads")
 	}
-	cmd := exec.Command("bash", "-s", "--", "--cwd", cwd)
-	cmd.Stdin = bytes.NewReader(script)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("mount_beads.sh: %w", err)
+	// Generate mount name (first segment of UUID)
+	mount := fmt.Sprintf("%08x", time.Now().UnixNano()&0xffffffff)
+	cmd := fmt.Sprintf("mount %s %s", cwd, mount)
+	if err := writeBeadsFile("ctl", []byte(cmd)); err != nil {
+		return "", fmt.Errorf("mount failed: %w", err)
 	}
-	name := strings.TrimSpace(string(out))
-	if name == "" {
-		return "", fmt.Errorf("mount_beads.sh returned empty mount name")
-	}
-	return name, nil
+	return mount, nil
 }
 
 func umountProject(name string) error {
@@ -3036,4 +3030,49 @@ func umountProject(name string) error {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
 	return writeBeadsFile("ctl", []byte(fmt.Sprintf("umount %s", name)))
+}
+
+// searchMail searches mail files for a pattern
+func searchMail(agentID, pattern, date string) ([]byte, error) {
+	homeDir, _ := os.UserHomeDir()
+	mailDir := filepath.Join(homeDir, ".local/share/anvillm/mail", agentID)
+
+	var files []string
+	if date != "" {
+		sent := filepath.Join(mailDir, date+"-sent.jsonl")
+		recv := filepath.Join(mailDir, date+"-recv.jsonl")
+		if _, err := os.Stat(sent); err == nil {
+			files = append(files, sent)
+		}
+		if _, err := os.Stat(recv); err == nil {
+			files = append(files, recv)
+		}
+	} else {
+		entries, _ := os.ReadDir(mailDir)
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), "-sent.jsonl") || strings.HasSuffix(e.Name(), "-recv.jsonl") {
+				files = append(files, filepath.Join(mailDir, e.Name()))
+			}
+		}
+	}
+
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []byte
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			if re.MatchString(line) {
+				results = append(results, line...)
+				results = append(results, '\n')
+			}
+		}
+	}
+	return results, nil
 }
