@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -227,6 +228,27 @@ func start(daemonize bool) {
 	defer mdWriter.Close()
 
 	logging.Logger().Info("anvillm started successfully", zap.String("socket", srv.SocketPath()))
+
+	// Setup FUSE mount
+	mnt := filepath.Join(os.Getenv("HOME"), "mnt", "anvillm")
+	var fuseCmd *exec.Cmd
+	if err := os.MkdirAll(mnt, 0755); err != nil {
+		logging.Logger().Warn("cannot create mount dir", zap.Error(err))
+	} else {
+		fuseCmd = exec.Command("9pfuse", srv.SocketPath(), mnt)
+		if err := fuseCmd.Start(); err != nil {
+			logging.Logger().Warn("9pfuse failed", zap.Error(err))
+			fuseCmd = nil
+		} else {
+			logging.Logger().Info("mounted", zap.String("path", mnt))
+		}
+	}
+	defer func() {
+		if fuseCmd != nil {
+			exec.Command("fusermount", "-u", mnt).Run()
+			fuseCmd.Wait()
+		}
+	}()
 
 	// Start background monitor for self-healing
 	stopMonitor := make(chan struct{})
