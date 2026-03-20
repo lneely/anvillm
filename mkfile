@@ -10,9 +10,6 @@ build:V:
 	chmod 0755 $INSTALL_PATH/anvilspawn
 	cp scripts/anvillm-supervisor $INSTALL_PATH/anvillm-supervisor
 	chmod 0755 $INSTALL_PATH/anvillm-supervisor
-	mkdir -p $INSTALL_PATH/Teams
-	cp -f team-templates/* $INSTALL_PATH/Teams/
-	chmod 0755 $INSTALL_PATH/Teams/*
 	mkdir -p $HOME/.config/anvillm
 	cp -rf cfg/* $HOME/.config/anvillm/
 	mkdir -p $HOME/.config/anvillm/roles
