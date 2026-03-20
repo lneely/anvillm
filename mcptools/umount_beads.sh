@@ -19,5 +19,5 @@ if [ -z "$MOUNT" ]; then
     exit 1
 fi
 
-echo "umount $MOUNT" | 9p write anvillm/beads/ctl
+echo "umount $MOUNT" | 9p write beads/ctl
 echo "unmounted $MOUNT"

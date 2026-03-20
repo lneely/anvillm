@@ -211,17 +211,15 @@ func start(daemonize bool) {
 		}
 	}()
 
-	// Start 9P server with empty beads filesystem (mounts created on-demand)
-	beadsFS := p9.NewBeadsFS(nil, context.Background())
-	srv, err := p9.NewServer(mgr, beadsFS)
+	// Start 9P server (beads served separately by 9beads)
+	srv, err := p9.NewServer(mgr)
 	if err != nil {
 		logging.Logger().Fatal("failed to start 9P server", zap.Error(err))
 	}
 	defer srv.Close()
 
-	// Wire up event bus to session manager and beads filesystem
+	// Wire up event bus to session manager
 	mgr.SetEventBus(srv.Events())
-	beadsFS.SetEventBus(srv.Events())
 
 	// Start maildir writer for message persistence
 	mailDir := filepath.Join(os.Getenv("HOME"), ".local", "share", "anvillm", "mail")

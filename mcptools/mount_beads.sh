@@ -22,10 +22,10 @@ fi
 
 MOUNT=$(uuidgen | cut -d- -f1)
 
-echo "mount $CWD $MOUNT" | 9p write anvillm/beads/ctl
+echo "mount $CWD $MOUNT" | 9p write beads/ctl
 
 # Verify mount succeeded
-if ! 9p read anvillm/beads/mtab 2>/dev/null | grep -q "^$MOUNT	"; then
+if ! 9p read beads/mtab 2>/dev/null | grep -q "^$MOUNT	"; then
     echo "error: mount failed for $CWD" >&2
     exit 1
 fi

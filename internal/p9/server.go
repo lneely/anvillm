@@ -9,7 +9,6 @@ import (
 	"anvillm/internal/mailbox"
 	"anvillm/internal/session"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -77,12 +76,6 @@ const (
 	qidUserCompleted             // user/completed
 	qidUserCtl                   // user/ctl
 	qidUserMail                  // user/mail
-	qidBeads                     // beads directory
-	qidBeadsCtl                  // beads/ctl
-	qidBeadsList                 // beads/list
-	qidBeadsMtab                 // beads/mtab
-	qidBeadsReady                // beads/ready
-	qidBeadsDeferred             // beads/deferred
 	qidTools                     // tools directory
 	qidSkills                    // skills directory
 	qidRoles                     // roles directory
@@ -92,7 +85,6 @@ const (
 	qidOutboxBase    = 0x30000000 // session/{id}/outbox
 	qidCompletedBase = 0x40000000 // session/{id}/completed
 	qidMessageBase   = 0x50000000 // message files
-	qidBeadsBase     = 0x60000000 // beads/{id}/file
 	qidToolsBase     = 0x70000000 // tools/{tool}
 	qidSkillsBase    = 0x80000000 // skills/{skill}
 	qidRolesBase     = 0x90000000 // roles/{role}
@@ -127,7 +119,6 @@ type Server struct {
 	listener      net.Listener
 	socketPath    string
 	events        *eventbus.Bus
-	beads         *BeadsFS
 	tools         *ToolsFS
 	skills        *SkillsFS
 	roles         *RolesFS
@@ -156,7 +147,7 @@ type fid struct {
 }
 
 // NewServer creates and starts the 9P server.
-func NewServer(mgr *session.Manager, beadsFS *BeadsFS) (*Server, error) {
+func NewServer(mgr *session.Manager) (*Server, error) {
 	ns := client.Namespace()
 	if ns == "" {
 		return nil, fmt.Errorf("no namespace")
@@ -188,7 +179,6 @@ func NewServer(mgr *session.Manager, beadsFS *BeadsFS) (*Server, error) {
 		listener:   listener,
 		socketPath: sockPath,
 		events:     eventbus.New(),
-		beads:      beadsFS,
 		tools:      toolsFS,
 		skills:     NewSkillsFS(),
 		roles:      NewRolesFS(),
@@ -226,11 +216,6 @@ func (s *Server) SocketPath() string {
 // Events returns the event bus for publishing events.
 func (s *Server) Events() *eventbus.Bus {
 	return s.events
-}
-
-// Beads returns the BeadsFS instance.
-func (s *Server) Beads() *BeadsFS {
-	return s.beads
 }
 
 func (s *Server) acceptLoop() {
@@ -366,9 +351,6 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			case "user":
 				qid = plan9.Qid{Type: QTDir, Path: qidUser}
 				newPath = "/user"
-			case "beads":
-				qid = plan9.Qid{Type: QTDir, Path: qidBeads}
-				newPath = "/beads"
 			case "tools":
 				qid = plan9.Qid{Type: QTDir, Path: qidTools}
 				newPath = "/tools"
@@ -407,38 +389,6 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 				newPath = "/user/mail"
 			default:
 				return errFcall(fc, "not found")
-			}
-		} else if path == "/beads" {
-			// Inside beads directory
-			switch name {
-			case "ctl":
-				qid = plan9.Qid{Type: QTFile, Path: qidBeadsCtl}
-				newPath = "/beads/ctl"
-			case "list":
-				qid = plan9.Qid{Type: QTFile, Path: qidBeadsList}
-				newPath = "/beads/list"
-			case "mtab":
-				qid = plan9.Qid{Type: QTFile, Path: qidBeadsMtab}
-				newPath = "/beads/mtab"
-			case "ready":
-				qid = plan9.Qid{Type: QTFile, Path: qidBeadsReady}
-				newPath = "/beads/ready"
-			case "deferred":
-				qid = plan9.Qid{Type: QTFile, Path: qidBeadsDeferred}
-				newPath = "/beads/deferred"
-			default:
-				// Mount directory - verify it exists
-				if s.beads != nil {
-					mounts := s.beads.ListMounts()
-					if _, isMount := mounts[name]; isMount {
-						qid = plan9.Qid{Type: QTDir, Path: qidBeadsBase + hashID(name)}
-						newPath = "/beads/" + name
-					} else {
-						return errFcall(fc, "not found")
-					}
-				} else {
-					return errFcall(fc, "not found")
-				}
 			}
 		} else if path == "/tools" {
 			// Inside tools directory - list tools flat
@@ -497,32 +447,6 @@ func (s *Server) walk(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 			} else {
 				return errFcall(fc, "not found")
 			}
-		} else if strings.HasPrefix(path, "/beads/") && strings.Count(path, "/") == 2 {
-			// Inside a mount directory
-			mountName := strings.TrimPrefix(path, "/beads/")
-			if s.beads != nil {
-				mounts := s.beads.ListMounts()
-				if _, isMount := mounts[mountName]; isMount {
-					// Check if name is a control file or bead ID
-					switch name {
-					case "cwd", "ctl", "list", "ready", "deferred", "stats", "blocked", "stale", "query", "config":
-						qid = plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+name)}
-						newPath = path + "/" + name
-					default:
-						// Bead ID directory
-						qid = plan9.Qid{Type: QTDir, Path: qidBeadsBase + hashID(mountName+name)}
-						newPath = path + "/" + name
-					}
-				} else {
-					return errFcall(fc, "not found")
-				}
-			} else {
-				return errFcall(fc, "not found")
-			}
-		} else if strings.HasPrefix(path, "/beads/") && strings.Count(path, "/") == 3 {
-			// Inside a mount's bead directory - property files
-			qid = plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(path+name)}
-			newPath = path + "/" + name
 		} else if strings.HasPrefix(path, "/user/") && strings.Count(path, "/") == 2 {
 			// Inside user mailbox directory - message files
 			qid = plan9.Qid{Type: QTFile, Path: qidMessageBase + hashID("user"+path[6:]+name)}
@@ -676,20 +600,6 @@ func (s *Server) dispatchWrite(cs *connState, f *fid, tag uint16) *plan9.Fcall {
 	path := f.path
 	input := strings.TrimSpace(string(f.writeBuf))
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
-
-	// Handle beads writes
-	if beadsPath, ok := strings.CutPrefix(path, "/beads/"); ok {
-		if s.beads != nil {
-			cs.mu.Lock()
-			sessionID := cs.sessionID
-			cs.mu.Unlock()
-			if err := s.beads.Write(beadsPath, f.writeBuf, sessionID); err != nil {
-				return errFcall(fc, err.Error())
-			}
-			return &plan9.Fcall{Type: plan9.Rwrite, Tag: fc.Tag, Count: uint32(len(f.writeBuf))}
-		}
-		return errFcall(fc, "beads not initialized")
-	}
 
 	// /ctl - create new session or recover orphaned sessions
 	if path == "/ctl" {
@@ -1085,10 +995,6 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 			Mode: plan9.DMDIR | 0555, Name: "user", Uid: "q", Gid: "q", Muid: "q",
 		})
 		dirs = append(dirs, plan9.Dir{
-			Qid:  plan9.Qid{Type: QTDir, Path: qidBeads},
-			Mode: plan9.DMDIR | 0555, Name: "beads", Uid: "q", Gid: "q", Muid: "q",
-		})
-		dirs = append(dirs, plan9.Dir{
 			Qid:  plan9.Qid{Type: QTDir, Path: qidTools},
 			Mode: plan9.DMDIR | 0555, Name: "tools", Uid: "q", Gid: "q", Muid: "q",
 		})
@@ -1139,119 +1045,6 @@ func (s *Server) readDir(path string, offset uint64, count uint32) []byte {
 				})
 			}
 		}
-	} else if path == "/beads" {
-		// Beads directory - only ctl, mtab, ready (aggregate), and mounted projects
-		dirs = append(dirs, plan9.Dir{
-			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsCtl}, Mode: 0222, Name: "ctl",
-			Uid: "q", Gid: "q", Muid: "q",
-		})
-		dirs = append(dirs, plan9.Dir{
-			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsMtab}, Mode: 0444, Name: "mtab",
-			Uid: "q", Gid: "q", Muid: "q",
-		})
-		dirs = append(dirs, plan9.Dir{
-			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsReady}, Mode: 0444, Name: "ready",
-			Uid: "q", Gid: "q", Muid: "q",
-		})
-		dirs = append(dirs, plan9.Dir{
-			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsDeferred}, Mode: 0444, Name: "deferred",
-			Uid: "q", Gid: "q", Muid: "q",
-		})
-		// Add mounted projects as directories
-		if s.beads != nil {
-			for name := range s.beads.ListMounts() {
-				dirs = append(dirs, plan9.Dir{
-					Qid: plan9.Qid{Type: QTDir, Path: qidBeadsBase + uint64(len(name))}, Mode: 0555 | plan9.DMDIR, Name: name,
-					Uid: "q", Gid: "q", Muid: "q",
-				})
-			}
-		}
-	} else if strings.HasPrefix(path, "/beads/") && strings.Count(path, "/") == 2 {
-		// Inside a mounted project directory - show all beads endpoints
-		mountName := strings.TrimPrefix(path, "/beads/")
-		if s.beads != nil {
-			mounts := s.beads.ListMounts()
-			if _, exists := mounts[mountName]; exists {
-				// Show all standard beads endpoints for this mount
-				dirs = append(dirs, plan9.Dir{
-					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"cwd")}, Mode: 0444, Name: "cwd",
-					Uid: "q", Gid: "q", Muid: "q",
-				})
-				dirs = append(dirs, plan9.Dir{
-					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"ctl")}, Mode: 0222, Name: "ctl",
-					Uid: "q", Gid: "q", Muid: "q",
-				})
-				dirs = append(dirs, plan9.Dir{
-					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"list")}, Mode: 0444, Name: "list",
-					Uid: "q", Gid: "q", Muid: "q",
-				})
-				dirs = append(dirs, plan9.Dir{
-					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"ready")}, Mode: 0444, Name: "ready",
-					Uid: "q", Gid: "q", Muid: "q",
-				})
-				dirs = append(dirs, plan9.Dir{
-					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"deferred")}, Mode: 0444, Name: "deferred",
-					Uid: "q", Gid: "q", Muid: "q",
-				})
-				dirs = append(dirs, plan9.Dir{
-					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"stats")}, Mode: 0444, Name: "stats",
-					Uid: "q", Gid: "q", Muid: "q",
-				})
-				dirs = append(dirs, plan9.Dir{
-					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"blocked")}, Mode: 0444, Name: "blocked",
-					Uid: "q", Gid: "q", Muid: "q",
-				})
-				dirs = append(dirs, plan9.Dir{
-					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"stale")}, Mode: 0444, Name: "stale",
-					Uid: "q", Gid: "q", Muid: "q",
-				})
-				dirs = append(dirs, plan9.Dir{
-					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"query")}, Mode: 0644, Name: "query",
-					Uid: "q", Gid: "q", Muid: "q",
-				})
-				dirs = append(dirs, plan9.Dir{
-					Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(mountName+"config")}, Mode: 0444, Name: "config",
-					Uid: "q", Gid: "q", Muid: "q",
-				})
-				// Add bead directories
-				data, err := s.beads.Read(mountName + "/list")
-				if err == nil {
-					var issues []struct{ ID string `json:"id"` }
-					if json.Unmarshal(data, &issues) == nil {
-						for _, issue := range issues {
-							dirs = append(dirs, plan9.Dir{
-								Qid: plan9.Qid{Type: QTDir, Path: qidBeadsBase + hashID(mountName+issue.ID)}, Mode: 0555 | plan9.DMDIR, Name: issue.ID,
-								Uid: "q", Gid: "q", Muid: "q",
-							})
-						}
-					}
-				}
-			}
-		}
-	} else if strings.HasPrefix(path, "/beads/") && strings.Count(path, "/") == 3 {
-		// Inside a mount's bead directory - show property files
-		// e.g., /beads/anvillm/anv-77c/json
-		// Do NOT show the bead ID itself as a subdirectory
-		dirs = append(dirs, plan9.Dir{
-			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(path+"json")}, Mode: 0444, Name: "json",
-			Uid: "q", Gid: "q", Muid: "q",
-		})
-		dirs = append(dirs, plan9.Dir{
-			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(path+"status")}, Mode: 0444, Name: "status",
-			Uid: "q", Gid: "q", Muid: "q",
-		})
-		dirs = append(dirs, plan9.Dir{
-			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(path+"title")}, Mode: 0444, Name: "title",
-			Uid: "q", Gid: "q", Muid: "q",
-		})
-		dirs = append(dirs, plan9.Dir{
-			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(path+"description")}, Mode: 0444, Name: "description",
-			Uid: "q", Gid: "q", Muid: "q",
-		})
-		dirs = append(dirs, plan9.Dir{
-			Qid: plan9.Qid{Type: QTFile, Path: qidBeadsBase + hashID(path+"assignee")}, Mode: 0444, Name: "assignee",
-			Uid: "q", Gid: "q", Muid: "q",
-		})
 	} else if path == "/user" {
 		// User directory - only mailbox subdirs
 		dirs = append(dirs, plan9.Dir{
@@ -1431,18 +1224,6 @@ func (s *Server) readFile(path string) string {
 	if strings.HasPrefix(path, "/roles/") {
 		if s.roles != nil {
 			data, err := s.roles.Read("anvillm/" + strings.TrimPrefix(path, "/"))
-			if err != nil {
-				return ""
-			}
-			return string(data)
-		}
-		return ""
-	}
-
-	// Handle beads paths
-	if beadsPath, ok := strings.CutPrefix(path, "/beads/"); ok {
-		if s.beads != nil {
-			data, err := s.beads.Read(beadsPath)
 			if err != nil {
 				return ""
 			}

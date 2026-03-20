@@ -21,4 +21,4 @@ if [ -z "$MOUNT" ] || [ -z "$BEAD_ID" ]; then
     exit 1
 fi
 
-9p read "anvillm/beads/$MOUNT/$BEAD_ID/comments" 2>/dev/null || echo "[]"
+9p read "beads/$MOUNT/$BEAD_ID/comments" 2>/dev/null || echo "[]"

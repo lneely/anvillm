@@ -21,5 +21,5 @@ if [ -z "$MOUNT" ] || [ -z "$BEAD_ID" ]; then
     exit 1
 fi
 
-echo "unclaim $BEAD_ID" | 9p write anvillm/beads/$MOUNT/ctl
+echo "unclaim $BEAD_ID" | 9p write beads/$MOUNT/ctl
 echo "unclaimed $BEAD_ID"

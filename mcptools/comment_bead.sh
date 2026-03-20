@@ -23,5 +23,5 @@ if [ -z "$MOUNT" ] || [ -z "$BEAD_ID" ] || [ -z "$TEXT" ]; then
     exit 1
 fi
 
-printf "comment %s '%s'\n" "$BEAD_ID" "$TEXT" | 9p write anvillm/beads/$MOUNT/ctl
+printf "comment %s '%s'\n" "$BEAD_ID" "$TEXT" | 9p write beads/$MOUNT/ctl
 echo "commented on $BEAD_ID"

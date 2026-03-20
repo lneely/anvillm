@@ -23,5 +23,5 @@ if [ -z "$MOUNT" ] || [ -z "$CHILD" ] || [ -z "$PARENT" ]; then
     exit 1
 fi
 
-echo "dep $CHILD $PARENT" | 9p write anvillm/beads/$MOUNT/ctl
+echo "dep $CHILD $PARENT" | 9p write beads/$MOUNT/ctl
 echo "$CHILD depends on $PARENT"

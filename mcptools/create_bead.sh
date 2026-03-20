@@ -30,7 +30,7 @@ if [ -z "$MOUNT" ] || [ -z "$TITLE" ]; then
 fi
 
 # Derive scope from cwd relative to mount's cwd
-MOUNT_CWD=$(9p read "anvillm/beads/$MOUNT/cwd" 2>/dev/null)
+MOUNT_CWD=$(9p read "beads/$MOUNT/cwd" 2>/dev/null)
 SCOPE=""
 if [ -n "$MOUNT_CWD" ]; then
     REL_PATH="${PWD#"$MOUNT_CWD"}"
@@ -44,5 +44,5 @@ CMD="new '$TITLE' '$DESC'"
 [ -n "$CAP" ]    && CMD="$CMD capability=$CAP"
 [ -n "$SCOPE" ]  && CMD="$CMD scope=$SCOPE"
 
-echo "$CMD" | 9p write anvillm/beads/$MOUNT/ctl
+echo "$CMD" | 9p write beads/$MOUNT/ctl
 echo "created (deferred): $TITLE"

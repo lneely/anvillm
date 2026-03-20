@@ -52,7 +52,8 @@ type SessionInfo struct {
 }
 
 var (
-	fs *client.Fsys
+	fs      *client.Fsys
+	beadsFs *client.Fsys
 	// Track window IDs for prompt windows (client-side state)
 	promptWindows   = make(map[string]int) // session ID -> window ID
 	promptWindowsMu sync.RWMutex            // protects promptWindows map
@@ -96,6 +97,12 @@ func main() {
 				logging.Logger().Info("continuing without daemon connection")
 			}
 		}
+	}
+
+	// Connect to 9beads (optional - beads features disabled if not running)
+	beadsFs, err = connectToBeads()
+	if err != nil {
+		logging.Logger().Info("9beads not running, beads features disabled")
 	}
 	if fs != nil {
 		defer fs.Close()
@@ -360,8 +367,20 @@ func connectToServer() (*client.Fsys, error) {
 	return client.MountService("anvillm")
 }
 
+func connectToBeads() (*client.Fsys, error) {
+	ns := client.Namespace()
+	if ns == "" {
+		return nil, fmt.Errorf("no namespace")
+	}
+	return client.MountService("beads")
+}
+
 func isConnected() bool {
 	return fs != nil
+}
+
+func isBeadsConnected() bool {
+	return beadsFs != nil
 }
 
 func createSession(backend, cwd string) error {
@@ -425,7 +444,7 @@ func getMountForSession(sessionID string) string {
 	if err != nil || sess.Cwd == "" {
 		return ""
 	}
-	data, err := readFile("beads/mtab")
+	data, err := readBeadsFile("mtab")
 	if err != nil {
 		return ""
 	}
@@ -613,6 +632,44 @@ func writeFile(path string, data []byte) error {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
 	fid, err := fs.Open(path, plan9.OWRITE)
+	if err != nil {
+		return err
+	}
+	defer fid.Close()
+
+	_, err = fid.Write(data)
+	return err
+}
+
+func readBeadsFile(path string) ([]byte, error) {
+	if !isBeadsConnected() {
+		return nil, fmt.Errorf("not connected to 9beads")
+	}
+	fid, err := beadsFs.Open(path, plan9.OREAD)
+	if err != nil {
+		return nil, err
+	}
+	defer fid.Close()
+
+	var buf []byte
+	tmp := make([]byte, 8192)
+	for {
+		n, err := fid.Read(tmp)
+		if n > 0 {
+			buf = append(buf, tmp[:n]...)
+		}
+		if err != nil {
+			break
+		}
+	}
+	return buf, nil
+}
+
+func writeBeadsFile(path string, data []byte) error {
+	if !isBeadsConnected() {
+		return fmt.Errorf("not connected to 9beads")
+	}
+	fid, err := beadsFs.Open(path, plan9.OWRITE)
 	if err != nil {
 		return err
 	}
@@ -2245,7 +2302,7 @@ func handleTasksWindow(w *acme.Win) {
 					fmt.Fprintf(os.Stderr, "Error unmounting: %v\n", err)
 				} else {
 					if windowMount == name {
-						data, _ := readFile("beads/mtab")
+						data, _ := readBeadsFile("mtab")
 						lines := strings.Split(strings.TrimSpace(string(data)), "\n")
 						found := false
 						for _, line := range lines {
@@ -2271,7 +2328,7 @@ func handleTasksWindow(w *acme.Win) {
 			case "Select":
 				name := strings.TrimSpace(arg)
 				if name == "" {
-					data, err := readFile("beads/mtab")
+					data, err := readBeadsFile("mtab")
 					if err != nil {
 						fmt.Fprintf(os.Stderr, "Error reading mtab: %v\n", err)
 					} else {
@@ -2279,7 +2336,7 @@ func handleTasksWindow(w *acme.Win) {
 						fmt.Fprintf(os.Stderr, "Usage: select mount name, then Select\n")
 					}
 				} else {
-					data, err := readFile("beads/mtab")
+					data, err := readBeadsFile("mtab")
 					if err != nil {
 						fmt.Fprintf(os.Stderr, "Error reading mtab: %v\n", err)
 					} else {
@@ -2382,21 +2439,21 @@ func listBeadsWithFilter(filter string, mount string) ([]Bead, error) {
 	switch filter {
 	case "deferred":
 		if mount == "" {
-			endpoint = "beads/deferred"
+			endpoint = "deferred"
 		} else {
-			endpoint = filepath.Join("beads", mount, "deferred")
+			endpoint = filepath.Join(mount, "deferred")
 		}
 	case "ready":
 		if mount == "" {
-			endpoint = "beads/ready"
+			endpoint = "ready"
 		} else {
-			endpoint = filepath.Join("beads", mount, "ready")
+			endpoint = filepath.Join(mount, "ready")
 		}
 	default:
-		endpoint = filepath.Join("beads", mount, "list")
+		endpoint = filepath.Join(mount, "list")
 	}
 
-	data, err := readFile(endpoint)
+	data, err := readBeadsFile(endpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -2519,7 +2576,7 @@ func createBeadFromMarkdown(content, parentID string, mount string) error {
 		cmd = fmt.Sprintf("%s blockers=%s", cmd, blockers)
 	}
 
-	return writeFile(filepath.Join("beads", mount, "ctl"), []byte(cmd))
+	return writeBeadsFile(filepath.Join( mount, "ctl"), []byte(cmd))
 }
 
 func openViewBeadWindow(beadID string, mount string) error {
@@ -2689,7 +2746,7 @@ func handleCommentWindow(w *acme.Win, beadID string, mount string) {
 					continue
 				}
 				cmd := fmt.Sprintf("comment %s '%s'", beadID, text)
-				if err := writeFile(filepath.Join("beads", mount, "ctl"), []byte(cmd)); err != nil {
+				if err := writeBeadsFile(filepath.Join( mount, "ctl"), []byte(cmd)); err != nil {
 					fmt.Fprintf(os.Stderr, "Error adding comment: %v\n", err)
 				} else {
 					w.Addr(",")
@@ -2724,7 +2781,7 @@ func handleCommentsWindow(w *acme.Win, beadID string, mount string) {
 }
 
 func refreshCommentsWindow(w *acme.Win, beadID string, mount string) {
-	data, err := readFile(filepath.Join("beads", mount, beadID, "comments"))
+	data, err := readBeadsFile(filepath.Join( mount, beadID, "comments"))
 	if err != nil {
 		w.Addr(",")
 		w.Write("data", []byte(fmt.Sprintf("Error reading comments: %v\n", err)))
@@ -2766,7 +2823,7 @@ func getBead(beadID string, mount string) (*Bead, error) {
 		return nil, fmt.Errorf("not connected to anvilsrv")
 	}
 
-	data, err := readFile(filepath.Join("beads", mount, beadID, "json"))
+	data, err := readBeadsFile(filepath.Join( mount, beadID, "json"))
 	if err != nil {
 		return nil, err
 	}
@@ -2786,7 +2843,7 @@ func addBlocksDep(blockerID, blockedID string, mount string) error {
 	// dep <child> <parent> means parent blocks child
 	// So "blockerID blocks blockedID" means blockedID depends on blockerID
 	cmd := fmt.Sprintf("dep %s %s", blockedID, blockerID)
-	return writeFile(filepath.Join("beads", mount, "ctl"), []byte(cmd))
+	return writeBeadsFile(filepath.Join( mount, "ctl"), []byte(cmd))
 }
 
 func removeBlocksDep(beadID, blockerID string, mount string) error {
@@ -2794,7 +2851,7 @@ func removeBlocksDep(beadID, blockerID string, mount string) error {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
 	cmd := fmt.Sprintf("undep %s %s", beadID, blockerID)
-	return writeFile(filepath.Join("beads", mount, "ctl"), []byte(cmd))
+	return writeBeadsFile(filepath.Join( mount, "ctl"), []byte(cmd))
 }
 
 func deleteBead(beadID string, mount string) error {
@@ -2802,49 +2859,49 @@ func deleteBead(beadID string, mount string) error {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
 	cmd := fmt.Sprintf("delete %s", beadID)
-	return writeFile(filepath.Join("beads", mount, "ctl"), []byte(cmd))
+	return writeBeadsFile(filepath.Join( mount, "ctl"), []byte(cmd))
 }
 
 func claimBeadAsUser(beadID string, mount string) error {
 	if !isConnected() {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
-	return writeFile(filepath.Join("beads", mount, "ctl"), []byte(fmt.Sprintf("claim %s user", beadID)))
+	return writeBeadsFile(filepath.Join( mount, "ctl"), []byte(fmt.Sprintf("claim %s user", beadID)))
 }
 
 func unclaimBead(beadID string, mount string) error {
 	if !isConnected() {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
-	return writeFile(filepath.Join("beads", mount, "ctl"), []byte(fmt.Sprintf("unclaim %s", beadID)))
+	return writeBeadsFile(filepath.Join( mount, "ctl"), []byte(fmt.Sprintf("unclaim %s", beadID)))
 }
 
 func completeBead(beadID string, mount string) error {
 	if !isConnected() {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
-	return writeFile(filepath.Join("beads", mount, "ctl"), []byte(fmt.Sprintf("complete %s", beadID)))
+	return writeBeadsFile(filepath.Join( mount, "ctl"), []byte(fmt.Sprintf("complete %s", beadID)))
 }
 
 func failBead(beadID, reason string, mount string) error {
 	if !isConnected() {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
-	return writeFile(filepath.Join("beads", mount, "ctl"), []byte(fmt.Sprintf("fail %s %s", beadID, reason)))
+	return writeBeadsFile(filepath.Join( mount, "ctl"), []byte(fmt.Sprintf("fail %s %s", beadID, reason)))
 }
 
 func openBead(beadID string, mount string) error {
 	if !isConnected() {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
-	return writeFile(filepath.Join("beads", mount, "ctl"), []byte(fmt.Sprintf("open %s", beadID)))
+	return writeBeadsFile(filepath.Join( mount, "ctl"), []byte(fmt.Sprintf("open %s", beadID)))
 }
 
 func deferBead(beadID string, mount string) error {
 	if !isConnected() {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
-	return writeFile(filepath.Join("beads", mount, "ctl"), []byte(fmt.Sprintf("defer %s", beadID)))
+	return writeBeadsFile(filepath.Join( mount, "ctl"), []byte(fmt.Sprintf("defer %s", beadID)))
 }
 
 func updateBead(beadID, content string, origBlockers []string, mount string) error {
@@ -2903,11 +2960,11 @@ func updateBead(beadID, content string, origBlockers []string, mount string) err
 	// Update title and description
 	if title != "" {
 		cmd := fmt.Sprintf("update %s title '%s'", beadID, shellEscape(title))
-		writeFile(filepath.Join("beads", mount, "ctl"), []byte(cmd))
+		writeBeadsFile(filepath.Join( mount, "ctl"), []byte(cmd))
 	}
 	if description != "" {
 		cmd := fmt.Sprintf("update %s description '%s'", beadID, shellEscape(description))
-		writeFile(filepath.Join("beads", mount, "ctl"), []byte(cmd))
+		writeBeadsFile(filepath.Join( mount, "ctl"), []byte(cmd))
 	}
 
 	// Update blockers
@@ -2933,16 +2990,16 @@ func updateBead(beadID, content string, origBlockers []string, mount string) err
 
 	// Toggle requires_approval label
 	if requiresApproval == 1 {
-		writeFile(filepath.Join("beads", mount, "ctl"), []byte(fmt.Sprintf("label %s requires_approval", beadID)))
+		writeBeadsFile(filepath.Join( mount, "ctl"), []byte(fmt.Sprintf("label %s requires_approval", beadID)))
 	} else if requiresApproval == 0 {
-		writeFile(filepath.Join("beads", mount, "ctl"), []byte(fmt.Sprintf("unlabel %s requires_approval", beadID)))
+		writeBeadsFile(filepath.Join( mount, "ctl"), []byte(fmt.Sprintf("unlabel %s requires_approval", beadID)))
 	}
 
 	// Toggle requires_review label
 	if requiresReview == 1 {
-		writeFile(filepath.Join("beads", "", "ctl"), []byte(fmt.Sprintf("label %s requires_review", beadID)))
+		writeBeadsFile(filepath.Join( "", "ctl"), []byte(fmt.Sprintf("label %s requires_review", beadID)))
 	} else if requiresReview == 0 {
-		writeFile(filepath.Join("beads", "", "ctl"), []byte(fmt.Sprintf("unlabel %s requires_review", beadID)))
+		writeBeadsFile(filepath.Join( "", "ctl"), []byte(fmt.Sprintf("unlabel %s requires_review", beadID)))
 	}
 
 	return nil
@@ -2952,7 +3009,7 @@ func initBeads(prefix string, mount string) error {
 	if !isConnected() {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
-	return writeFile(filepath.Join("beads", mount, "ctl"), []byte(fmt.Sprintf("init %s", prefix)))
+	return writeBeadsFile(filepath.Join( mount, "ctl"), []byte(fmt.Sprintf("init %s", prefix)))
 }
 
 // mountProject mounts cwd via mount_beads.sh mcptool and returns the generated mount name.
@@ -2978,5 +3035,5 @@ func umountProject(name string) error {
 	if !isConnected() {
 		return fmt.Errorf("not connected to anvilsrv")
 	}
-	return writeFile("beads/ctl", []byte(fmt.Sprintf("umount %s", name)))
+	return writeBeadsFile("ctl", []byte(fmt.Sprintf("umount %s", name)))
 }

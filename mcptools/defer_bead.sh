@@ -24,9 +24,9 @@ if [ -z "$MOUNT" ] || [ -z "$BEAD_ID" ]; then
 fi
 
 if [ -n "$UNTIL" ]; then
-    echo "defer $BEAD_ID until $UNTIL" | 9p write anvillm/beads/$MOUNT/ctl
+    echo "defer $BEAD_ID until $UNTIL" | 9p write beads/$MOUNT/ctl
     echo "deferred $BEAD_ID until $UNTIL"
 else
-    echo "defer $BEAD_ID" | 9p write anvillm/beads/$MOUNT/ctl
+    echo "defer $BEAD_ID" | 9p write beads/$MOUNT/ctl
     echo "deferred $BEAD_ID"
 fi

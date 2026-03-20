@@ -24,4 +24,4 @@ if [ -z "$MOUNT" ] || [ -z "$BEAD_ID" ] || [ -z "$PROPERTY" ]; then
     exit 1
 fi
 
-9p read "anvillm/beads/$MOUNT/$BEAD_ID/$PROPERTY" 2>/dev/null || echo "Property not found: $PROPERTY"
+9p read "beads/$MOUNT/$BEAD_ID/$PROPERTY" 2>/dev/null || echo "Property not found: $PROPERTY"

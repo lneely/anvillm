@@ -23,7 +23,7 @@ if [ -z "$MOUNT" ] || [ -z "$REPO" ] || [ -z "$ISSUE" ]; then
 fi
 
 # Derive scope from cwd relative to mount's cwd
-MOUNT_CWD=$(9p read "anvillm/beads/$MOUNT/cwd" 2>/dev/null)
+MOUNT_CWD=$(9p read "beads/$MOUNT/cwd" 2>/dev/null)
 SCOPE=""
 if [ -n "$MOUNT_CWD" ]; then
     REL_PATH="${PWD#"$MOUNT_CWD"}"
@@ -34,7 +34,7 @@ SCOPE_ARG=""
 [ -n "$SCOPE" ] && SCOPE_ARG="scope=$SCOPE"
 
 # Check if already imported
-if 9p read "anvillm/beads/$MOUNT/list" | jq -e ".[] | select(.title | contains(\"#$ISSUE\"))" >/dev/null 2>&1; then
+if 9p read "beads/$MOUNT/list" | jq -e ".[] | select(.title | contains(\"#$ISSUE\"))" >/dev/null 2>&1; then
     echo "Issue #$ISSUE already imported" >&2
     exit 0
 fi
@@ -64,19 +64,19 @@ fi
 bead_title="#$number: $title"
 
 # Create parent bead
-echo "new \"$bead_title\" \"$body\" '' $SCOPE_ARG" | 9p write "anvillm/beads/$MOUNT/ctl"
+echo "new \"$bead_title\" \"$body\" '' $SCOPE_ARG" | 9p write "beads/$MOUNT/ctl"
 
 # Get created bead ID
-bead_id=$(9p read "anvillm/beads/$MOUNT/list" | jq -r ".[] | select(.title | contains(\"#$number\")) | .id" | head -1)
+bead_id=$(9p read "beads/$MOUNT/list" | jq -r ".[] | select(.title | contains(\"#$number\")) | .id" | head -1)
 
 # Update issue type if not task
 if [[ "$issue_type" != "task" ]]; then
-    echo "update $bead_id issue_type $issue_type" | 9p write "anvillm/beads/$MOUNT/ctl"
+    echo "update $bead_id issue_type $issue_type" | 9p write "beads/$MOUNT/ctl"
 fi
 
 # Update status if closed
 if [[ "$status" == "closed" ]]; then
-    echo "update $bead_id status closed" | 9p write "anvillm/beads/$MOUNT/ctl"
+    echo "update $bead_id status closed" | 9p write "beads/$MOUNT/ctl"
 fi
 
 # Parse task list from body
@@ -84,7 +84,7 @@ if [[ -n "$body" ]]; then
     # Extract unchecked tasks: - [ ] Task name
     echo "$body" | grep -E '^\s*-\s+\[\s+\]' | sed -E 's/^\s*-\s+\[\s+\]\s*//' | while IFS= read -r task; do
         if [[ -n "$task" ]]; then
-            echo "new \"$task\" \"\" $bead_id $SCOPE_ARG" | 9p write "anvillm/beads/$MOUNT/ctl"
+            echo "new \"$task\" \"\" $bead_id $SCOPE_ARG" | 9p write "beads/$MOUNT/ctl"
         fi
     done
 fi

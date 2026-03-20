@@ -21,5 +21,5 @@ if [ -z "$MOUNT" ] || [ -z "$BEAD_ID" ]; then
     exit 1
 fi
 
-echo "reopen $BEAD_ID" | 9p write anvillm/beads/$MOUNT/ctl
+echo "reopen $BEAD_ID" | 9p write beads/$MOUNT/ctl
 echo "reopened $BEAD_ID"

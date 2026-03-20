@@ -23,5 +23,5 @@ if [ -z "$MOUNT" ] || [ -z "$KEY" ]; then
     exit 1
 fi
 
-echo "config $KEY $VALUE" | 9p write anvillm/beads/$MOUNT/ctl
+echo "config $KEY $VALUE" | 9p write beads/$MOUNT/ctl
 echo "config $KEY = $VALUE"

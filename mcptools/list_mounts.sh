@@ -4,4 +4,4 @@
 set -euo pipefail
 
 
-9p read anvillm/beads/mtab 2>/dev/null || echo "No mounted projects"
+9p read beads/mtab 2>/dev/null || echo "No mounted projects"

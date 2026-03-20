@@ -20,7 +20,7 @@ if [ -z "$MOUNT" ]; then
 fi
 
 # Derive scope from cwd relative to mount's cwd
-MOUNT_CWD=$(9p read "anvillm/beads/$MOUNT/cwd" 2>/dev/null)
+MOUNT_CWD=$(9p read "beads/$MOUNT/cwd" 2>/dev/null)
 MY_SCOPE=""
 if [ -n "$MOUNT_CWD" ]; then
     REL_PATH="${PWD#"$MOUNT_CWD"}"
@@ -29,4 +29,4 @@ if [ -n "$MOUNT_CWD" ]; then
 fi
 
 # Strict match: scope must equal (both empty or both same value)
-9p read "anvillm/beads/$MOUNT/ready" 2>/dev/null | jq --arg scope "$MY_SCOPE" '[.[] | select((.scope // "") == $scope) | {id, priority, title, status, scope}]' || echo "[]"
+9p read "beads/$MOUNT/ready" 2>/dev/null | jq --arg scope "$MY_SCOPE" '[.[] | select((.scope // "") == $scope) | {id, priority, title, status, scope}]' || echo "[]"

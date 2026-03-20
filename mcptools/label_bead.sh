@@ -23,5 +23,5 @@ if [ -z "$MOUNT" ] || [ -z "$BEAD_ID" ] || [ -z "$LABEL" ]; then
     exit 1
 fi
 
-echo "label $BEAD_ID $LABEL" | 9p write anvillm/beads/$MOUNT/ctl
+echo "label $BEAD_ID $LABEL" | 9p write beads/$MOUNT/ctl
 echo "labeled $BEAD_ID: $LABEL"

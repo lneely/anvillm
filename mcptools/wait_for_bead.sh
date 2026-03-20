@@ -19,7 +19,7 @@ if [ -z "$MOUNT" ]; then
 fi
 
 # Derive scope from cwd relative to mount's cwd
-MOUNT_CWD=$(9p read "anvillm/beads/$MOUNT/cwd" 2>/dev/null)
+MOUNT_CWD=$(9p read "beads/$MOUNT/cwd" 2>/dev/null)
 if [ -n "$MOUNT_CWD" ]; then
     REL_PATH="${PWD#"$MOUNT_CWD"}"
     REL_PATH="${REL_PATH#/}"

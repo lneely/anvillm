@@ -21,5 +21,5 @@ if [ -z "$MOUNT" ] || [ -z "$BEAD_ID" ]; then
     exit 1
 fi
 
-echo "delete $BEAD_ID" | 9p write anvillm/beads/$MOUNT/ctl
+echo "delete $BEAD_ID" | 9p write beads/$MOUNT/ctl
 echo "deleted $BEAD_ID"

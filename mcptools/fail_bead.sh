@@ -23,5 +23,5 @@ if [ -z "$MOUNT" ] || [ -z "$BEAD_ID" ] || [ -z "$REASON" ]; then
     exit 1
 fi
 
-printf "fail %s '%s'\n" "$BEAD_ID" "$REASON" | 9p write anvillm/beads/$MOUNT/ctl
+printf "fail %s '%s'\n" "$BEAD_ID" "$REASON" | 9p write beads/$MOUNT/ctl
 echo "failed $BEAD_ID: $REASON"

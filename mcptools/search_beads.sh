@@ -27,7 +27,7 @@ fi
 
 # Direct ID lookup
 if [ -n "$BEAD_ID" ]; then
-    9p read "anvillm/beads/$MOUNT/$BEAD_ID/json" 2>/dev/null || echo "null"
+    9p read "beads/$MOUNT/$BEAD_ID/json" 2>/dev/null || echo "null"
     exit 0
 fi
 
@@ -38,7 +38,7 @@ if [ -z "$QUERY" ]; then
 fi
 
 # Derive scope from cwd relative to mount's cwd
-MOUNT_CWD=$(9p read "anvillm/beads/$MOUNT/cwd" 2>/dev/null)
+MOUNT_CWD=$(9p read "beads/$MOUNT/cwd" 2>/dev/null)
 MY_SCOPE=""
 if [ -n "$MOUNT_CWD" ]; then
     REL_PATH="${PWD#"$MOUNT_CWD"}"
@@ -46,4 +46,4 @@ if [ -n "$MOUNT_CWD" ]; then
     MY_SCOPE="${REL_PATH%%/*}"
 fi
 
-9p read "anvillm/beads/$MOUNT/search/$QUERY" 2>/dev/null | jq --arg scope "$MY_SCOPE" '[.[] | select((.scope // "") == $scope) | {id, title, status, scope, match_in: (if .id | test("'"$QUERY"'"; "i") then "id" elif .title | test("'"$QUERY"'"; "i") then "title" else "description" end)}]' || echo "[]"
+9p read "beads/$MOUNT/search/$QUERY" 2>/dev/null | jq --arg scope "$MY_SCOPE" '[.[] | select((.scope // "") == $scope) | {id, title, status, scope, match_in: (if .id | test("'"$QUERY"'"; "i") then "id" elif .title | test("'"$QUERY"'"; "i") then "title" else "description" end)}]' || echo "[]"

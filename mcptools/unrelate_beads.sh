@@ -23,5 +23,5 @@ if [ -z "$MOUNT" ] || [ -z "$BEAD1" ] || [ -z "$BEAD2" ]; then
     exit 1
 fi
 
-echo "unrelate $BEAD1 $BEAD2" | 9p write anvillm/beads/$MOUNT/ctl
+echo "unrelate $BEAD1 $BEAD2" | 9p write beads/$MOUNT/ctl
 echo "unrelated $BEAD1 ↔ $BEAD2"

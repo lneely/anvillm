@@ -23,5 +23,5 @@ if [ -z "$MOUNT" ] || [ -z "$BEAD_ID" ] || [ -z "$LEVEL" ]; then
     exit 1
 fi
 
-echo "set-capability $BEAD_ID $LEVEL" | 9p write anvillm/beads/$MOUNT/ctl
+echo "set-capability $BEAD_ID $LEVEL" | 9p write beads/$MOUNT/ctl
 echo "capability set: $BEAD_ID → $LEVEL"
