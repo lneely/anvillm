@@ -4,7 +4,7 @@ import (
 	"anvillm/internal/backend"
 	"anvillm/internal/debug"
 	"anvillm/internal/logging"
-	"anvillm/internal/sandbox"
+	"anvillm/pkg/sandbox"
 	"context"
 	"fmt"
 	"io"
