@@ -63,11 +63,11 @@ func NewToolsFS(tools []Tool) *ToolsFS {
 		homeDir, _ := os.UserHomeDir()
 		var defaults []string
 		if claudeDir := os.Getenv("CLAUDE_CONFIG_DIR"); claudeDir != "" {
-			defaults = append(defaults, filepath.Join(claudeDir, "mcptools"))
+			defaults = append(defaults, filepath.Join(claudeDir, "tools"))
 		}
 		defaults = append(defaults,
-			filepath.Join(homeDir, ".kiro/mcptools"),
-			filepath.Join(homeDir, ".config/anvillm/mcptools"),
+			filepath.Join(homeDir, ".kiro/tools"),
+			filepath.Join(homeDir, ".config/anvillm/tools"),
 		)
 		dirs = defaults
 	}
