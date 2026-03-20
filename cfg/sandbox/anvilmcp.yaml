@@ -5,6 +5,7 @@ filesystem:
     - "/etc/alternatives"
     - "/etc/ld.so.cache"
     - "/etc/passwd"
+    - "{HOME}/.local/share/anvillm/mail"
     - "/dev/urandom"
   rox:
     - "/usr"

@@ -28,6 +28,11 @@ const windowName = "/AnviLLM/"
 // Terminal to use for tmux attach (configurable via environment or flag)
 var terminalCommand = getTerminalCommand()
 
+// shellEscape escapes a string for use inside single quotes in shell commands.
+func shellEscape(s string) string {
+	return strings.ReplaceAll(s, "'", "'\\''")
+}
+
 func getTerminalCommand() string {
 	if term := os.Getenv("ANVILLM_TERMINAL"); term != "" {
 		return term
@@ -2506,7 +2511,7 @@ func createBeadFromMarkdown(content, parentID string, mount string) error {
 	}
 
 	// Build command: new 'title' 'description' [parent-id] [blockers=...]
-	cmd := fmt.Sprintf("new '%s' '%s'", title, description)
+	cmd := fmt.Sprintf("new '%s' '%s'", shellEscape(title), shellEscape(description))
 	if parentID != "" {
 		cmd = fmt.Sprintf("%s %s", cmd, parentID)
 	}
@@ -2897,11 +2902,11 @@ func updateBead(beadID, content string, origBlockers []string, mount string) err
 
 	// Update title and description
 	if title != "" {
-		cmd := fmt.Sprintf("update %s title '%s'", beadID, title)
+		cmd := fmt.Sprintf("update %s title '%s'", beadID, shellEscape(title))
 		writeFile(filepath.Join("beads", mount, "ctl"), []byte(cmd))
 	}
 	if description != "" {
-		cmd := fmt.Sprintf("update %s description '%s'", beadID, description)
+		cmd := fmt.Sprintf("update %s description '%s'", beadID, shellEscape(description))
 		writeFile(filepath.Join("beads", mount, "ctl"), []byte(cmd))
 	}
 

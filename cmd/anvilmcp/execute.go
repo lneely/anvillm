@@ -308,7 +308,8 @@ func executeCode(code, language string, timeout int, sandboxName string, trusted
 		return "", fmt.Errorf("unsupported language: %s (supported: bash)", language)
 	}
 
-	// Limit output size (10MB)
+	// Limit output size (10MB raw, 8KB returned)
+	const maxToolOutputSize = 8000
 	var outputBuf bytes.Buffer
 	lw := &limitedWriter{w: &outputBuf, limit: 10 * 1024 * 1024}
 	cmd.Stdout = lw
@@ -350,7 +351,11 @@ func executeCode(code, language string, timeout int, sandboxName string, trusted
 	}
 
 	logExecution(execLog)
-	return string(output), nil
+	result := string(output)
+	if len(result) > maxToolOutputSize {
+		result = result[:maxToolOutputSize] + "\n... (output truncated)"
+	}
+	return result, nil
 }
 
 type limitedWriter struct {

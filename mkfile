@@ -6,16 +6,12 @@ build:V:
 	go build -o $INSTALL_PATH/anvilsrv ./cmd/anvilsrv
 	go build -o $INSTALL_PATH/Assist ./cmd/Assist
 	go build -o $INSTALL_PATH/anvilmcp ./cmd/anvilmcp
-	cp scripts/Alog $INSTALL_PATH/Alog
-	chmod 0755 $INSTALL_PATH/Alog
 	cp scripts/anvillm-notify $INSTALL_PATH/anvillm-notify
 	chmod 0755 $INSTALL_PATH/anvillm-notify
 	cp scripts/anvillm-skills $INSTALL_PATH/anvillm-skills
 	chmod 0755 $INSTALL_PATH/anvillm-skills
 	cp scripts/anvillm-hook $INSTALL_PATH/anvillm-hook
 	chmod 0755 $INSTALL_PATH/anvillm-hook
-	cp scripts/9p-read-inbox $INSTALL_PATH/9p-read-inbox
-	chmod 0755 $INSTALL_PATH/9p-read-inbox
 	cp scripts/anvilspawn $INSTALL_PATH/anvilspawn
 	chmod 0755 $INSTALL_PATH/anvilspawn
 	cp scripts/anvillm-supervisor $INSTALL_PATH/anvillm-supervisor

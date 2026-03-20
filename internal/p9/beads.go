@@ -472,7 +472,7 @@ func (b *BeadsFS) readListFromStore(store bd.Storage, limit int) ([]byte, error)
 	}
 	// Sort by ID for hierarchical view (bd-a3f8, bd-a3f8.1, bd-a3f8.1.1, etc.)
 	sort.Slice(issues, func(i, j int) bool {
-		return issues[i].ID < issues[j].ID
+		return naturalLess(issues[i].ID, issues[j].ID)
 	})
 
 	// Enrich with blockers, labels, and capability level.
@@ -508,6 +508,48 @@ func (b *BeadsFS) readListFromStore(store bd.Storage, limit int) ([]byte, error)
 	}
 
 	return json.MarshalIndent(items, "", "  ")
+}
+
+// naturalLess compares two strings with natural number ordering.
+// "jira-100.2" < "jira-100.10" (unlike lexicographic where .10 < .2)
+func naturalLess(a, b string) bool {
+	for {
+		if a == "" {
+			return b != ""
+		}
+		if b == "" {
+			return false
+		}
+		// Find leading non-digit prefix
+		ai, bi := 0, 0
+		for ai < len(a) && (a[ai] < '0' || a[ai] > '9') {
+			ai++
+		}
+		for bi < len(b) && (b[bi] < '0' || b[bi] > '9') {
+			bi++
+		}
+		if a[:ai] != b[:bi] {
+			return a[:ai] < b[:bi]
+		}
+		a, b = a[ai:], b[bi:]
+		if a == "" || b == "" {
+			continue
+		}
+		// Extract numeric part
+		ai, bi = 0, 0
+		for ai < len(a) && a[ai] >= '0' && a[ai] <= '9' {
+			ai++
+		}
+		for bi < len(b) && b[bi] >= '0' && b[bi] <= '9' {
+			bi++
+		}
+		na, _ := strconv.Atoi(a[:ai])
+		nb, _ := strconv.Atoi(b[:bi])
+		if na != nb {
+			return na < nb
+		}
+		a, b = a[ai:], b[bi:]
+	}
 }
 
 

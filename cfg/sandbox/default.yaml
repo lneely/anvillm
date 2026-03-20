@@ -5,6 +5,7 @@ filesystem:
     - "{XDG_CONFIG_HOME}/git"
     - "{HOME}/.ssh"
     - "{HOME}/.netrc"
+    - "{HOME}/.local/share/anvillm/mail"
     - "/etc/gitconfig"
     - "/etc/gitattributes"
     - "/etc/ssh/ssh_config"
