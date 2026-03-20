@@ -33,6 +33,7 @@ case "$event" in
         cd "$cwd" 2>/dev/null || :
         cat ~/.kiro/OUTPUT_PROTOCOL.md 2>/dev/null || :
         cat ~/.kiro/SKILLS_PROMPT.md 2>/dev/null || :
+        cat ~/.kiro/USER.md 2>/dev/null || :
         ;;
     userPromptSubmit)
         anvillm_set_state running
