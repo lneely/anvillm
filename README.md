@@ -6,7 +6,7 @@ LLM orchestrator using 9P — scriptable, multi-backend, crash-resilient
 
 ![Architecture](docs/diagrams/architecture.svg?v=2)
 
-**Core:** anvilsrv (9P daemon), anvilmcp (MCP server)
+**Core:** anvilsrv (9P daemon), anvilmcp (optional MCP server, see [anvillm-mcp](https://github.com/lneely/anvillm-mcp))
 **Frontends:** Any 9P-speaking program — currently Assist (Acme)
 **Benefits:** Shared sessions, crash recovery, scriptable via 9P, cross-backend agent communication
 
@@ -352,19 +352,17 @@ The Conductor analyzes dependencies, spawns specialized bots, and delegates work
 
 ## MCP Integration
 
-`anvilmcp` exposes AnviLLM via Model Context Protocol for Claude Desktop, Cline, etc.
+`anvilmcp` ([anvillm-mcp](https://github.com/lneely/anvillm-mcp)) provides sandboxed code execution for MCP clients (Claude Desktop, Kiro, etc.).
 
-**Install:**
-```sh
-./kiro-cli/install-mcp.sh  # Adds to ~/.kiro/settings/cli.json
-```
-
-**Tool:** `execute_code` — the only tool needed. Executes bash scripts in an isolated subprocess (sandboxed via landrun). Agents discover and invoke all AnviLLM functionality through 9P and helper scripts:
+**Note:** anvilmcp is optional. Tools are served by anvillm via 9P and can be invoked directly:
 
 ```sh
-9p read anvillm/tools/check_inbox.sh   # discover scripts
-bash <(9p read tools/send_message.sh) ...         # invoke them
+bash <(9p read anvillm/tools/check_inbox.sh)
 ```
+
+anvilmcp adds sandbox isolation (landlock/landrun) around execution for MCP clients.
+
+**Install:** See [anvillm-mcp](https://github.com/lneely/anvillm-mcp) for backend-specific setup.
 
 See [Code Execution User Guide](docs/code-execution-user-guide.md) for details.
 
