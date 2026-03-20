@@ -4,12 +4,13 @@
 # Usage: send_message.sh --to <id|user> --type <type> --subject <subject> --body <body>
 set -euo pipefail
 
-
 if [ -z "${AGENT_ID:-}" ]; then
   echo "Error: \$AGENT_ID is not set. Stop work and inform the user that \$AGENT_ID is not set." >&2
   exit 1
 fi
 from="$AGENT_ID"
+
+ANVILLM="${ANVILLM_9MOUNT:-$HOME/mnt/anvillm}"
 
 to=""
 type=""
@@ -33,7 +34,7 @@ fi
 
 # Validate recipient exists (allow "user" as a special recipient)
 if [ "$to" != "user" ]; then
-  if ! 9p read anvillm/list 2>/dev/null | awk -F'\t' '{print $1}' | grep -qx "$to"; then
+  if ! cat "$ANVILLM/list" 2>/dev/null | awk -F'\t' '{print $1}' | grep -qx "$to"; then
     echo "Error: Recipient '${to}' does not exist in available sessions." >&2
     exit 1
   fi
@@ -47,5 +48,5 @@ json=$(jq -n \
   --arg body "$body" \
   '{from: $from, to: $to, type: $type, subject: $subject, body: $body}')
 
-echo "$json" | 9p write "anvillm/${from}/mail"
+echo "$json" > "$ANVILLM/${from}/mail"
 echo "sent: $type → $to"

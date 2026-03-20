@@ -3,19 +3,18 @@
 # description: List all available skills (JSON array)
 set -euo pipefail
 
-# Verify running under landrun (test filesystem restriction)
+ANVILLM="${ANVILLM_9MOUNT:-$HOME/mnt/anvillm}"
 
-if [ -z "${ANVILLM_SKILLS_PATH:-}" ]; then
+if [ ! -d "$ANVILLM/skills" ]; then
   echo "[]"
   exit 0
 fi
 
-for dir in "$ANVILLM_SKILLS_PATH"/*; do
-  if [ -d "$dir" ] && [ -f "$dir/SKILL.md" ]; then
-    name=$(basename "$dir")
-    desc=$(grep -m1 '^description:' "$dir/SKILL.md" | sed 's/^description: *//' || true)
-    printf '%s\t%s\n' "$name" "$desc"
-  fi
+for file in "$ANVILLM/skills"/*.md; do
+  [ -f "$file" ] || continue
+  name=$(basename "$file" .md)
+  desc=$(grep -m1 '^description:' "$file" | sed 's/^description: *//' || true)
+  printf '%s\t%s\n' "$name" "$desc"
 done | jq -Rs '
   split("\n") | map(select(length > 0)) | map(
     split("\t") | {name: .[0], description: .[1]}

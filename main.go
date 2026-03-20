@@ -230,7 +230,10 @@ func start(daemonize bool) {
 	logging.Logger().Info("anvillm started successfully", zap.String("socket", srv.SocketPath()))
 
 	// Setup FUSE mount
-	mnt := filepath.Join(os.Getenv("HOME"), "mnt", "anvillm")
+	mnt := os.Getenv("ANVILLM_9MOUNT")
+	if mnt == "" {
+		mnt = filepath.Join(os.Getenv("HOME"), "mnt", "anvillm")
+	}
 	var fuseCmd *exec.Cmd
 	if err := os.MkdirAll(mnt, 0755); err != nil {
 		logging.Logger().Warn("cannot create mount dir", zap.Error(err))

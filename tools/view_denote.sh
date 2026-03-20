@@ -4,6 +4,7 @@
 # Usage: view_denote.sh --id <denote:identifier|identifier>
 set -euo pipefail
 
+DENOTE="${DENOTE_9MOUNT:-$HOME/mnt/denote}"
 
 ID=""
 
@@ -20,11 +21,10 @@ if [ -z "$ID" ]; then
 fi
 
 ID="${ID#denote:}"
-FILE=$(find "$HOME/doc" -type f -name "${ID}--*" | head -1)
 
-if [ -z "$FILE" ]; then
+if [ -d "$DENOTE/n/$ID" ]; then
+    cat "$DENOTE/n/$ID/body"
+else
     echo "Error: no denote document found for identifier $ID" >&2
     exit 1
 fi
-
-cat "$FILE"

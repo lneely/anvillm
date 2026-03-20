@@ -4,6 +4,7 @@
 # Usage: kill_agent.sh --agent-id <agent-id>
 set -euo pipefail
 
+ANVILLM="${ANVILLM_9MOUNT:-$HOME/mnt/anvillm}"
 
 AGENT_ID=""
 
@@ -19,7 +20,7 @@ if [ -z "$AGENT_ID" ]; then
     exit 1
 fi
 
-if echo "kill" | 9p write "anvillm/$AGENT_ID/ctl" 2>/dev/null; then
+if echo "kill" > "$ANVILLM/$AGENT_ID/ctl" 2>/dev/null; then
   echo "Killed $AGENT_ID"
 else
   echo "No session found with id $AGENT_ID" >&2

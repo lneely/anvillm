@@ -8,20 +8,19 @@ if [ $# -ne 1 ]; then
   exit 1
 fi
 
+ANVILLM="${ANVILLM_9MOUNT:-$HOME/mnt/anvillm}"
 keyword="$1"
 results=""
 
-# Search each skill file for the keyword
-while IFS= read -r file; do
-  [ "${file%.md}" = "$file" ] && continue  # skip non-.md entries
-  name="${file%.md}"
-  content=$(9p read "anvillm/skills/$file")
-  if echo "$content" | grep -qi "$keyword"; then
-    desc=$(echo "$content" | grep -m1 '^description:' | sed 's/^description: *//')
+for file in "$ANVILLM/skills"/*.md; do
+  [ -f "$file" ] || continue
+  name=$(basename "$file" .md)
+  if grep -qi "$keyword" "$file"; then
+    desc=$(grep -m1 '^description:' "$file" | sed 's/^description: *//')
     results="${results:+$results
 }$name	$desc"
   fi
-done < <(9p ls anvillm/skills)
+done
 
 if [ -n "$results" ]; then
   echo "$results" | sort -u

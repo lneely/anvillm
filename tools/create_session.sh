@@ -4,6 +4,7 @@
 # Usage: create_session.sh --backend <backend> --cwd <cwd> [--sandbox <sandbox>] [--model <model>]
 set -euo pipefail
 
+ANVILLM="${ANVILLM_9MOUNT:-$HOME/mnt/anvillm}"
 
 BACKEND=""
 CWD=""
@@ -29,5 +30,5 @@ CMD="new $BACKEND $CWD"
 [ -n "$SANDBOX" ] && CMD="$CMD sandbox=$SANDBOX"
 [ -n "$MODEL" ]   && CMD="$CMD model=$MODEL"
 
-echo "$CMD" | 9p write anvillm/ctl
+echo "$CMD" > "$ANVILLM/ctl"
 echo "created session: $BACKEND $CWD"

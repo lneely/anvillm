@@ -4,6 +4,7 @@
 # Usage: control_session.sh --session-id <session-id> --command <stop|restart|kill|refresh>
 set -euo pipefail
 
+ANVILLM="${ANVILLM_9MOUNT:-$HOME/mnt/anvillm}"
 
 SESSION_ID=""
 COMMAND=""
@@ -21,5 +22,5 @@ if [ -z "$SESSION_ID" ] || [ -z "$COMMAND" ]; then
     exit 1
 fi
 
-echo "$COMMAND" | 9p write "anvillm/$SESSION_ID/ctl"
+echo "$COMMAND" > "$ANVILLM/$SESSION_ID/ctl"
 echo "$COMMAND: $SESSION_ID"
