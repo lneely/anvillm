@@ -43,9 +43,3 @@ else
 fi
 
 echo "Claude hooks installed to $SETTINGS_FILE"
-
-# Install agent configuration (includes Output Protocol + mailbox instructions)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-mkdir -p "$HOME/.config/anvillm/claude/agents"
-cp "$SCRIPT_DIR/../../agents/claude/anvillm-agent.md" "$HOME/.config/anvillm/claude/agents/anvillm-agent.md"
-echo "Claude agent config installed to $HOME/.config/anvillm/claude/agents/anvillm-agent.md"
