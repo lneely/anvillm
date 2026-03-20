@@ -6,8 +6,6 @@ build:V:
 	go build -o $INSTALL_PATH/anvillm .
 	cp scripts/anvillm-notify $INSTALL_PATH/anvillm-notify
 	chmod 0755 $INSTALL_PATH/anvillm-notify
-	cp scripts/anvillm-skills $INSTALL_PATH/anvillm-skills
-	chmod 0755 $INSTALL_PATH/anvillm-skills
 	cp scripts/anvillm-hook $INSTALL_PATH/anvillm-hook
 	chmod 0755 $INSTALL_PATH/anvillm-hook
 	cp scripts/anvilspawn $INSTALL_PATH/anvilspawn
