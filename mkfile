@@ -25,7 +25,6 @@ build:V:
 	mkdir -p $HOME/.config/anvillm/claude/agents
 	mkdir -p $HOME/.config/anvillm/claude/hooks
 	cp agents/claude/* $HOME/.config/anvillm/claude/agents/
-	cp agents/kiro-cli/OUTPUT_PROTOCOL.md $HOME/.config/anvillm/claude/
 	cp hooks/claude/*.sh $HOME/.config/anvillm/claude/hooks/
 	chmod +x $HOME/.config/anvillm/claude/hooks/*.sh
 	bash hooks/claude/install-hooks.sh
