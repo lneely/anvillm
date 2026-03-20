@@ -335,7 +335,7 @@ This is a lightweight, hands-off approach: spawn workers with `anvilspawn`, and 
 The Conductor role is an orchestration agent that decomposes goals into beads, spawns workers, and coordinates them to completion. Unlike the supervisor, the Conductor actively plans and adapts.
 
 ```sh
-./bot-templates/Conductor kiro /path/to/project
+anvilspawn --role conductor kiro /path/to/project
 CONDUCTOR_ID=$(9p read anvillm/list | head -1 | awk '{print $1}')
 
 echo '{"to":"'$CONDUCTOR_ID'","type":"WORK_REQUEST","subject":"Execute","body":"Complete bead '$BEAD_ID'"}' | 9p write user/mail
