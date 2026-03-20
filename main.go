@@ -1,4 +1,4 @@
-// anvilsrv - AnviLLM backend server daemon
+// anvillm - AnviLLM backend server daemon
 package main
 
 import (
@@ -27,9 +27,9 @@ func getPidFilePath() string {
 	ns := client.Namespace()
 	if ns == "" {
 		// Fallback to /tmp if namespace not available
-		return filepath.Join("/tmp", "anvilsrv.pid")
+		return filepath.Join("/tmp", "anvillm.pid")
 	}
-	return filepath.Join(ns, "anvilsrv.pid")
+	return filepath.Join(ns, "anvillm.pid")
 }
 
 // getNamespaceSuffix extracts the display number from namespace (e.g., "0" from "/tmp/ns.user.:0")
@@ -73,7 +73,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "Usage: %s {start|fgstart|stop|status}\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "Commands:\n")
-	fmt.Fprintf(os.Stderr, "  start   - Start the anvilsrv daemon (daemonized)\n")
+	fmt.Fprintf(os.Stderr, "  start   - Start the anvillm daemon (daemonized)\n")
 	fmt.Fprintf(os.Stderr, "  fgstart - Start in foreground (for debugging)\n")
 	fmt.Fprintf(os.Stderr, "  stop    - Stop the running daemon\n")
 	fmt.Fprintf(os.Stderr, "  status  - Check daemon status\n")
@@ -108,7 +108,7 @@ func start(daemonize bool) {
 	if daemonize {
 		// Check if we're already the daemon (via environment variable)
 		if os.Getenv("ANVILSRV_DAEMON") != "1" {
-			logging.Logger().Info("daemonizing anvilsrv")
+			logging.Logger().Info("daemonizing anvillm")
 			// Fork the daemon process - use full path to executable
 			cmd, err := os.Executable()
 			if err != nil {
@@ -136,12 +136,12 @@ func start(daemonize bool) {
 			// Give daemon time to start
 			for i := 0; i < 10; i++ {
 				if readPidFile() != 0 {
-					fmt.Fprintf(os.Stderr, "anvilsrv started successfully\n")
+					fmt.Fprintf(os.Stderr, "anvillm started successfully\n")
 					return
 				}
 				time.Sleep(100 * time.Millisecond)
 			}
-			fmt.Fprintf(os.Stderr, "anvilsrv started (daemon mode)\n")
+			fmt.Fprintf(os.Stderr, "anvillm started (daemon mode)\n")
 			return
 		}
 	}
@@ -150,7 +150,7 @@ func start(daemonize bool) {
 	pid := os.Getpid()
 	pidContent := fmt.Sprintf("%d\n", pid)
 
-	logging.Logger().Info("starting anvilsrv", zap.Int("pid", pid), zap.Bool("daemonized", daemonize))
+	logging.Logger().Info("starting anvillm", zap.Int("pid", pid), zap.Bool("daemonized", daemonize))
 
 	// Try to create PID file exclusively (fails if exists)
 	f, err := os.OpenFile(pidFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
@@ -158,7 +158,7 @@ func start(daemonize bool) {
 		// File exists, check if process is still running
 		if existingPid := readPidFile(); existingPid != 0 {
 			if isProcessRunning(existingPid) {
-				logging.Logger().Fatal("anvilsrv already running", zap.Int("pid", existingPid))
+				logging.Logger().Fatal("anvillm already running", zap.Int("pid", existingPid))
 			}
 			// Stale PID file, remove and retry
 			logging.Logger().Warn("removing stale PID file on startup", zap.Int("pid", existingPid))
@@ -226,7 +226,7 @@ func start(daemonize bool) {
 	mdWriter := maildir.New(mailDir, srv.Events())
 	defer mdWriter.Close()
 
-	logging.Logger().Info("anvilsrv started successfully", zap.String("socket", srv.SocketPath()))
+	logging.Logger().Info("anvillm started successfully", zap.String("socket", srv.SocketPath()))
 
 	// Start background monitor for self-healing
 	stopMonitor := make(chan struct{})
@@ -264,12 +264,12 @@ func stop() {
 	pidFile := getPidFilePath()
 	pid := readPidFile()
 	if pid == 0 {
-		fmt.Fprintf(os.Stderr, "anvilsrv is not running\n")
+		fmt.Fprintf(os.Stderr, "anvillm is not running\n")
 		os.Exit(1)
 	}
 
 	if !isProcessRunning(pid) {
-		fmt.Fprintf(os.Stderr, "anvilsrv is not running (stale PID file)\n")
+		fmt.Fprintf(os.Stderr, "anvillm is not running (stale PID file)\n")
 		os.Remove(pidFile)
 		os.Exit(1)
 	}
@@ -286,24 +286,24 @@ func stop() {
 		os.Exit(1)
 	}
 
-	logging.Logger().Info("stopping anvilsrv", zap.Int("pid", pid))
-	fmt.Printf("Stopping anvilsrv (PID %d)\n", pid)
+	logging.Logger().Info("stopping anvillm", zap.Int("pid", pid))
+	fmt.Printf("Stopping anvillm (PID %d)\n", pid)
 }
 
 func status() {
 	pid := readPidFile()
 	if pid == 0 {
-		fmt.Println("anvilsrv is not running")
+		fmt.Println("anvillm is not running")
 		os.Exit(1)
 	}
 
 	if !isProcessRunning(pid) {
-		fmt.Println("anvilsrv is not running (stale PID file)")
+		fmt.Println("anvillm is not running (stale PID file)")
 		os.Exit(1)
 	}
 
-	logging.Logger().Info("anvilsrv status check", zap.Int("pid", pid), zap.Bool("running", true))
-	fmt.Printf("anvilsrv is running (PID %d)\n", pid)
+	logging.Logger().Info("anvillm status check", zap.Int("pid", pid), zap.Bool("running", true))
+	fmt.Printf("anvillm is running (PID %d)\n", pid)
 }
 
 // readPidFile reads the PID from the PID file, returns 0 if not found

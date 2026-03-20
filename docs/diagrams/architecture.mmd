@@ -7,7 +7,7 @@ graph TB
     WebApp["Web App"]
     
     subgraph Core["Core Services"]
-        anvilsrv["anvilsrv<br/>(9P daemon)"]
+        anvillm["anvillm<br/>(9P daemon)"]
         anvilmcp["anvilmcp<br/>(MCP server)"]
         anvilwebgw["anvilwebgw<br/>(HTTP↔9P bridge)"]
     end
@@ -19,13 +19,13 @@ graph TB
         Ollama["Ollama"]
     end
     
-    Assist -->|9P| anvilsrv
-    Custom -->|9P| anvilsrv
+    Assist -->|9P| anvillm
+    Custom -->|9P| anvillm
     WebApp -->|HTTP| anvilwebgw
-    anvilwebgw -->|9P| anvilsrv
+    anvilwebgw -->|9P| anvillm
     
-    anvilsrv --> Claude
-    anvilsrv --> Kiro
-    anvilsrv --> ollie
+    anvillm --> Claude
+    anvillm --> Kiro
+    anvillm --> ollie
     anvilmcp --> tmux
     ollie --> Ollama
