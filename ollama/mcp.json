@@ -1,9 +1,0 @@
-{
-  "globalShortcut": "Ctrl+Space",
-  "mcpServers": {
-  "anvilmcp": {
-      "command": "anvilmcp",
-      "args": []
-    }
-  }
-}
