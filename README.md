@@ -366,6 +366,16 @@ anvilmcp adds sandbox isolation (landlock/landrun) around execution for MCP clie
 
 See [Code Execution User Guide](docs/code-execution-user-guide.md) for details.
 
+## Integrations
+
+| Project | Description |
+|---------|-------------|
+| [9beads](https://github.com/lneely/9beads) | Task management via 9P — beads-based workflow tracking |
+| [anvillm-acme](https://github.com/lneely/anvillm-acme) | Acme frontend for session management |
+| [9beads-acme](https://github.com/lneely/9beads-acme) | Acme frontend for 9beads task management |
+| [anvillm-mcp](https://github.com/lneely/anvillm-mcp) | MCP server with sandboxed execution |
+| [agent-skills](https://github.com/lneely/agent-skills) | Discoverable skill definitions for agents |
+
 ## Troubleshooting
 
 | Problem | Solution |
