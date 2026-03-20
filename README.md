@@ -16,7 +16,7 @@ LLM orchestrator using 9P — scriptable, multi-backend, crash-resilient
 
 ## Requirements
 
-Go 1.21+, plan9port (provides `9pfuse`), tmux, [landrun](https://github.com/zouuup/landrun) (kernel 5.13+), backend ([Claude Code](https://github.com/anthropics/claude-code), [Kiro](https://kiro.dev), or [Ollama](https://ollama.com) + [ollie](https://github.com/lneely/ollie))
+Go 1.21+, [plan9port](https://github.com/lneely/plan9port) (wayland branch, provides `9pfuse` with truncate fix), tmux, [landrun](https://github.com/zouuup/landrun) (kernel 5.13+), backend ([Claude Code](https://github.com/anthropics/claude-code), [Kiro](https://kiro.dev), or [Ollama](https://ollama.com) + [ollie](https://github.com/lneely/ollie))
 
 ## Installation
 
