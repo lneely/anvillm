@@ -77,7 +77,7 @@ bash <(9p read tools/<scriptname>)
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NAMESPACE` | `/tmp/ns.$USER.:0` | 9P namespace for server/client communication |
-| `ANVILLM_BEADS_PATH` | `~/.beads` | Beads database location (shared across namespaces) |
+| `ANVILLM_BEADS_PATH` | `~/.beads` | Beads database location (used by 9beads) |
 | `ANVILLM_TERMINAL` | `foot` | Terminal command for tmux attach (Assist) |
 | `ANTHROPIC_API_KEY` | — | Claude API key (optional if using `claude /login`) |
 | `CLAUDE_AGENT_NAME` | `anvillm-agent` | Claude agent configuration name |
@@ -192,32 +192,6 @@ anvillm/
 ├── ctl             # "new <backend> <cwd>" creates session
 ├── list            # id, alias, state, pid, cwd
 ├── events          # Event stream (state changes, messages)
-├── beads/          # Task tracking (persistent across namespaces)
-│   ├── ctl         # Commands: init, new, claim, unclaim, complete, fail,
-│   │               #   dep, undep, update, delete, comment, label, unlabel,
-│   │               #   set-capability, open, defer, reopen, mount, umount, sync
-│   ├── mtab        # Mounted projects
-│   ├── list        # All beads as JSON (optional limit arg)
-│   ├── ready       # Ready beads (no blockers) as JSON
-│   ├── deferred    # Deferred beads as JSON
-│   ├── blocked     # Blocked beads as JSON
-│   ├── stale       # Stale beads as JSON
-│   ├── search/     # search/<query> — full-text search
-│   ├── by-ref/     # by-ref/<ref> — lookup by external reference
-│   ├── batch/      # batch/<id1,id2,...> — fetch multiple beads
-│   ├── label/      # label/<name> — filter by label
-│   ├── children/   # children/<id> — subtasks of a bead
-│   └── <bead-id>/
-│       ├── status
-│       ├── title
-│       ├── description
-│       ├── assignee
-│       ├── json
-│       ├── comments
-│       ├── labels
-│       ├── dependents
-│       ├── tree
-│       └── events
 └── <id>/
     ├── ctl         # "stop", "restart", "kill"
     ├── state       # starting, idle, running, stopped, error, exited
@@ -243,18 +217,7 @@ Different clients interact with different parts of the filesystem: frontends rea
 
 ### Beads
 
-Persistent task tracking via [beads](https://github.com/steveyegge/beads) — Dependency-aware graph
-
-```sh
-echo 'init' | 9p write anvillm/beads/ctl
-echo 'new "Implement login" "Add JWT auth"' | 9p write anvillm/beads/ctl
-echo 'claim bd-a1b2' | 9p write anvillm/beads/ctl
-echo 'complete bd-a1b2' | 9p write anvillm/beads/ctl
-echo 'dep bd-child bd-parent' | 9p write anvillm/beads/ctl  # child blocks parent
-9p read anvillm/beads/ready | jq -r '.[] | "\(.id): \(.title)"'
-```
-
-Config: `~/.beads/` (override: `ANVILLM_BEADS_PATH`) — Shared across namespaces — See `internal/beads/README.md`
+Task tracking is provided by the separate [9beads](https://github.com/lneely/9beads) service, which exposes a `beads/` 9P filesystem.
 
 ### Events & Mailbox
 
