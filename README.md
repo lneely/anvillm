@@ -64,7 +64,7 @@ Any program that speaks 9P can be a frontend. The 9P filesystem exposes session 
 
 For web frontends that can't speak 9P directly, `anvilwebgw` bridges HTTP to 9P.
 
-The `mcptools` scripts (served via 9P at `tools/`) also provide convenient building blocks for frontends:
+Helper scripts served via 9P at `tools/` provide building blocks for frontends:
 
 ```sh
 bash <(9p read tools/<scriptname>)
