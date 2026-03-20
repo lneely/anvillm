@@ -58,9 +58,9 @@ NAMESPACE=/tmp/ns.$USER.:1 Assist
 
 ### Frontends
 
-Any program that speaks 9P can be a frontend. The 9P filesystem exposes session management, state, messaging, and configuration as plain files — so building a new frontend is just reading and writing files. Past prototypes have included a TUI, a web UI with HTTP gateway, and an Emacs major mode, all built against the same API. The current frontend is:
+Any program that speaks 9P can be a frontend. The 9P filesystem exposes session management, state, messaging, and configuration as plain files — so building a new frontend is just reading and writing files.
 
-- **Assist** — an Acme client (middle-click `Assist` to launch)
+- **Assist** — Acme client ([anvillm-acme](https://github.com/lneely/anvillm-acme))
 
 For web frontends that can't speak 9P directly, `anvilwebgw` bridges HTTP to 9P.
 
@@ -78,7 +78,7 @@ bash <(9p read tools/<scriptname>)
 |----------|---------|-------------|
 | `NAMESPACE` | `/tmp/ns.$USER.:0` | 9P namespace for server/client communication |
 | `ANVILLM_BEADS_PATH` | `~/.beads` | Beads database location (used by 9beads) |
-| `ANVILLM_TERMINAL` | `foot` | Terminal command for tmux attach (Assist) |
+| `ANVILLM_TERMINAL` | `foot` | Terminal command for tmux attach |
 | `ANTHROPIC_API_KEY` | — | Claude API key (optional if using `claude /login`) |
 | `CLAUDE_AGENT_NAME` | `anvillm-agent` | Claude agent configuration name |
 | `KIRO_API_KEY` | — | Kiro API key (optional if using `kiro-cli login`) |
@@ -152,7 +152,7 @@ State transitions: `idle` ↔ `running` cycle via CLI hooks (`userPromptSubmit` 
 
 Restored sessions automatically resume the latest conversation (kiro: `-r`, claude: `-c`).
 
-**Daemon recovery:** If the daemon itself crashes but tmux sessions are still running, use the `Recover` tag in Assist (middle-click it) to reload all session data into the server and continue working.
+**Daemon recovery:** If the daemon itself crashes but tmux sessions are still running, use `Recover` in Assist or manually restore sessions.
 
 **Add backend:** Implement `CommandHandler`/`StateInspector` in `internal/backends/yourbackend.go`, register in `main.go`
 
