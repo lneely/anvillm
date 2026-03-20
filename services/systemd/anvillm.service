@@ -17,11 +17,11 @@ Environment="NAMESPACE=/tmp/ns.%i"
 ExecStartPre=/bin/mkdir -p /tmp/ns.%i
 ExecStartPre=/bin/chown %i:%i /tmp/ns.%i
 
-# Start anvilsrv
-ExecStart=/home/%i/bin/anvilsrv start
+# Start anvillm
+ExecStart=/home/%i/bin/anvillm start
 
 # Cleanup on stop
-ExecStopPost=/bin/rm -f /tmp/anvilsrv.pid
+ExecStopPost=/bin/rm -f /tmp/anvillm.pid
 ExecStopPost=/bin/rm -f /tmp/ns.%i/agent
 
 # Restart policy

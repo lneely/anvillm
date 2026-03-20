@@ -1,6 +1,6 @@
 # AnviLLM Service Management
 
-This directory contains service management scripts for running `anvilsrv` as a system service.
+This directory contains service management scripts for running `anvillm` as a system service.
 
 ## Available Init Systems
 
@@ -13,9 +13,9 @@ See [systemd/README.md](systemd/README.md) for installation instructions.
 **Quick Start (User Service):**
 ```sh
 mkdir -p ~/.config/systemd/user
-cp services/systemd/anvilsrv-user.service ~/.config/systemd/user/
+cp services/systemd/anvillm-user.service ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable --now anvilsrv-user.service
+systemctl --user enable --now anvillm-user.service
 ```
 
 ### runit
@@ -26,30 +26,30 @@ See [runit/README.md](runit/README.md) for installation instructions.
 
 **Quick Start:**
 ```sh
-sudo cp -r services/runit /etc/sv/anvilsrv
-sudo chmod +x /etc/sv/anvilsrv/run /etc/sv/anvilsrv/finish
-sudo ln -s /etc/sv/anvilsrv /var/service/anvilsrv
+sudo cp -r services/runit /etc/sv/anvillm
+sudo chmod +x /etc/sv/anvillm/run /etc/sv/anvillm/finish
+sudo ln -s /etc/sv/anvillm /var/service/anvillm
 ```
 
 ## Manual Management (No Init System)
 
-If you don't want to use an init system, you can manage anvilsrv manually:
+If you don't want to use an init system, you can manage anvillm manually:
 
 ```sh
 # Start the server
-anvilsrv start
+anvillm start
 
 # Check status
-anvilsrv status
+anvillm status
 
 # Stop the server
-anvilsrv stop
+anvillm stop
 ```
 
 You can also add this to your shell startup file (`.profile`, `.bashrc`, etc.):
 ```sh
-# Auto-start anvilsrv if not running
-anvilsrv status 2>/dev/null || anvilsrv start
+# Auto-start anvillm if not running
+anvillm status 2>/dev/null || anvillm start
 ```
 
 ## Choosing an Init System
@@ -60,9 +60,9 @@ anvilsrv status 2>/dev/null || anvilsrv start
 
 ## Troubleshooting
 
-### Check if anvilsrv is Running
+### Check if anvillm is Running
 ```sh
-anvilsrv status
+anvillm status
 ```
 
 ### Check 9P Socket
@@ -78,13 +78,13 @@ echo "list" | 9p read anvillm/list
 
 **systemd:**
 ```sh
-journalctl --user -u anvilsrv-user -f
+journalctl --user -u anvillm-user -f
 ```
 
 **runit:**
 ```sh
-sudo svlogd /var/log/anvilsrv
+sudo svlogd /var/log/anvillm
 ```
 
 **manual:**
-Check stderr output (anvilsrv logs to stderr/stdout by default).
+Check stderr output (anvillm logs to stderr/stdout by default).

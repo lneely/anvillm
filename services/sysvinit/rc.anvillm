@@ -1,34 +1,34 @@
 #!/bin/sh
-# /etc/rc.d/rc.anvilsrv
+# /etc/rc.d/rc.anvillm
 #
-# Start/stop/restart the AnviLLM backend server (anvilsrv).
+# Start/stop/restart the AnviLLM backend server (anvillm).
 #
-# anvilsrv exposes a 9P filesystem (anvillm/) used by Claude Code sessions and
+# anvillm exposes a 9P filesystem (anvillm/) used by Claude Code sessions and
 # bots for session management, mailbox communication, beads task tracking, and
 # the event bus.
 #
 # This script follows Slackware rc conventions:
-#   - Enable service:  chmod 755 /etc/rc.d/rc.anvilsrv
-#   - Disable service: chmod 644 /etc/rc.d/rc.anvilsrv
+#   - Enable service:  chmod 755 /etc/rc.d/rc.anvillm
+#   - Disable service: chmod 644 /etc/rc.d/rc.anvillm
 #
 # To start automatically at boot, add to /etc/rc.d/rc.local:
-#   if [ -x /etc/rc.d/rc.anvilsrv ]; then
-#     /etc/rc.d/rc.anvilsrv start
+#   if [ -x /etc/rc.d/rc.anvillm ]; then
+#     /etc/rc.d/rc.anvillm start
 #   fi
 #
 # To stop cleanly at shutdown, add to /etc/rc.d/rc.local_shutdown:
-#   if [ -x /etc/rc.d/rc.anvilsrv ]; then
-#     /etc/rc.d/rc.anvilsrv stop
+#   if [ -x /etc/rc.d/rc.anvillm ]; then
+#     /etc/rc.d/rc.anvillm stop
 #   fi
 #
 # ── configuration ─────────────────────────────────────────────────────────────
 #
 # ANVILSRV_USER  Login name of the user whose AnviLLM instance to manage.
-#                The anvilsrv binary is expected at ~/bin/anvilsrv.
+#                The anvillm binary is expected at ~/bin/anvillm.
 #
 # NAMESPACE      9P namespace directory.  Defaults to /tmp/ns.$ANVILSRV_USER
 #                matching the Plan 9 client.Namespace() convention used by
-#                anvilsrv.  The PID file lives at $NAMESPACE/anvilsrv.pid.
+#                anvillm.  The PID file lives at $NAMESPACE/anvillm.pid.
 #
 ANVILSRV_USER="${ANVILSRV_USER:-}"
 NAMESPACE="${NAMESPACE:-}"
@@ -39,11 +39,11 @@ if [ -z "$NAMESPACE" ] && [ -n "$ANVILSRV_USER" ]; then
     NAMESPACE="/tmp/ns.${ANVILSRV_USER}"
 fi
 
-DAEMON="/home/${ANVILSRV_USER}/bin/anvilsrv"
+DAEMON="/home/${ANVILSRV_USER}/bin/anvillm"
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-anvilsrv_env() {
+anvillm_env() {
     # Print the environment preamble used in every su invocation.
     printf "export NAMESPACE='%s'; export HOME='/home/%s'; export PATH='/home/%s/bin:/usr/local/bin:/usr/bin:/bin'" \
         "$NAMESPACE" "$ANVILSRV_USER" "$ANVILSRV_USER"
@@ -51,65 +51,65 @@ anvilsrv_env() {
 
 check_config() {
     if [ -z "$ANVILSRV_USER" ]; then
-        echo "rc.anvilsrv: ANVILSRV_USER is not set — edit this script or set the variable." >&2
+        echo "rc.anvillm: ANVILSRV_USER is not set — edit this script or set the variable." >&2
         return 1
     fi
     if [ ! -x "$DAEMON" ]; then
-        echo "rc.anvilsrv: ${DAEMON} not found or not executable." >&2
+        echo "rc.anvillm: ${DAEMON} not found or not executable." >&2
         return 1
     fi
     return 0
 }
 
-anvilsrv_start() {
+anvillm_start() {
     check_config || return
 
-    echo "Starting anvilsrv (user=${ANVILSRV_USER}, namespace=${NAMESPACE})..."
+    echo "Starting anvillm (user=${ANVILSRV_USER}, namespace=${NAMESPACE})..."
     mkdir -p "$NAMESPACE"
     chown "$ANVILSRV_USER" "$NAMESPACE" 2>/dev/null
 
-    # anvilsrv start daemonizes itself and writes its own PID file at
-    # $NAMESPACE/anvilsrv.pid.  It also detects if it is already running and
+    # anvillm start daemonizes itself and writes its own PID file at
+    # $NAMESPACE/anvillm.pid.  It also detects if it is already running and
     # exits with an error in that case — no extra guard needed here.
-    su -s /bin/sh -l "$ANVILSRV_USER" -c "$(anvilsrv_env); '${DAEMON}' start"
+    su -s /bin/sh -l "$ANVILSRV_USER" -c "$(anvillm_env); '${DAEMON}' start"
 }
 
-anvilsrv_stop() {
+anvillm_stop() {
     check_config || return
 
-    echo "Stopping anvilsrv (user=${ANVILSRV_USER})..."
-    su -s /bin/sh -l "$ANVILSRV_USER" -c "$(anvilsrv_env); '${DAEMON}' stop"
+    echo "Stopping anvillm (user=${ANVILSRV_USER})..."
+    su -s /bin/sh -l "$ANVILSRV_USER" -c "$(anvillm_env); '${DAEMON}' stop"
 
-    # Remove the 9P socket left behind by anvilsrv.
+    # Remove the 9P socket left behind by anvillm.
     rm -f "${NAMESPACE}/agent" 2>/dev/null
 }
 
-anvilsrv_restart() {
-    anvilsrv_stop
+anvillm_restart() {
+    anvillm_stop
     sleep 1
-    anvilsrv_start
+    anvillm_start
 }
 
-anvilsrv_status() {
+anvillm_status() {
     check_config || return
 
-    su -s /bin/sh -l "$ANVILSRV_USER" -c "$(anvilsrv_env); '${DAEMON}' status"
+    su -s /bin/sh -l "$ANVILSRV_USER" -c "$(anvillm_env); '${DAEMON}' status"
 }
 
 # ── dispatch ──────────────────────────────────────────────────────────────────
 
 case "$1" in
     start)
-        anvilsrv_start
+        anvillm_start
         ;;
     stop)
-        anvilsrv_stop
+        anvillm_stop
         ;;
     restart)
-        anvilsrv_restart
+        anvillm_restart
         ;;
     status)
-        anvilsrv_status
+        anvillm_status
         ;;
     *)
         echo "Usage: $0 {start|stop|restart|status}"

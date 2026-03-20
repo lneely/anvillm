@@ -47,4 +47,4 @@ sv up anvillm-inbox-notify
 - `anvillm-inbox-notify` script installed in `PATH`
 - `notify-send` (from `libnotify` or `dunst`)
 - `jq` ≥ 1.6
-- `9p` command connected to a running `anvilsrv`
+- `9p` command connected to a running `anvillm`

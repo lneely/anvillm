@@ -1,11 +1,11 @@
 #!/bin/sh
-# runit finish script for anvilsrv
+# runit finish script for anvillm
 # Called when the service stops
 
-echo "anvilsrv stopped"
+echo "anvillm stopped"
 
 # Remove PID file if it exists
-rm -f /tmp/anvilsrv.pid
+rm -f /tmp/anvillm.pid
 
 # Optional: clean up stale sockets
 # export NAMESPACE="${NAMESPACE:-/tmp/ns.$(whoami)}"

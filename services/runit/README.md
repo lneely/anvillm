@@ -1,33 +1,33 @@
-# runit Service for anvilsrv
+# runit Service for anvillm
 
-This directory contains a runit service definition for anvilsrv.
+This directory contains a runit service definition for anvillm.
 
 ## Installation
 
-1. Copy this directory to `/etc/sv/anvilsrv`:
+1. Copy this directory to `/etc/sv/anvillm`:
    ```sh
-   sudo cp -r services/runit /etc/sv/anvilsrv
-   sudo chmod +x /etc/sv/anvilsrv/run
-   sudo chmod +x /etc/sv/anvilsrv/finish
+   sudo cp -r services/runit /etc/sv/anvillm
+   sudo chmod +x /etc/sv/anvillm/run
+   sudo chmod +x /etc/sv/anvillm/finish
    ```
 
 2. Enable the service by creating a symlink:
    ```sh
-   sudo ln -s /etc/sv/anvilsrv /var/service/anvilsrv
+   sudo ln -s /etc/sv/anvillm /var/service/anvillm
    ```
 
 3. The service will start automatically. Check status:
    ```sh
-   sudo sv status anvilsrv
+   sudo sv status anvillm
    ```
 
 ## Service Management
 
-- **Start**: `sudo sv start anvilsrv`
-- **Stop**: `sudo sv stop anvilsrv`
-- **Restart**: `sudo sv restart anvilsrv`
-- **Status**: `sudo sv status anvilsrv`
-- **View logs**: `sudo svlogd /var/log/anvilsrv`
+- **Start**: `sudo sv start anvillm`
+- **Stop**: `sudo sv stop anvillm`
+- **Restart**: `sudo sv restart anvillm`
+- **Status**: `sudo sv status anvillm`
+- **View logs**: `sudo svlogd /var/log/anvillm`
 
 ## Notes
 
@@ -36,5 +36,5 @@ This directory contains a runit service definition for anvilsrv.
 - The service will automatically restart if it crashes
 - To disable the service, remove the symlink from /var/service:
   ```sh
-  sudo rm /var/service/anvilsrv
+  sudo rm /var/service/anvillm
   ```

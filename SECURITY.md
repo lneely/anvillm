@@ -2,7 +2,7 @@
 
 ## 9P Server Socket
 
-The anvilsrv 9P server creates a Unix domain socket at `$NAMESPACE/agent` (typically `/tmp/ns.$USER/agent`).
+The anvillm 9P server creates a Unix domain socket at `$NAMESPACE/agent` (typically `/tmp/ns.$USER/agent`).
 
 **Important Security Notes:**
 
@@ -43,7 +43,7 @@ The anvilsrv 9P server creates a Unix domain socket at `$NAMESPACE/agent` (typic
 
 ## PID File
 
-The PID file is stored at `$NAMESPACE/anvilsrv.pid` to prevent symlink attacks. Older versions used `/tmp/anvilsrv.pid` which was vulnerable.
+The PID file is stored at `$NAMESPACE/anvillm.pid` to prevent symlink attacks. Older versions used `/tmp/anvillm.pid` which was vulnerable.
 
 ## Path Validation
 
@@ -68,9 +68,9 @@ Backend sessions run in tmux windows with:
 - FIFO pipes for output capture at `/tmp/tmux-{session}-{window}.fifo`
 
 **Security Notes**:
-- Tmux sessions are accessible to the user running anvilsrv
+- Tmux sessions are accessible to the user running anvillm
 - FIFO files in /tmp could theoretically be accessed by other local users
-- Backend processes inherit anvilsrv's environment and permissions
+- Backend processes inherit anvillm's environment and permissions
 
 ## Future Improvements
 

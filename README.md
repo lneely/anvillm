@@ -6,7 +6,7 @@ LLM orchestrator using 9P — scriptable, multi-backend, crash-resilient
 
 ![Architecture](docs/diagrams/architecture.svg?v=2)
 
-**Core:** anvilsrv (9P daemon), anvilmcp (optional MCP server, see [anvillm-mcp](https://github.com/lneely/anvillm-mcp))
+**Core:** anvillm (9P daemon), anvilmcp (optional MCP server, see [anvillm-mcp](https://github.com/lneely/anvillm-mcp))
 **Frontends:** Any 9P-speaking program — currently Assist (Acme)
 **Benefits:** Shared sessions, crash recovery, scriptable via 9P, cross-backend agent communication
 
@@ -27,32 +27,32 @@ git clone https://github.com/lneely/anvillm && cd anvillm && mk
 **Service integration** (optional, see `services/*/README.md`):
 ```sh
 # systemd user
-cp services/systemd/anvilsrv-user.service ~/.config/systemd/user/
-systemctl --user enable --now anvilsrv
+cp services/systemd/anvillm-user.service ~/.config/systemd/user/
+systemctl --user enable --now anvillm
 
 # systemd system
-sudo cp services/systemd/anvilsrv.service /etc/systemd/system/
-sudo systemctl enable --now anvilsrv
+sudo cp services/systemd/anvillm.service /etc/systemd/system/
+sudo systemctl enable --now anvillm
 
 # runit
-sudo cp -r services/runit /etc/sv/anvilsrv
-sudo ln -s /etc/sv/anvilsrv /var/service/
+sudo cp -r services/runit /etc/sv/anvillm
+sudo ln -s /etc/sv/anvillm /var/service/
 ```
 
 ## Usage
 
 ```sh
-anvilsrv start       # background
-anvilsrv fgstart     # foreground
-anvilsrv status
-anvilsrv stop
+anvillm start       # background
+anvillm fgstart     # foreground
+anvillm status
+anvillm stop
 ```
 
 `Assist` auto-starts if needed.
 
 **Namespaces:** Run multiple instances via `$NAMESPACE` (default: `/tmp/ns.$USER.:0`)
 ```sh
-NAMESPACE=/tmp/ns.$USER.:1 anvilsrv start
+NAMESPACE=/tmp/ns.$USER.:1 anvillm start
 NAMESPACE=/tmp/ns.$USER.:1 Assist
 ```
 
@@ -348,7 +348,7 @@ The Conductor analyzes dependencies, spawns specialized bots, and delegates work
 **Monitoring:**
 - Event stream: `9p read anvillm/events` (state changes, messages)
 - Debug logs: `~/.config/anvillm/logs/` (set `ANVILLM_DEBUG=1` for verbose output)
-- Foreground mode: `anvilsrv fgstart` for live stderr output
+- Foreground mode: `anvillm fgstart` for live stderr output
 
 ## MCP Integration
 
@@ -370,13 +370,13 @@ See [Code Execution User Guide](docs/code-execution-user-guide.md) for details.
 
 | Problem | Solution |
 |---------|----------|
-| Can't connect | `anvilsrv status`; try `anvilsrv start` |
+| Can't connect | `anvillm status`; try `anvillm start` |
 | Session won't start | Check stderr; verify backend installed |
 | Landlock ABI error | Set `best_effort: true` or upgrade kernel |
 | Permission denied | Add paths to layered config |
 | Orphaned tmux | `tmux kill-session -t anvillm-0` |
 | 9P not working | `9p ls agent` |
-| Stale PID | `anvilsrv stop` auto-cleans |
-| Daemon won't stop | `anvilsrv fgstart` for logs |
+| Stale PID | `anvillm stop` auto-cleans |
+| Daemon won't stop | `anvillm fgstart` for logs |
 | Bot stuck in "running" | Attach to the session's tmux window and type "stop work." to interrupt it and return to idle |
 See Configuration section for environment variables.

@@ -4,79 +4,79 @@ SysV init scripts for AnviLLM services, in two flavours:
 
 | File | Style | Install at |
 |------|-------|-----------|
-| `anvilsrv` | Generic SysV + LSB INIT INFO header | `/etc/init.d/anvilsrv` |
-| `rc.anvilsrv` | Slackware rc | `/etc/rc.d/rc.anvilsrv` |
+| `anvillm` | Generic SysV + LSB INIT INFO header | `/etc/init.d/anvillm` |
+| `rc.anvillm` | Slackware rc | `/etc/rc.d/rc.anvillm` |
 | `anvillm-inbox-notify` | Generic SysV + LSB INIT INFO header | `/etc/init.d/anvillm-inbox-notify` |
 | `rc.anvillm-inbox-notify` | Slackware rc | `/etc/rc.d/rc.anvillm-inbox-notify` |
 
 ---
 
-## anvilsrv — AnviLLM backend server
+## anvillm — AnviLLM backend server
 
-`anvilsrv` is the core backend daemon.  It exposes the `anvillm/` 9P filesystem
+`anvillm` is the core backend daemon.  It exposes the `anvillm/` 9P filesystem
 used by Claude Code sessions, bots, the beads task store, and the event bus.
 
-The binary (`~/bin/anvilsrv`) handles daemonization, PID file management, and
-a `status` subcommand itself, so these init scripts delegate to `anvilsrv
-start`, `anvilsrv stop`, and `anvilsrv status` rather than doing their own
-process tracking.  The PID file lives at `$NAMESPACE/anvilsrv.pid`.
+The binary (`~/bin/anvillm`) handles daemonization, PID file management, and
+a `status` subcommand itself, so these init scripts delegate to `anvillm
+start`, `anvillm stop`, and `anvillm status` rather than doing their own
+process tracking.  The PID file lives at `$NAMESPACE/anvillm.pid`.
 
-### Generic SysV (`/etc/init.d/anvilsrv`)
+### Generic SysV (`/etc/init.d/anvillm`)
 
 ```sh
 # Install
-sudo install -m 755 services/sysvinit/anvilsrv /etc/init.d/
+sudo install -m 755 services/sysvinit/anvillm /etc/init.d/
 
 # Configure — set the user to run as
-sudo sh -c 'echo "ANVILSRV_USER=yourlogin" > /etc/default/anvilsrv'
+sudo sh -c 'echo "ANVILSRV_USER=yourlogin" > /etc/default/anvillm'
 # Optionally override NAMESPACE (defaults to /tmp/ns.$ANVILSRV_USER):
-# echo "NAMESPACE=/tmp/ns.yourlogin.:0" >> /etc/default/anvilsrv
+# echo "NAMESPACE=/tmp/ns.yourlogin.:0" >> /etc/default/anvillm
 
 # Register with the init system
-sudo update-rc.d anvilsrv defaults   # Debian / Ubuntu
+sudo update-rc.d anvillm defaults   # Debian / Ubuntu
 # -or-
-sudo chkconfig --add anvilsrv        # Red Hat / CentOS
+sudo chkconfig --add anvillm        # Red Hat / CentOS
 
 # Manage
-sudo service anvilsrv start
-sudo service anvilsrv stop
-sudo service anvilsrv restart
-sudo service anvilsrv status
+sudo service anvillm start
+sudo service anvillm stop
+sudo service anvillm restart
+sudo service anvillm status
 ```
 
-### Slackware (`/etc/rc.d/rc.anvilsrv`)
+### Slackware (`/etc/rc.d/rc.anvillm`)
 
 ```sh
 # Install binary (built from source or downloaded)
-install -m 755 /path/to/anvilsrv /home/yourlogin/bin/
+install -m 755 /path/to/anvillm /home/yourlogin/bin/
 
 # Install rc script
-install -m 755 services/sysvinit/rc.anvilsrv /etc/rc.d/
+install -m 755 services/sysvinit/rc.anvillm /etc/rc.d/
 
 # Set the user — edit ANVILSRV_USER= at the top of the script, or pass it:
-ANVILSRV_USER=yourlogin /etc/rc.d/rc.anvilsrv start
+ANVILSRV_USER=yourlogin /etc/rc.d/rc.anvillm start
 ```
 
 Enable/disable (Slackware convention):
 
 ```sh
-chmod 755 /etc/rc.d/rc.anvilsrv   # enable
-chmod 644 /etc/rc.d/rc.anvilsrv   # disable
+chmod 755 /etc/rc.d/rc.anvillm   # enable
+chmod 644 /etc/rc.d/rc.anvillm   # disable
 ```
 
 Add to `/etc/rc.d/rc.local` to start at boot:
 
 ```sh
-if [ -x /etc/rc.d/rc.anvilsrv ]; then
-  /etc/rc.d/rc.anvilsrv start
+if [ -x /etc/rc.d/rc.anvillm ]; then
+  /etc/rc.d/rc.anvillm start
 fi
 ```
 
 Add to `/etc/rc.d/rc.local_shutdown` to stop cleanly:
 
 ```sh
-if [ -x /etc/rc.d/rc.anvilsrv ]; then
-  /etc/rc.d/rc.anvilsrv stop
+if [ -x /etc/rc.d/rc.anvillm ]; then
+  /etc/rc.d/rc.anvillm stop
 fi
 ```
 
@@ -128,7 +128,7 @@ install -m 755 services/sysvinit/rc.anvillm-inbox-notify /etc/rc.d/
 ANVILLM_USER=yourlogin /etc/rc.d/rc.anvillm-inbox-notify start
 ```
 
-Enable/disable and rc.local hooks follow the same pattern as rc.anvilsrv above.
+Enable/disable and rc.local hooks follow the same pattern as rc.anvillm above.
 
 ---
 

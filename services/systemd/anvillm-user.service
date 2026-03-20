@@ -11,11 +11,11 @@ WorkingDirectory=%h
 # But we can override if needed:
 # Environment="PATH=%h/bin:/usr/local/bin:/usr/bin:/bin"
 
-# Start anvilsrv
-ExecStart=%h/bin/anvilsrv start
+# Start anvillm
+ExecStart=%h/bin/anvillm start
 
 # Cleanup on stop
-ExecStopPost=/bin/rm -f /tmp/anvilsrv.pid
+ExecStopPost=/bin/rm -f /tmp/anvillm.pid
 
 # Restart policy
 Restart=on-failure

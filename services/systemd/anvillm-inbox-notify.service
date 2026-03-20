@@ -11,13 +11,13 @@ Type=simple
 # Environment="DISPLAY=:0"
 # Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus"
 
-# Namespace for 9P mount (default matches anvilsrv default).
+# Namespace for 9P mount (default matches anvillm default).
 # Override if you use a non-default namespace.
 # Environment="NAMESPACE=/tmp/ns.%u.:0"
 
 ExecStart=%h/bin/anvillm-inbox-notify
 
-# Restart if the daemon exits (e.g. anvilsrv restarted and the 9p read broke).
+# Restart if the daemon exits (e.g. anvillm restarted and the 9p read broke).
 Restart=on-failure
 RestartSec=5s
 

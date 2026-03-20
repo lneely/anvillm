@@ -34,7 +34,7 @@ The Ollama backend enables local LLM usage via [mcphost](https://github.com/mark
 
 ## Usage
 
-Start anvilsrv and create an Ollama session:
+Start anvillm and create an Ollama session:
 
 ```bash
 # Via 9P interface

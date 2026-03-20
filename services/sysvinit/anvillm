@@ -1,6 +1,6 @@
 #!/bin/sh
 ### BEGIN INIT INFO
-# Provides:          anvilsrv
+# Provides:          anvillm
 # Required-Start:    $local_fs $syslog
 # Required-Stop:     $local_fs $syslog
 # Should-Start:      $network
@@ -8,7 +8,7 @@
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
 # Short-Description: AnviLLM backend server
-# Description:       anvilsrv is the AnviLLM backend server daemon. It exposes
+# Description:       anvillm is the AnviLLM backend server daemon. It exposes
 #                    a 9P filesystem (anvillm/) that Claude Code sessions and bots
 #                    use for session management, mailbox communication, beads
 #                    task tracking, and the event bus.
@@ -17,23 +17,23 @@
 # ── configuration ─────────────────────────────────────────────────────────────
 #
 # ANVILSRV_USER  Login name of the user whose AnviLLM instance to manage.
-#                The anvilsrv binary is expected at ~/bin/anvilsrv.
+#                The anvillm binary is expected at ~/bin/anvillm.
 #
 # NAMESPACE      9P namespace directory. Defaults to /tmp/ns.$ANVILSRV_USER
 #                matching the Plan 9 client.Namespace() convention.
-#                The PID file lives at $NAMESPACE/anvilsrv.pid.
+#                The PID file lives at $NAMESPACE/anvillm.pid.
 #
-# Override in /etc/default/anvilsrv (sourced below if it exists).
+# Override in /etc/default/anvillm (sourced below if it exists).
 #
 ANVILSRV_USER="${ANVILSRV_USER:-}"
 NAMESPACE="${NAMESPACE:-}"
 
 # Source distro defaults (if any).
-[ -r /etc/default/anvilsrv ] && . /etc/default/anvilsrv
+[ -r /etc/default/anvillm ] && . /etc/default/anvillm
 
 # ── derived paths ─────────────────────────────────────────────────────────────
 
-NAME="anvilsrv"
+NAME="anvillm"
 
 # Resolve NAMESPACE after potentially sourcing defaults.
 if [ -z "$NAMESPACE" ] && [ -n "$ANVILSRV_USER" ]; then
@@ -44,12 +44,12 @@ fi
 
 if [ -z "$ANVILSRV_USER" ]; then
     echo "${NAME}: ANVILSRV_USER is not set." >&2
-    echo "  Set it in /etc/default/anvilsrv:" >&2
+    echo "  Set it in /etc/default/anvillm:" >&2
     echo "    ANVILSRV_USER=yourlogin" >&2
     exit 6   # LSB: program not configured
 fi
 
-DAEMON="/home/${ANVILSRV_USER}/bin/anvilsrv"
+DAEMON="/home/${ANVILSRV_USER}/bin/anvillm"
 
 if [ ! -x "$DAEMON" ]; then
     echo "${NAME}: daemon not found at ${DAEMON}" >&2
@@ -59,7 +59,7 @@ fi
 # ── actions ───────────────────────────────────────────────────────────────────
 
 do_start() {
-    # anvilsrv start exits non-zero if already running.
+    # anvillm start exits non-zero if already running.
     # Let it decide — delegate fully.
     echo "Starting ${NAME} (user=${ANVILSRV_USER}, namespace=${NAMESPACE})..."
 
@@ -107,11 +107,11 @@ do_status() {
         '${DAEMON}' status
     "
     local rc=$?
-    # Map anvilsrv exit codes to LSB status codes.
-    # anvilsrv status exits 0 if running, non-zero otherwise.
+    # Map anvillm exit codes to LSB status codes.
+    # anvillm status exits 0 if running, non-zero otherwise.
     # We also check for a stale PID file.
     if [ $rc -ne 0 ]; then
-        local pidfile="${NAMESPACE}/anvilsrv.pid"
+        local pidfile="${NAMESPACE}/anvillm.pid"
         if [ -s "$pidfile" ]; then
             return 1   # LSB: dead, pidfile exists
         fi
@@ -135,7 +135,7 @@ case "$1" in
         do_start
         ;;
     reload)
-        # anvilsrv does not support live config reload.
+        # anvillm does not support live config reload.
         echo "${NAME}: reload not supported — use restart." >&2
         exit 3   # LSB: unimplemented feature
         ;;

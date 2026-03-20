@@ -13,11 +13,11 @@ WorkingDirectory=/home/%i
 Environment="PATH=/home/%i/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="HOME=/home/%i"
 
-# Start anvilsrv
-ExecStart=/home/%i/bin/anvilsrv start
+# Start anvillm
+ExecStart=/home/%i/bin/anvillm start
 
 # Cleanup on stop
-ExecStopPost=/bin/rm -f /tmp/anvilsrv.pid
+ExecStopPost=/bin/rm -f /tmp/anvillm.pid
 
 # Restart policy
 Restart=on-failure
