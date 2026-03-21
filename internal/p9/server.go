@@ -286,6 +286,11 @@ func (s *Server) handle(cs *connState, fc *plan9.Fcall) *plan9.Fcall {
 		return s.remove(cs, fc)
 	case plan9.Tstat:
 		return s.stat(cs, fc)
+	case plan9.Twstat:
+		// Accept and ignore wstat on synthetic files. 9pfuse sends Twstat
+		// for O_TRUNC (truncate-to-zero) on already-open files; without
+		// this, shell redirection (>) to the FUSE mount fails with ERANGE.
+		return &plan9.Fcall{Type: plan9.Rwstat, Tag: fc.Tag}
 	case plan9.Tclunk:
 		cs.mu.Lock()
 		f, hasFid := cs.fids[fc.Fid]
