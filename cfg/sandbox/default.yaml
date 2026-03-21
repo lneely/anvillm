@@ -81,6 +81,7 @@ filesystem:
     - "{CWD}"
     - "{PLAN9}"
     - "{HOME}/bin"
+    - "{HOME}/mnt"
     - "{HOME}/.pyenv"
     - "{HOME}/.local/bin"
     - "{HOME}/.sdkman"

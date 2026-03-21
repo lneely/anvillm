@@ -24,6 +24,9 @@ filesystem:
     - "{XDG_RUNTIME_DIR}/superpowerd"
   rwx:
     - "{CWD}"
+    - "{HOME}/mnt/anvillm"
+    - "{HOME}/mnt/beads"
+    - "{HOME}/mnt/denote"
 env:
   - NAMESPACE
   - PATH
