@@ -3,26 +3,24 @@ package backends
 import (
 	"anvillm/internal/backend"
 	"anvillm/internal/backend/tmux"
-	"fmt"
 	"os"
-	"os/exec"
 
 	"9fans.net/go/plan9/client"
 )
 
-// NewOllama creates an ollama backend using mcphost
+// NewOllama creates an ollie-backed agent backend.
 func NewOllama(nsSuffix string) backend.Backend {
-	model := os.Getenv("ANVILLM_OLLAMA_MODEL")
+	model := os.Getenv("OLLIE_MODEL")
+	if model == "" {
+		model = os.Getenv("ANVILLM_OLLAMA_MODEL")
+	}
 	if model == "" {
 		model = "qwen3:8b"
 	}
 
-	home, _ := os.UserHomeDir()
-	configPath := home + "/.config/anvillm/ollama-mcp.json"
-
 	return tmux.New(tmux.Config{
 		Name:    "ollama",
-		Command: []string{"ollama-mcp-client", configPath, model},
+		Command: []string{"ollie", model},
 		Environment: map[string]string{
 			"TERM":      "xterm-256color",
 			"NO_COLOR":  "1",
@@ -33,27 +31,21 @@ func NewOllama(nsSuffix string) backend.Backend {
 			Rows: 40,
 			Cols: 120,
 		},
-		StateInspector: &ollamaStateInspector{},
+		StateInspector: &ollieStateInspector{},
 		NsSuffix:       nsSuffix,
 	})
 }
 
-// ollamaStateInspector implements StateInspector for mcphost
-type ollamaStateInspector struct{}
+// ollieStateInspector implements StateInspector for ollie.
+type ollieStateInspector struct{}
 
-func (i *ollamaStateInspector) IsBusy(panePID int) bool {
-	// Process tree: pane -> bash -> mcphost
-	bashPID := tmux.FindChildByName(panePID, "bash")
-	if bashPID == 0 {
+func (i *ollieStateInspector) IsBusy(panePID int) bool {
+	// Process tree: pane -> bash -> ollie
+	// Hooks (userPromptSubmit/stop) are the primary state signal;
+	// this is a fallback that checks if ollie has active child processes.
+	olliePID := tmux.FindChildByName(panePID, "ollie")
+	if olliePID == 0 {
 		return false
 	}
-
-	mcphostPID := tmux.FindChildByName(bashPID, "mcphost")
-	if mcphostPID == 0 {
-		return false
-	}
-
-	// Check if mcphost has any children (tool executions)
-	cmd := exec.Command("pgrep", "-P", fmt.Sprintf("%d", mcphostPID))
-	return cmd.Run() == nil
+	return tmux.FindChildByName(olliePID, "sh") != 0
 }
