@@ -8,8 +8,8 @@ import (
 	"9fans.net/go/plan9/client"
 )
 
-// NewOllama creates an ollie-backed agent backend.
-func NewOllama(nsSuffix string) backend.Backend {
+// NewOllie creates an ollie-backed agent backend.
+func NewOllie(nsSuffix string) backend.Backend {
 	model := os.Getenv("OLLIE_MODEL")
 	if model == "" {
 		model = os.Getenv("ANVILLM_OLLAMA_MODEL")
