@@ -1,19 +1,16 @@
-# Claude backend requirements
+# ollie backend requirements
 filesystem:
-  rw:
-    - "{HOME}/.claude"
-    - "{HOME}/.mcp.json"
-    - "{HOME}/.claude.json"
-    - "{HOME}/.config/anvillm"
+  ro:
     - "{HOME}/.config/ollie"
-    - "{HOME}/.ollama"
-    - "{HOME}/.mcphost.yml"
-  rwx:
-    - "{HOME}/.claude/hooks"
-    - "{HOME}/.pyenv"
-    - "{HOME}/.local/lib"
+  rw:
+    - "{HOME}/.config/anvillm"
+    - "{HOME}/.local/state/ollie"
+    - "{HOME}/.cache/ollie"
 network:
   unrestricted: true
 env:
-  - ANTHROPIC_API_KEY
-  - CLAUDE_AGENT_NAME=anvillm-agent
+  - OLLIE_BACKEND
+  - OLLIE_MODEL
+  - OLLIE_OLLAMA_URL
+  - OLLIE_OPENAI_URL
+  - OLLIE_OPENAI_KEY
