@@ -20,6 +20,14 @@ type SessionOptions struct {
 	Model   string // Optional model override (empty = backend default)
 }
 
+// Usage holds token accounting data for a single agent turn.
+type Usage struct {
+	InputTokens      int
+	OutputTokens     int
+	CacheReadTokens  int
+	CacheWriteTokens int
+}
+
 // Backend represents any chat backend (CLI tool via PTY, or direct API)
 type Backend interface {
 	// Name returns the backend name
