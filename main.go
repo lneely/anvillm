@@ -194,6 +194,7 @@ func start(daemonize bool) {
 		"kiro-cli": backends.NewKiroCLI(nsSuffix),
 		"claude":   backends.NewClaude(nsSuffix),
 		"ollama":   backends.NewOllama(nsSuffix),
+		"ollie":    backends.NewOllama(nsSuffix),
 	}
 
 	mgr := session.NewManager(backendMap)
