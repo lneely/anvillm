@@ -258,10 +258,10 @@ func (b *Backend) CreateSession(ctx context.Context, opts backend.SessionOptions
 		return nil, fmt.Errorf("failed to change directory: %w", err)
 	}
 
-	// Export AGENT_ID to shell environment
-	if err := sendKeys(target, fmt.Sprintf("export AGENT_ID=%s", id), "C-m"); err != nil {
+	// Export AGENT_ID and ANVILLM_BACKEND to shell environment
+	if err := sendKeys(target, fmt.Sprintf("export AGENT_ID=%s ANVILLM_BACKEND=%s", id, b.cfg.Name), "C-m"); err != nil {
 		killWindow(b.tmuxSession, windowName)
-		return nil, fmt.Errorf("failed to export AGENT_ID: %w", err)
+		return nil, fmt.Errorf("failed to export AGENT_ID/ANVILLM_BACKEND: %w", err)
 	}
 
 	// Send the command

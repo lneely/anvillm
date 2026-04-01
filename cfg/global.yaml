@@ -68,6 +68,7 @@ env:
     - DISPLAY
     - WAYLAND_DISPLAY
     - AGENT_ID
+    - ANVILLM_BACKEND
 advanced:
     ldd: false
     add_exec: true
