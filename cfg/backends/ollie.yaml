@@ -5,6 +5,7 @@ filesystem:
     - "{HOME}/.mcp.json"
     - "{HOME}/.claude.json"
     - "{HOME}/.config/anvillm"
+    - "{HOME}/.config/ollie"
     - "{HOME}/.ollama"
     - "{HOME}/.mcphost.yml"
   rwx:

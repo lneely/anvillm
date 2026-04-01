@@ -19,7 +19,7 @@ func NewOllama(nsSuffix string) backend.Backend {
 	}
 
 	return tmux.New(tmux.Config{
-		Name:    "ollama",
+		Name:    "ollie",
 		Command: []string{"ollie", model},
 		Environment: map[string]string{
 			"TERM":      "xterm-256color",
