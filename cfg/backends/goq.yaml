@@ -11,6 +11,7 @@ filesystem:
     - "{XDG_DATA_HOME}/kiro-cli"
     - "{CWD}/.kiro"
     - "/dev/tty"
+    - "{XDG_RUNTIME_DIR}/superpowerd"
 network:
   unrestricted: true
 env:
@@ -20,3 +21,6 @@ env:
   - ANTHROPIC_API_KEY
   - GITHUB_TOKEN
   - KIRO_API_KEY
+  - SUPERPOWERD_SESSION_TOKEN
+  - SUPERPOWERD_SOCKET_DIR
+  - XDG_RUNTIME_DIR

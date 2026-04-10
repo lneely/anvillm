@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "anvilmcp": {
+      "command": ["anvilmcp"]
+    },
+    "superpowers-mcp-server": {
+      "command": ["superpowers-mcp-server"],
+      "env": {
+        "SUPERPOWERD_SESSION_TOKEN": "${SUPERPOWERD_SESSION_TOKEN}",
+        "SUPERPOWERD_SOCKET_DIR": "${SUPERPOWERD_SOCKET_DIR}",
+        "XDG_RUNTIME_DIR": "${XDG_RUNTIME_DIR}"
+      }
+    }
+  }
+}
