@@ -1,9 +1,15 @@
 # goq backend requirements
 filesystem:
+  rox:
+    - "{HOME}/.local/bin"
   rw:
     - "{HOME}/.config/goq"
     - "{XDG_DATA_HOME}/goq"
     - "{HOME}/.local/share/goq"
+    - "{HOME}/.kiro"
+    - "{HOME}/.aws"
+    - "{XDG_DATA_HOME}/kiro-cli"
+    - "{CWD}/.kiro"
     - "/dev/tty"
 network:
   unrestricted: true
@@ -13,3 +19,4 @@ env:
   - OPENAI_API_KEY
   - ANTHROPIC_API_KEY
   - GITHUB_TOKEN
+  - KIRO_API_KEY
