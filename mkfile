@@ -25,6 +25,8 @@ build:V:
 	cp hooks/claude/*.sh $HOME/.config/anvillm/claude/hooks/
 	chmod +x $HOME/.config/anvillm/claude/hooks/*.sh
 	bash hooks/claude/install-hooks.sh
+	mkdir -p $HOME/.config/goq/agents
+	cat agents/goq/anvillm-agent.md agents/OUTPUT_PROTOCOL.md agents/SKILLS_PROMPT.md > $HOME/.config/goq/agents/anvillm-agent.md
 	mkdir -p $HOME/.config/anvillm/tools
 	cp tools/*.sh $HOME/.config/anvillm/tools/
 	chmod +x $HOME/.config/anvillm/tools/*.sh

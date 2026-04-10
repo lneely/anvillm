@@ -1,0 +1,15 @@
+# goq backend requirements
+filesystem:
+  rw:
+    - "{HOME}/.config/goq"
+    - "{XDG_DATA_HOME}/goq"
+    - "{HOME}/.local/share/goq"
+    - "/dev/tty"
+network:
+  unrestricted: true
+env:
+  - GOQ_PROVIDER
+  - GOQ_MODEL
+  - OPENAI_API_KEY
+  - ANTHROPIC_API_KEY
+  - GITHUB_TOKEN
