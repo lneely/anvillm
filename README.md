@@ -2,6 +2,19 @@
 
 LLM orchestrator using 9P — scriptable, multi-backend, crash-resilient
 
+## Research Context
+
+AnviLLM is part of a research effort into using the Plan 9 file protocol (9P) as the foundation for multi-agent LLM systems.
+
+AnviLLM tackled the first question: can you orchestrate multiple agentic CLIs (Claude Code, Kiro, Ollama) and get them to talk to each other using nothing but file operations? It runs each agent in a tmux session, exposes everything through a 9P filesystem — session state, control, inter-agent messaging — and lets you compose multi-agent workflows with shell scripts. The answer was yes, with caveats. The main limitation is uneven CLI hook support across backends — for example, Copilot lacks a hook for when the LLM finishes its turn, making it hard to reliably detect the running→idle transition.
+
+The next steps build on what we learned here:
+
+- [ollie](https://github.com/lneely/ollie) — a Go library for building LLM agents from scratch, rather than wrapping existing CLIs. Handles backends, tools, sandboxing, and skills. Knows nothing about 9P or orchestration.
+- [ollie-9p](https://github.com/lneely/ollie-9p) — the core of the next research phase: how far can we take the idea of filesystem-as-agent-surface? Wraps ollie sessions in 9P, exposing meaningful agent state and interactions as a virtual filesystem. Any program that can read and write files — a frontend, an orchestrator, a supervisor, a shell script — can interact with agents directly. Maybe. Hopefully. We'll see.
+
+Related projects: [9beads](https://github.com/lneely/9beads) (task memory as 9P files), [9beads-acme](https://github.com/lneely/9beads-acme) (Acme frontend for 9beads)
+
 ## Architecture
 
 ![Architecture](docs/diagrams/architecture.svg?v=2)
