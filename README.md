@@ -10,7 +10,7 @@ AnviLLM tackled the first question: can you orchestrate multiple agentic CLIs (C
 
 The next steps build on what we learned here:
 
-- [ollie](https://github.com/lneely/ollie) — a Go library for building LLM agents from scratch, rather than wrapping existing CLIs. Handles backends, tools, sandboxing, and skills. Knows nothing about 9P or orchestration.
+- [ollie](https://github.com/lneely/ollie) — a Go library for building LLM agents from scratch, rather than wrapping existing CLIs. Handles backends, tools, sandboxing, and skills. Knows nothing about 9P or orchestration. (Started as an effort to make local Ollama models more useful, and evolved from there.)
 - [ollie-9p](https://github.com/lneely/ollie-9p) — the core of the next research phase: how far can we take the idea of filesystem-as-agent-surface? Wraps ollie sessions in 9P, exposing meaningful agent state and interactions as a virtual filesystem. Any program that can read and write files — a frontend, an orchestrator, a supervisor, a shell script — can interact with agents directly. Maybe. Hopefully. We'll see.
 
 Related projects: [9beads](https://github.com/lneely/9beads) (task memory as 9P files), [9beads-acme](https://github.com/lneely/9beads-acme) (Acme frontend for 9beads)
